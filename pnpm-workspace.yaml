@@ -1,0 +1,7 @@
+allowBuilds:
+  electron: true
+  esbuild: true
+  electron-winstaller: false
+
+patchedDependencies:
+  '@neteasecloudmusicapienhanced/api@4.40.1': patches/ncm-api-4.40.1.patch

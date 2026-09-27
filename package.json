@@ -1,0 +1,114 @@
+{
+  "name": "music-party",
+  "version": "0.7.0",
+  "private": true,
+  "description": "网易云官方多人一起听桌面客户端",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:desktop": "playwright test",
+    "check": "pnpm typecheck && pnpm test && pnpm format:check && pnpm build",
+    "dev:docker": "MUSIC_PARTY_API_URL=http://127.0.0.1:3000 electron-vite dev",
+    "pack": "pnpm build && electron-builder --dir",
+    "dist:linux": "pnpm build && electron-builder --linux AppImage --publish never",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "dist:win": "pnpm build && electron-builder --win nsis --publish never"
+  },
+  "dependencies": {
+    "@neteasecloudmusicapienhanced/api": "4.40.1",
+    "electron-updater": "6.8.9",
+    "lucide-react": "^1.48.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "packageManager": "pnpm@11.26.0",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.6.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "prettier": "^3.9.9",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6",
+    "vitest": "^5.0.2"
+  },
+  "build": {
+    "appId": "dev.music-party.desktop",
+    "productName": "Music Party",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "resources/*.png",
+      "package.json"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "AudioVideo",
+      "executableName": "music-party",
+      "icon": "resources/icon.png",
+      "syncDesktopName": true,
+      "desktop": {
+        "entry": {
+          "Name": "Music Party",
+          "Comment": "网易云官方多人一起听",
+          "Categories": "AudioVideo;Audio;Music;",
+          "StartupWMClass": "music-party"
+        }
+      }
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "icon": "resources/icon.png"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "tabidachinokaze",
+        "repo": "music-party",
+        "releaseType": "release"
+      }
+    ],
+    "artifactName": "music-party-${version}-${os}-${arch}.${ext}",
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  },
+  "desktopName": "music-party.desktop",
+  "author": {
+    "name": "tabidachinokaze",
+    "url": "https://github.com/tabidachinokaze"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tabidachinokaze/music-party.git"
+  },
+  "homepage": "https://github.com/tabidachinokaze/music-party",
+  "bugs": {
+    "url": "https://github.com/tabidachinokaze/music-party/issues"
+  }
+}

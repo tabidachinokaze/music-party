@@ -1,0 +1,74 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: linux
+          - os: windows-latest
+            target: win
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.26.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Verify release version
+        shell: bash
+        run: |
+          node -e 'const v = require("./package.json").version; if (process.env.GITHUB_REF_NAME !== `v${v}` || !/^\d+\.\d+\.\d+$/.test(v)) throw new Error("Tag must match a stable package version");'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+      - run: pnpm exec install-electron
+      - if: matrix.target == 'linux'
+        run: pnpm exec playwright install --with-deps chromium
+      - if: matrix.target == 'linux'
+        run: dbus-run-session -- xvfb-run -a pnpm test:desktop
+      - run: pnpm run dist:${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.target }}
+          path: |
+            dist/*.AppImage
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest*.yml
+          if-no-files-found: error
+          retention-days: 14
+  publish:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Publish version and update manifests together
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test -f release-assets/latest-linux.yml
+          test -f release-assets/latest.yml
+          gh release create "$GITHUB_REF_NAME" release-assets/* --verify-tag --title "Music Party $GITHUB_REF_NAME · 试用版" --notes-file docs/RELEASE-NOTES.md --latest

@@ -1,0 +1,35 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.26.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+      - run: pnpm exec install-electron
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Desktop integration tests
+        run: dbus-run-session -- xvfb-run -a pnpm test:desktop
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: desktop-test-results
+          path: test-results/
+          retention-days: 7
