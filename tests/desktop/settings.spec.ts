@@ -63,6 +63,7 @@ test('desktop settings survive restart and close-to-tray retains the same render
         '.',
         `--ozone-platform=${process.env.WAYLAND_DISPLAY ? 'wayland' : 'x11'}`,
         '--password-store=basic',
+        '--no-sandbox', // Match Playwright's test launcher on Ubuntu runners.
       ],
       {
         cwd: process.cwd(),

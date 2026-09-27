@@ -8,7 +8,7 @@
 
 ## 桌面产物
 
-Linux x64：`dist/music-party-0.7.0-linux-x64.AppImage`，也可运行 `dist/linux-unpacked/music-party`。
+Linux x64：`dist/music-party-0.7.0-linux-x86_64.AppImage`，也可运行 `dist/linux-unpacked/music-party`。
 
 应用包含 Electron、前端和 `api-enhanced`，无需 Docker、Node 或相邻源码仓库。API 在独立 utility process 中运行，不监听 HTTP 端口。GitHub Release 工作流同时构建 Linux x64 AppImage 和 Windows x64 NSIS 安装包。macOS 尚未提供签名和验收版本。
 
