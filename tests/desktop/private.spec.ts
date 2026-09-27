@@ -210,7 +210,7 @@ test('private inbox joins official invitations and shares only after recipient c
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.getByRole('button', { name: '扫码登录', exact: true }).click()
-    await expect(page.getByRole('button', { name: '创建多人一起听' })).toBeVisible()
+    await expect(page.getByRole('button', { name: '一起听', exact: true })).toBeVisible()
     await page.locator('.sidebar').getByRole('button', { name: /^私信/ }).click()
     await page
       .locator('.conversation-list')
@@ -283,6 +283,7 @@ test('private inbox joins official invitations and shares only after recipient c
     expect(await page.getByRole('log', { name: '私信消息' }).innerText()).not.toContain(
       '旧会话延迟响应',
     )
+    await page.getByRole('button', { name: '设置', exact: true }).click()
     await page.getByRole('button', { name: '观测记录' }).click()
     await page.locator('.trace-list button').filter({ hasText: 'privateSend' }).first().click()
     expect(await page.locator('pre').innerText()).not.toContain('保留失败草稿')

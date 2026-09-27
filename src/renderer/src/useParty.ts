@@ -356,7 +356,7 @@ export function useParty() {
     roomRef.current = next
     setRoom(next)
     applySnapshot(value, sampledAt, generation.current)
-    setNotice('已加入网易云官方多人房间。点击歌曲可推送到房间；播放进度跟随服务端。')
+    setNotice('已加入一起听，歌曲会自动同步。')
   }
   async function ensureNotInRoom() {
     if (roomRef.current) throw new Error('请先离开当前多人房间')

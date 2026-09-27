@@ -5,9 +5,11 @@ import type { useParty } from './useParty'
 export function Settings({
   desktop,
   party,
+  onDiagnostics,
 }: {
   desktop: ReturnType<typeof useDesktop>
   party: ReturnType<typeof useParty>
+  onDiagnostics?(): void
 }) {
   const info = desktop.info
   return (
@@ -114,6 +116,15 @@ export function Settings({
         </p>
       </div>
       <Updates />
+      {onDiagnostics && (
+        <div className="settings-group">
+          <h2>帮助与诊断</h2>
+          <p>遇到播放或房间问题时，可以查看并导出接口记录。</p>
+          <button className="secondary update-actions" onClick={onDiagnostics}>
+            观测记录
+          </button>
+        </div>
+      )}
       <div className="settings-group">
         <h2>项目与反馈</h2>
         <p>源码、版本发布和问题反馈都在 GitHub。</p>

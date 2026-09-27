@@ -171,7 +171,10 @@ export function MusicBrowser({
     setSearchError('')
     setSearched(true)
     try {
-      const body = await api('search', { keywords: selection.query, kind: selection.kind, offset })
+      const byId = selection.kind === 'songs' && /^\d+$/.test(selection.query)
+      const body = byId
+        ? { result: { songs: (await api('song', { ids: selection.query })).songs, songCount: 1 } }
+        : await api('search', { keywords: selection.query, kind: selection.kind, offset })
       if (epoch !== searchEpoch.current) return
       const result = body.result || {}
       const raw =

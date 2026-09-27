@@ -133,7 +133,7 @@ export class DesktopController {
         { type: 'separator' },
         ...controls,
         { type: 'separator' },
-        { label: '歌词', click: () => this.command('lyrics') },
+        { label: '播放界面', click: () => this.command('lyrics') },
         { label: '设置', click: () => this.command('settings') },
         { label: '退出 Music Party', click: () => this.quit() },
       ]),
