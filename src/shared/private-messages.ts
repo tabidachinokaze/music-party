@@ -1,4 +1,5 @@
 import type { Conversation, MultiInvitation, PrivateMessage, PrivatePage } from './types'
+import { richMessageContent, messageObject } from './message-content'
 import { invitation, parseInvitation } from './protocol'
 export const PRIVATE_TEXT_LIMIT = 500
 export const SEND_METHODS = new Set(['multiChatSend', 'privateSend', 'privateInvite'])
@@ -117,9 +118,13 @@ export function findInvitations(value: unknown): MultiInvitation[] {
 export function messageContent(
   value: unknown,
   envelope?: unknown,
-): { text: string; invitations: MultiInvitation[] } {
-  const data = payload(value)
+): Pick<PrivateMessage, 'text' | 'invitations' | 'attachments' | 'richText'> {
+  const data = { ...messageObject(envelope), ...payload(value) }
   const invitations = findInvitations(envelope ? [data, envelope] : data)
+  const content = richMessageContent(data)
+  if (invitations.length && content.attachments)
+    content.attachments = content.attachments.filter((item) => item.resourceType !== 'general')
+  const body = messageObject(data.body ?? data.msgBody)
   const label =
     typeof data.msg === 'string'
       ? data.msg
@@ -129,16 +134,23 @@ export function messageContent(
           ? data.text
           : typeof data.title === 'string'
             ? data.title
-            : ''
+            : typeof data.text?.textBody === 'string'
+              ? data.text.textBody
+              : typeof body.textBody === 'string'
+                ? body.textBody
+                : typeof body.text === 'string'
+                  ? body.text
+                  : ''
   let text = label
   if (!text) {
     if (invitations.length) text = '邀请你加入官方多人一起听'
     else if (data.song) text = `[分享歌曲] ${data.song.name || ''}`
     else if (data.playlist) text = `[分享歌单] ${data.playlist.name || ''}`
     else if (data.album) text = `[分享专辑] ${data.album.name || ''}`
+    else if (content.attachments?.length) text = content.attachments[0].title
     else text = '[暂不支持的私信类型]'
   }
-  return { text: text.slice(0, 10000), invitations }
+  return { text: text.slice(0, 10000), invitations, ...content }
 }
 export function parseConversations(
   body: any,
@@ -196,6 +208,7 @@ export function parsePrivatePage(body: any, selfUid: string, peerUid: string): P
       continue
     const content = messageContent(raw.msg, {
       body: raw.body,
+      msgType: raw.msgType,
       msgBody: raw.msgBody,
       nativeUrl: raw.nativeUrl,
     })

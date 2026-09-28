@@ -145,6 +145,27 @@ const track = (id: string) => ({
   song: { id, name: id, artist: '', album: '', cover: '', duration: 200000 } as Song,
   url: `https://audio.test/${id}`,
 })
+it('does not replay a completed business item when the first post-end snapshot still points to it', async () => {
+  const audio = new FakeAudio()
+  const player = new RoomPlayer(
+    audio,
+    async (id) => track(id),
+    vi.fn(),
+    () => 2000,
+  )
+  await player.apply(state())
+  audio.pause()
+  player.ended()
+  const before = audio.play.mock.calls.length
+  await player.apply({ ...state(), sampledAt: 2000 })
+  await player.setListening(true)
+  expect(audio.play).toHaveBeenCalledTimes(before)
+  await player.apply({
+    ...state({ version: 3, playSong: { songId: '123', songBizId: '1000' } }),
+    sampledAt: 2000,
+  })
+  expect(audio.play).toHaveBeenCalledTimes(before + 1)
+})
 it('applies remote state without publishing commands and keeps a local pause through updates', async () => {
   const audio = new FakeAudio()
   const changed = vi.fn()

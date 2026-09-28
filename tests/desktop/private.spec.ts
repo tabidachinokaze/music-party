@@ -45,6 +45,18 @@ test('private inbox joins official invitations and shares only after recipient c
     msg(1, alice, self, '手机私信 <b>原样显示</b>'),
     nativeCard,
     msg(3, alice, self, inviteText('expired-room', '456')),
+    {
+      ...msg(4, alice, self, ''),
+      msg: JSON.stringify({ picInfo: { url: 'https://p1.music.126.net/chat-test.png' } }),
+    },
+    {
+      ...msg(5, alice, self, ''),
+      msg: JSON.stringify({ song: { id: 777, name: '私信分享歌曲', artists: [{ name: '歌手' }] } }),
+    },
+    {
+      ...msg(6, alice, self, ''),
+      msg: JSON.stringify({ album: { id: 888, name: '私信分享专辑' } }),
+    },
   ]
   const snapshot = () => ({
     roomId: active,
@@ -218,6 +230,15 @@ test('private inbox joins official invitations and shares only after recipient c
   })
   try {
     const page = await app.firstWindow()
+    await page.route('https://p1.music.126.net/chat-test.png', (route) =>
+      route.fulfill({
+        contentType: 'image/png',
+        body: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=',
+          'base64',
+        ),
+      }),
+    )
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.getByRole('button', { name: '扫码登录', exact: true }).click()
@@ -231,6 +252,28 @@ test('private inbox joins official invitations and shares only after recipient c
       '手机私信 <b>原样显示</b>',
     )
     expect(await page.locator('.private-messages b').count()).toBe(0)
+    await expect(page.getByRole('button', { name: '播放 私信分享歌曲', exact: true })).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: '打开资源 私信分享专辑', exact: true }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: '查看图片：图片' }).click()
+    await expect(page.getByRole('dialog', { name: '图片预览' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog', { name: '图片预览' })).toHaveCount(0)
+    await page.getByRole('button', { name: '选择表情', exact: true }).click()
+    await page.getByRole('button', { name: '插入表情 🎵', exact: true }).click()
+    await expect(page.getByLabel('私信内容')).toHaveValue('🎵')
+    await page.getByLabel('私信内容').fill('')
+    expect(
+      await page.locator('.private-layout').evaluate((element) => ({
+        radius: getComputedStyle(element).borderRadius,
+        border: getComputedStyle(element).borderWidth,
+      })),
+    ).toEqual({ radius: '0px', border: '0px' })
+    await expect(
+      page.evaluate(() => window.together.openMessageLink('file:///tmp/test')),
+    ).rejects.toThrow('网易云链接')
+
     const aliceRow = page.locator('.conversation-list').getByRole('button', { name: /^Alice/ })
     const bobRow = page.locator('.conversation-list').getByRole('button', { name: /^Bob/ })
     await expect(aliceRow.locator('.unread-count')).toHaveCount(0)

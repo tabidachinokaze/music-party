@@ -10,7 +10,9 @@ import {
   Send,
   Users,
 } from 'lucide-react'
-import type { MultiInvitation, Room } from '../../shared/types'
+import type { MultiInvitation, Room, Song } from '../../shared/types'
+import { MessageContent } from './MessageContent'
+import { EmojiPicker } from './EmojiPicker'
 import { PRIVATE_TEXT_LIMIT, inviteText } from '../../shared/private-messages'
 import type { usePrivateMessages } from './usePrivateMessages'
 import type { ApiCall } from './music-data'
@@ -98,6 +100,8 @@ export function PrivateMessages({
   api,
   busy,
   onJoin,
+  onSong,
+  onMediaPlay,
 }: {
   inbox: Inbox
   account: any
@@ -105,6 +109,8 @@ export function PrivateMessages({
   api: ApiCall
   busy: boolean
   onJoin(invite: MultiInvitation): Promise<void>
+  onSong(song: Song): void
+  onMediaPlay(): void
 }) {
   const [filter, setFilter] = useState('')
   const [showContacts, setShowContacts] = useState(false)
@@ -368,7 +374,14 @@ export function PrivateMessages({
                         })}
                       </time>
                     </div>
-                    <div className="chat-bubble">{message.text}</div>
+                    <MessageContent
+                      text={message.text}
+                      attachments={message.attachments}
+                      richText={message.richText}
+                      room={!!room}
+                      onSong={onSong}
+                      onMediaPlay={onMediaPlay}
+                    />
                     {message.invitations.map((invite) => (
                       <InviteCard
                         key={`${invite.roomId}:${invite.inviterUid}`}
@@ -402,6 +415,15 @@ export function PrivateMessages({
                 inbox.send()
               }}
             >
+              <div className="compose-tools">
+                <EmojiPicker
+                  onInsert={(value) =>
+                    inbox.setDraft((draft) =>
+                      draft.length + value.length <= PRIVATE_TEXT_LIMIT ? draft + value : draft,
+                    )
+                  }
+                />
+              </div>
               <textarea
                 aria-label="私信内容"
                 placeholder={`发送给 ${inbox.selected.nickname}`}

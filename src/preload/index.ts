@@ -13,6 +13,7 @@ const bridge: Bridge = {
   sessionInfo: () => ipcRenderer.invoke('session-info'),
   copy: (text) => ipcRenderer.invoke('copy', text),
   openProject: (link) => ipcRenderer.invoke('project-open', link),
+  openMessageLink: (url) => ipcRenderer.invoke('message-link-open', url),
   updateState: () => ipcRenderer.invoke('update-state'),
   updateAction: (action) => ipcRenderer.invoke('update-action', action),
   onUpdate(callback) {

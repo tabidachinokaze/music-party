@@ -21,6 +21,7 @@ export type Method =
   | 'multiJoin'
   | 'multiStatus'
   | 'multiHeartbeat'
+  | 'multiQueue'
   | 'multiAdd'
   | 'multiNext'
   | 'multiLeave'
@@ -60,6 +61,7 @@ export interface Bridge {
   sessionInfo(): Promise<{ persistent: boolean; reason: string; version: string }>
   copy(text: string): Promise<void>
   openProject(link: ProjectLink): Promise<void>
+  openMessageLink(url: string): Promise<void>
   updateState(): Promise<UpdateState>
   updateAction(action: 'check' | 'download' | 'install'): Promise<UpdateState>
   onUpdate(callback: (state: UpdateState) => void): () => void
@@ -102,6 +104,10 @@ export interface QueueSong {
   songId: string
   songBizId: string
   songRcmdUid: string
+}
+export interface RoomQueueEntry extends QueueSong {
+  track: Song
+  recommender: string
 }
 export interface RoomPlayback {
   song: QueueSong | null
@@ -157,7 +163,10 @@ export interface ChatMessage {
   avatar: string
   time: number
   text: string
-  kind: 'text' | 'notice'
+  kind: 'text' | 'notice' | 'image' | 'resource' | 'interaction'
+  attachments?: MessageAttachment[]
+  richText?: MessageTextPart[]
+  emoji?: ChatEmoji
   delivery?: 'sending' | 'submitted' | 'failed' | 'uncertain'
   error?: string
   echoAfter?: number
@@ -183,9 +192,35 @@ export interface PrivateMessage {
   time: number
   text: string
   invitations: MultiInvitation[]
+  attachments?: MessageAttachment[]
+  richText?: MessageTextPart[]
   delivery?: 'sending' | 'submitted' | 'failed' | 'uncertain'
   error?: string
   echoAfter?: number
+}
+export interface ChatEmoji {
+  emojiId: string
+  emojiGroupId: string
+  emojiName: string
+  emojiImgUrl: string
+  width: number
+  height: number
+  format: string
+}
+export interface MessageTextPart {
+  text: string
+  emphasized: boolean
+  url?: string
+}
+export interface MessageAttachment {
+  kind: 'image' | 'audio' | 'video' | 'resource' | 'file'
+  title: string
+  subtitle?: string
+  url?: string
+  cover?: string
+  resourceType?: string
+  resourceId?: string
+  actionUrl?: string
 }
 export interface PrivatePage {
   messages: PrivateMessage[]

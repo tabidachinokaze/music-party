@@ -9,6 +9,7 @@ import {
   privateTrace,
 } from '../shared/private-messages'
 import { multiEndpoints, multiMutations } from './multi-api'
+import { parseEmoji } from '../shared/message-content'
 
 type Invoke = (
   endpoint: string,
@@ -65,8 +66,9 @@ const fields: Partial<Record<Method, string[]>> = {
   multiCreate: ['songId'],
   multiStatus: [],
   multiChatHistory: ['roomId', 'cursor'],
-  multiChatSend: ['roomId', 'text', 'requestId'],
+  multiChatSend: ['roomId', 'text', 'emoji', 'requestId'],
   multiHeartbeat: ['roomId'],
+  multiQueue: ['roomId', 'cursor'],
   multiLeave: ['roomId'],
   multiAdd: ['roomId', 'songId'],
   multiNext: ['roomId', 'songId', 'bizId'],
@@ -81,7 +83,13 @@ export function validate(request: Request): Record<string, unknown> {
     throw new Error('请求包含不允许的参数')
   for (const key of allowed) {
     const value = args[key]
-    if (value === undefined && ['kind', 'offset', 'cursor', 'before'].includes(key)) continue
+    if (value === undefined && ['kind', 'offset', 'cursor', 'before', 'emoji'].includes(key))
+      continue
+    if (key === 'emoji') {
+      const emoji = parseEmoji(value)
+      if (!emoji) throw new Error('表情信息无效')
+      continue
+    }
     if (key === 'text') {
       if (
         typeof value !== 'string' ||
@@ -179,6 +187,7 @@ export class ApiService {
       request.args!.uid,
       request.args!.roomId,
       request.args!.text,
+      request.args!.emoji,
     ])
     const existing = this.sends.get(key)
     if (existing)
@@ -269,6 +278,7 @@ export class ApiService {
           delete args.uid
         }
         if (method === 'multiChatSend') {
+          if (args.emoji) args.emoji = parseEmoji(args.emoji)
           // Resolve the IM room from the authenticated server snapshot, never from renderer input.
           const status = await this.invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
           const snapshot = status.body?.data?.multiLtRoomSnapshot

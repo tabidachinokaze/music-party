@@ -11,10 +11,12 @@ test('official multiplayer lifecycle with three members, remote song changes and
     version = 1,
     port = 0
   let queue: any[] = []
+  let heartbeatSeconds = 1,
+    boundaryChecks = -1
   let liked = ['111', '112']
   let memberIds = [123, 456, 789]
   const chatStart = Date.now()
-  const chatRecords = [
+  const chatRecords: any[] = [
     {
       roomId: 'multi-test-room',
       sendUid: 456,
@@ -28,7 +30,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
   const calls: Array<{ path: string; args: any }> = []
   const songInfo = () => ({
     playSong: { songId: currentSong, songBizId: `1000${currentSong}`, songRcmdUid: 123 },
-    nextSongs: queue,
+    nextSongs: queue.slice(0, 4),
     version,
     playedTime: 5000,
     songDuration: 30000,
@@ -121,7 +123,38 @@ test('official multiplayer lifecycle with three members, remote song changes and
         active = true
         body = { code: 200, data: { success: true, multiLtRoomSnapshot: snapshot() } }
         break
+      case '/api/listen/together/multi/match/wait/song/list': {
+        const cursor = JSON.parse(args.data.page).cursor
+        const offset = Number(cursor || 0)
+        const list = [songInfo().playSong, ...queue].map((song) => ({
+          songInfo: {
+            resourceId: song.songId,
+            bizId: song.songBizId,
+            title: `测试歌曲${song.songId}`,
+            artistName: ['测试歌手'],
+            coverUrl: '',
+          },
+          rcmdUid: song.songRcmdUid,
+          nickname: `听友${song.songRcmdUid}`,
+        }))
+        body = {
+          code: 200,
+          data: {
+            songLists: list.slice(offset, offset + 20),
+            page: {
+              more: offset + 20 < list.length,
+              cursor: offset + 20 < list.length ? String(offset + 20) : '',
+            },
+          },
+        }
+        break
+      }
       case '/api/listen/together/multi/match/status/get':
+        if (boundaryChecks >= 0 && ++boundaryChecks === 2) {
+          currentSong = '666'
+          version++
+        }
+
         body = {
           code: 200,
           data: {
@@ -131,7 +164,10 @@ test('official multiplayer lifecycle with three members, remote song changes and
         }
         break
       case '/api/listen/together/multi/match/heartbeat':
-        body = { code: 200, data: { heartBeatDuration: 1, roomPlaySongInfo: songInfo() } }
+        body = {
+          code: 200,
+          data: { heartBeatDuration: heartbeatSeconds, roomPlaySongInfo: songInfo() },
+        }
         break
       case '/api/listen/together/multi/match/song/operate':
         if (args.data.operate === 4) {
@@ -177,6 +213,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
           avatarUrl: '',
           msgType: 0,
           imChatRoomMsgBody: { text },
+          emoji: JSON.parse(args.data.clientExt).emoji,
         })
         body = { code: 200, data: { success: true } }
         break
@@ -312,6 +349,15 @@ test('official multiplayer lifecycle with three members, remote song changes and
   })
   try {
     const page = await app.firstWindow()
+    await page.route('https://p1.music.126.net/chat-test.gif', (route) =>
+      route.fulfill({
+        contentType: 'image/png',
+        body: Buffer.from(
+          'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a2ioAAAAASUVORK5CYII=',
+          'base64',
+        ),
+      }),
+    )
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await expect(page.getByRole('heading', { name: '好音乐，一起听。' })).toBeVisible()
@@ -411,6 +457,74 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await expect(page.getByLabel('聊天内容')).toHaveValue('失败测试')
     expect(calls.filter((call) => call.path === '/api/middle/im/chatroom/send')).toHaveLength(2)
     await page.getByLabel('聊天内容').fill('')
+    chatRecords.push(
+      {
+        roomId: 'multi-test-room',
+        sendUid: 456,
+        sendTime: chatStart + 100,
+        msgType: 0,
+        nickname: '听友456',
+        emoji: {
+          emojiId: '9',
+          emojiGroupId: '8',
+          emojiName: '开心',
+          emojiImgUrl: 'https://p1.music.126.net/chat-test.gif',
+          width: 100,
+          height: 100,
+          format: 'gif',
+        },
+        imChatRoomMsgBody: { text: '[开心]' },
+      },
+      {
+        roomId: 'multi-test-room',
+        sendUid: 456,
+        sendTime: chatStart + 101,
+        msgType: 2,
+        nickname: '听友456',
+        resourceInfo: {
+          resourceId: '777',
+          bizId: '778',
+          title: '聊天推荐歌曲',
+          artistName: ['聊天歌手'],
+        },
+        imChatRoomMsgBody: { text: '推荐了一首歌' },
+      },
+      {
+        roomId: 'multi-test-room',
+        sendUid: 0,
+        sendTime: chatStart + 102,
+        msgType: 3,
+        imChatRoomMsgBody: {
+          msgRichText: {
+            contentTextList: [
+              { text: '欢迎 ', highLighted: false },
+              { text: '新听友', highLighted: true },
+            ],
+          },
+        },
+      },
+    )
+    await page.getByRole('button', { name: '刷新聊天', exact: true }).click()
+    await expect(page.getByRole('button', { name: '推送 聊天推荐歌曲', exact: true })).toBeVisible()
+    await expect(
+      page.getByRole('log').locator('strong').filter({ hasText: '新听友' }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: '查看图片：开心' }).click()
+    await expect(page.getByRole('dialog', { name: '图片预览' })).toBeVisible()
+    await page.mouse.click(5, 5)
+    await expect(page.getByRole('dialog', { name: '图片预览' })).toHaveCount(0)
+    await expect(page.getByLabel('官方房间聊天', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '选择表情', exact: true }).click()
+    await page.getByRole('button', { name: '发送表情 开心', exact: true }).click()
+    await expect
+      .poll(() => calls.filter((call) => call.path === '/api/middle/im/chatroom/send').length)
+      .toBe(3)
+    expect(
+      JSON.parse(
+        calls.filter((call) => call.path === '/api/middle/im/chatroom/send').at(-1)!.args.data
+          .clientExt,
+      ).emoji.emojiId,
+    ).toBe('9')
     await page.screenshot({ path: 'test-results/music-party-chat.png' })
     await page.keyboard.press('Escape')
     await expect(page.getByLabel('官方房间聊天', { exact: true })).toBeHidden()
@@ -563,6 +677,21 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await expect(page.getByRole('dialog', { name: '房间待播列表' })).toBeVisible()
     await expect(page.getByText('1 首待播', { exact: true })).toBeVisible()
     await expect(page.locator('.queue-track-copy strong')).toHaveText('测试歌曲333')
+    queue = Array.from({ length: 45 }, (_, i) => ({
+      songId: String(700 + (i % 5)),
+      songBizId: String(900000 + i),
+      songRcmdUid: '123',
+    }))
+    version++
+    await page.getByRole('button', { name: '刷新待播列表' }).click()
+    await expect(page.getByText('45 首待播', { exact: true })).toBeVisible()
+    await expect(page.locator('.queue-track')).toHaveCount(45)
+    expect(
+      calls
+        .filter((call) => call.path.endsWith('/wait/song/list'))
+        .map((call) => JSON.parse(call.args.data.page).cursor),
+    ).toEqual(expect.arrayContaining(['20', '40']))
+
     await expect(page.getByRole('button', { name: '清空队列', exact: true })).toHaveCount(0)
     await expect(page.getByLabel('播放模式', { exact: true })).toHaveCount(0)
     await page.screenshot({ path: 'test-results/music-party-room-queue.png' })
@@ -596,6 +725,34 @@ test('official multiplayer lifecycle with three members, remote song changes and
       BrowserWindow.getAllWindows()[0].setBounds({ width: 1280, height: 850 }),
     )
     await expect(page.locator('.now-playing strong')).toHaveText('测试歌曲444')
+    heartbeatSeconds = 30
+    await page.getByRole('button', { name: '立即同步' }).click()
+    const beforeRegular = calls.filter((call) => call.path.endsWith('/heartbeat')).length
+    await expect
+      .poll(() => calls.filter((call) => call.path.endsWith('/heartbeat')).length, {
+        timeout: 4000,
+      })
+      .toBeGreaterThan(beforeRegular)
+    const beforeBoundaryMutations = calls.filter((call) =>
+      call.path.endsWith('/song/operate'),
+    ).length
+    boundaryChecks = 0
+    const boundaryStart = Date.now()
+    await page.locator('audio').evaluate((audio: HTMLAudioElement) => {
+      audio.currentTime = 29.99
+    })
+    await expect(page.locator('.now-playing strong')).toHaveText('测试歌曲666', { timeout: 5000 })
+    expect(Date.now() - boundaryStart).toBeLessThan(5000)
+    expect(boundaryChecks).toBeGreaterThanOrEqual(2)
+    expect(calls.filter((call) => call.path.endsWith('/song/operate')).length).toBe(
+      beforeBoundaryMutations,
+    )
+    boundaryChecks = -1
+    currentSong = '444'
+    version++
+    await page.getByRole('button', { name: '立即同步' }).click()
+    await expect(page.locator('.now-playing strong')).toHaveText('测试歌曲444')
+
     await expect
       .poll(() => page.locator('audio').evaluate((a: HTMLAudioElement) => a.currentTime))
       .toBeGreaterThan(4.5)

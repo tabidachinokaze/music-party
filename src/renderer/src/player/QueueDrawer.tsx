@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { ListMusic, Music2, Play, RefreshCw, X } from 'lucide-react'
-import type { Song } from '../../../shared/types'
+import type { Song, QueueSong, RoomQueueEntry } from '../../../shared/types'
 import type { useParty } from '../useParty'
-import { waitingCount, waitingSongs } from '../../../shared/playback-queue'
+import { waitingCount } from '../../../shared/playback-queue'
 import { toSong } from '../../../shared/protocol'
 import { useDismissable } from './useDismissable'
+import { useRoomQueue } from '../useRoomQueue'
 
 export function QueueDrawer({
   party: p,
@@ -23,11 +24,13 @@ export function QueueDrawer({
   const drawer = useRef<HTMLElement>(null)
   useDismissable(drawer, onClose, !closing, '[data-popup-toggle="queue"]')
   const inRoom = !!p.room
+  const roomQueue = useRoomQueue(p.api, p.room?.roomId, p.roomPlayback?.version, !closing)
   const scope = `${p.account?.userId || 'guest'}:${p.room?.roomId || 'personal'}`
-  const queued = p.room
-    ? waitingSongs(p.roomPlayback?.nextSongs || [], p.roomPlayback?.song?.songBizId)
-    : []
-  const ids = (p.room ? queued.map((song) => song.songId) : p.personalQueue).slice(0, limit)
+  const currentIndex = roomQueue.entries.findIndex(
+    (entry) => entry.songBizId === p.roomPlayback?.song?.songBizId,
+  )
+  const queued = currentIndex < 0 ? roomQueue.entries : roomQueue.entries.slice(currentIndex + 1)
+  const ids = p.room ? [] : p.personalQueue.slice(0, limit)
   const idsKey = ids.join(',')
   useEffect(() => {
     cache.current = {}
@@ -87,8 +90,12 @@ export function QueueDrawer({
     }
   }, [closing])
   const title = inRoom ? '房间待播列表' : '播放队列'
-  const count = inRoom ? waitingCount(p.roomPlayback) : p.personalQueue.length
-  const entries = inRoom
+  const count = inRoom
+    ? roomQueue.complete
+      ? queued.length
+      : waitingCount(p.roomPlayback)
+    : p.personalQueue.length
+  const entries: (QueueSong & Partial<Pick<RoomQueueEntry, 'track' | 'recommender'>>)[] = inRoom
     ? queued.slice(0, limit)
     : ids.map((songId, index) => ({ songId, songBizId: `${index}`, songRcmdUid: '' }))
   return (
@@ -114,8 +121,8 @@ export function QueueDrawer({
           <button
             className="icon-btn"
             aria-label="刷新待播列表"
-            disabled={!!p.busy}
-            onClick={() => p.act('刷新待播列表', p.observe)}
+            disabled={roomQueue.loading}
+            onClick={roomQueue.refresh}
           >
             <RefreshCw size={16} />
           </button>
@@ -165,13 +172,18 @@ export function QueueDrawer({
       )}
       <div className="queue-drawer-list">
         {inRoom && <div className="queue-section-label">接下来播放</div>}
-        {error && (
+        {(error || roomQueue.error) && (
           <p className="queue-error" role="alert">
-            {error}
+            {error || roomQueue.error}
+            {roomQueue.error && (
+              <button className="text-btn" onClick={roomQueue.refresh}>
+                重试
+              </button>
+            )}
           </p>
         )}
         {entries.map((entry, index) => {
-          const track = tracks[entry.songId]
+          const track = entry.track || tracks[entry.songId]
           const member = p.members.find((member) => member.uid === entry.songRcmdUid)
           const content = (
             <>
@@ -189,7 +201,9 @@ export function QueueDrawer({
                 </strong>
                 <small>
                   {track?.artist || '—'}
-                  {inRoom && member ? ` · ${member.nickname} 推荐` : ''}
+                  {inRoom && (('recommender' in entry && entry.recommender) || member?.nickname)
+                    ? ` · ${('recommender' in entry && entry.recommender) || member?.nickname} 推荐`
+                    : ''}
                 </small>
               </span>
               {!inRoom && <Play size={15} className="queue-track-play" />}
@@ -212,7 +226,7 @@ export function QueueDrawer({
           )
         })}
         {inRoom && !p.roomPlayback && <p className="queue-loading">正在同步房间待播列表…</p>}
-        {!entries.length && !loading && (!inRoom || !!p.roomPlayback) && (
+        {!entries.length && !loading && (!inRoom || roomQueue.complete) && (
           <div className="queue-empty">
             <ListMusic size={30} />
             <strong>{inRoom ? '还没有待播歌曲' : '队列还是空的'}</strong>
@@ -224,10 +238,8 @@ export function QueueDrawer({
           </div>
         )}
         {loading && <p className="queue-loading">正在读取歌曲信息…</p>}
-        {inRoom && count !== undefined && count > queued.length && (
-          <p className="queue-loading">
-            房间当前提供接下来 {queued.length} 首，后续歌曲会随播放更新。
-          </p>
+        {inRoom && roomQueue.loading && (
+          <p className="queue-loading">正在读取完整待播列表 · 已获取 {queued.length} 首…</p>
         )}
         {(inRoom ? queued.length : p.personalQueue.length) > limit && (
           <button className="text-btn load-more" onClick={() => setLimit((value) => value + 100)}>

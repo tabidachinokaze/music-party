@@ -168,6 +168,10 @@ export function App() {
   function onPlay(song: Song, ids?: string[]) {
     p.act(p.room ? '推送歌曲' : '播放歌曲', () => p.playSong(song, ids))
   }
+  function onMessageMediaPlay() {
+    if (p.audio.current && !p.audio.current.paused)
+      p.togglePlay().catch((error) => p.setError(error.message))
+  }
   function onLike(song: Song) {
     if (library.likes.has(song.id)) {
       setUnlikeSong(song)
@@ -387,6 +391,8 @@ export function App() {
                 api={p.api}
                 busy={!!p.busy}
                 onJoin={joinPrivateInvite}
+                onSong={onPlay}
+                onMediaPlay={onMessageMediaPlay}
               />
             ) : (
               <MusicBrowser
@@ -425,7 +431,14 @@ export function App() {
           onClose={() => setQueueOpen(false)}
         />
       )}
-      <RoomChat chat={chat} room={p.room} uid={uid || ''} onlineCount={p.onlineCount} />
+      <RoomChat
+        chat={chat}
+        room={p.room}
+        uid={uid || ''}
+        onlineCount={p.onlineCount}
+        onSong={onPlay}
+        onMediaPlay={onMessageMediaPlay}
+      />
       <audio ref={p.audio} {...p.audioEvents} />
       {setupOpen && (
         <RoomSetup

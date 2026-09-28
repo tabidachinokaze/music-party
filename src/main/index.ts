@@ -15,6 +15,7 @@ import { join } from 'node:path'
 import type { Reply, Request, Trace } from '../shared/types'
 import { SEND_METHODS } from '../shared/private-messages'
 import { FullScreenController } from './fullscreen'
+import { musicMessageLink } from '../shared/message-content'
 import { validate } from './service'
 import { SettingsStore } from './settings'
 import { DesktopController } from './desktop'
@@ -211,6 +212,12 @@ app.whenReady().then(() => {
     if (typeof key !== 'string' || !Object.hasOwn(PROJECT_LINKS, key))
       throw new Error('不支持的项目链接')
     await shell.openExternal(PROJECT_LINKS[key as ProjectLink])
+  })
+  ipcMain.handle('message-link-open', async (event, value: unknown) => {
+    assertSender(event)
+    const url = musicMessageLink(value)
+    if (!url) throw new Error('消息没有可用的网易云链接')
+    await shell.openExternal(url)
   })
   ipcMain.handle('update-state', (event) => {
     assertSender(event)

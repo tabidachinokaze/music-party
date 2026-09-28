@@ -22,10 +22,11 @@ export class RoomPlayer {
   private loading: Promise<void> | null = null
   private cancelLoad: (() => void) | null = null
   private listening = true
+  private endedKey = ''
   constructor(
     private audio: AudioPort,
     private resolve: (id: string) => Promise<{ song: Song; url: string }>,
-    private changed: (song: Song) => void,
+    private changed: (song: Song | null) => void,
     private now: () => number = () => performance.now(),
   ) {}
   suspend() {
@@ -34,6 +35,7 @@ export class RoomPlayer {
     this.cancelLoad = null
     this.state = null
     this.loaded = ''
+    this.endedKey = ''
     this.desired = ''
     this.loading = null
     this.audio.pause()
@@ -42,10 +44,13 @@ export class RoomPlayer {
     this.suspend()
     this.listening = true
   }
+  ended() {
+    this.endedKey = this.loaded
+  }
   async setListening(listening: boolean) {
     this.listening = listening
     if (!listening) this.audio.pause()
-    else if (this.state && this.loaded) {
+    else if (this.state && this.loaded && this.endedKey !== this.loaded) {
       this.align(true)
       await this.audio.play()
     }
@@ -69,10 +74,12 @@ export class RoomPlayer {
       this.loaded = ''
       this.desired = ''
       this.audio.pause()
+      this.changed(null)
       return
     }
     const key = `${next.song.songId}:${next.song.songBizId}`
     if (key === this.loaded) {
+      if (key === this.endedKey) return
       this.align()
       if (
         this.listening &&
@@ -121,6 +128,7 @@ export class RoomPlayer {
       await ready
       if (epoch !== this.epoch) return
       this.loaded = key
+      this.endedKey = ''
       this.changed(track.song)
       this.align(true)
       if (this.listening) await this.audio.play()

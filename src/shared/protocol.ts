@@ -69,7 +69,7 @@ export function redact(value: unknown): unknown {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
-        /cookie|token|secret|authorization|password|MUSIC_[UA]|csrf|NMTID|qrimg|qrurl|unikey|^key$|avatar|nickname|^url$|^msg$|^text$|msgBody|msgRichText|mainStateText|^content$/i.test(
+        /cookie|token|secret|authorization|password|MUSIC_[UA]|csrf|NMTID|qrimg|qrurl|unikey|^key$|avatar|nickname|^url$|^msg$|^text$|msgBody|msgRichText|mainStateText|^content$|^emoji$/i.test(
           key,
         )
           ? '[已隐藏]'

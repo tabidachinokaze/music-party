@@ -6,6 +6,7 @@ export const multiEndpoints = {
   multiJoin: '/api/listen/together/multi/match/ack',
   multiStatus: '/api/listen/together/multi/match/status/get',
   multiHeartbeat: '/api/listen/together/multi/match/heartbeat',
+  multiQueue: '/api/listen/together/multi/match/wait/song/list',
   multiAdd: '/api/listen/together/multi/match/song/operate',
   multiNext: '/api/listen/together/multi/match/song/operate',
   multiLeave: '/api/listen/together/multi/match/exit',
@@ -38,11 +39,14 @@ export function multiPayload(method: MultiMethod, args: Record<string, unknown>,
           bizType: 'listenTogether',
           ltType: 'MULTI_MATCH_SONG',
           roomId,
+          ...(args.emoji ? { emoji: args.emoji } : {}),
         }),
         msgBody: JSON.stringify({ msg: args.text, msgType: 0 }),
       }
     case 'multiHeartbeat':
       return { roomId }
+    case 'multiQueue':
+      return { roomId, page: JSON.stringify({ size: 20, cursor: args.cursor || '' }) }
     case 'multiLeave':
       return { roomId, exitType: 'NORMAL_END' }
     case 'multiAdd':

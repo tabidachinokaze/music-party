@@ -1,4 +1,5 @@
 import type { ChatMessage, ChatPage } from './types'
+import { parseEmoji, richMessageContent, mediaUrl } from './message-content'
 export const CHAT_MAX_LENGTH = 100
 function object(value: any): any {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value
@@ -27,6 +28,28 @@ export function parseChatPage(body: any, roomId: string, viewerUid: string): Cha
     const time = Number(raw.sendTime)
     if (!/^\d+$/.test(uid) || !Number.isSafeInteger(time) || time < 0) continue
     const msg = object(raw.imChatRoomMsgBody)
+    const emoji = parseEmoji(raw.emoji)
+    const content = richMessageContent({ ...msg, emoji: raw.emoji })
+    const resource = object(raw.resourceInfo)
+    if (resource.resourceId && resource.title) {
+      const id = String(resource.resourceId)
+      if (
+        /^\d{1,24}$/.test(id) &&
+        !(typeof resource.resourceId === 'number' && !Number.isSafeInteger(resource.resourceId))
+      )
+        content.attachments = [
+          ...(content.attachments || []),
+          {
+            kind: 'resource',
+            resourceType: 'song',
+            resourceId: id,
+            title: String(resource.title).slice(0, 1000),
+            subtitle: Array.isArray(resource.artistName) ? resource.artistName.join(' / ') : '歌曲',
+            cover: mediaUrl(resource.coverUrl),
+            actionUrl: `https://music.163.com/song?id=${id}`,
+          },
+        ]
+    }
     let text = typeof msg.text === 'string' ? msg.text : typeof msg.msg === 'string' ? msg.msg : ''
     if (!text && typeof msg.mainStateText === 'string') text = msg.mainStateText
     if (!text && Array.isArray(msg.msgRichText?.contentTextList))
@@ -34,7 +57,15 @@ export function parseChatPage(body: any, roomId: string, viewerUid: string): Cha
         .map((part: any) => (typeof part?.text === 'string' ? part.text : ''))
         .join('')
     if (!text)
-      text = raw.emoji ? '[表情消息]' : raw.msgType === 2 ? '[推歌消息]' : '[暂不支持的消息]'
+      text = emoji
+        ? `[${emoji.emojiName}]`
+        : raw.msgType === 2
+          ? '推荐了一首歌'
+          : raw.msgType === 1
+            ? '房间互动'
+            : raw.msgType === 3
+              ? '房间通知'
+              : '收到一条消息'
     // Official history deduplicates by sender + sendTime. No HTML or arbitrary links are executed.
     messages.push({
       id: `${uid}:${time}`,
@@ -44,7 +75,17 @@ export function parseChatPage(body: any, roomId: string, viewerUid: string): Cha
       avatar: typeof raw.avatarUrl === 'string' ? raw.avatarUrl : '',
       time,
       text: text.slice(0, 10000),
-      kind: raw.msgType === 0 ? 'text' : 'notice',
+      kind: emoji
+        ? 'image'
+        : raw.msgType === 0
+          ? 'text'
+          : raw.msgType === 2
+            ? 'resource'
+            : raw.msgType === 1
+              ? 'interaction'
+              : 'notice',
+      ...content,
+      ...(emoji ? { emoji } : {}),
     })
   }
   return {
@@ -65,7 +106,10 @@ export function mergeChat(previous: ChatMessage[], incoming: ChatMessage[]): Cha
         !claimed.has(m.id) &&
         m.roomId === local.roomId &&
         m.uid === local.uid &&
-        m.text === local.text &&
+        (local.emoji
+          ? m.emoji?.emojiImgUrl === local.emoji.emojiImgUrl &&
+            m.emoji?.emojiId === local.emoji.emojiId
+          : !m.emoji && m.text === local.text) &&
         m.time > (local.echoAfter ?? -1) &&
         Math.abs(m.time - local.time) <= 60000,
     )

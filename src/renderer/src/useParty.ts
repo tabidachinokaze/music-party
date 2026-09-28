@@ -8,6 +8,7 @@ import {
 } from '../../shared/multiplayer'
 import type { Member, Method, Room, RoomPlayback, Song, Trace } from '../../shared/types'
 import { RoomPlayer } from './room-player'
+import { RoomTransition } from './room-transition'
 import { nextQueueIndex, type RepeatMode } from '../../shared/personal-queue'
 
 export function useParty() {
@@ -49,6 +50,7 @@ export function useParty() {
   const [traces, setTraces] = useState<Trace[]>([])
   const audio = useRef<HTMLAudioElement>(null)
   const syncPlayer = useRef<RoomPlayer | null>(null)
+  const transition = useRef<RoomTransition | null>(null)
   const actionLock = useRef(false)
   const generation = useRef(0)
   const interval = useRef(5000)
@@ -113,6 +115,7 @@ export function useParty() {
     refreshAccount().catch((e) => setError(e.message))
     return () => {
       generation.current++
+      transition.current?.pause()
       syncPlayer.current?.reset()
       unsubscribe()
     }
@@ -156,6 +159,7 @@ export function useParty() {
       disconnected.current = true
       if (!roomRef.current) return
       generation.current++
+      transition.current?.pause()
       pollInFlight.current = membersInFlight.current = null
       playbackRef.current = null
       syncPlayer.current?.suspend()
@@ -172,6 +176,7 @@ export function useParty() {
       setHealth('正在重新确认房间并恢复同步…')
       await refreshMembers()
       if (roomRef.current) await observe()
+      transition.current?.resume()
     }
     const stop = window.together.onLifecycle((state) => {
       if (state === 'suspend') suspend()
@@ -187,6 +192,7 @@ export function useParty() {
   }, [])
 
   function clearRoom() {
+    transition.current?.pause()
     generation.current++
     localPlayEpoch.current++
     roomRef.current = null
@@ -210,6 +216,8 @@ export function useParty() {
     if (!next || !shouldAccept(playbackRef.current, next)) return
     playbackRef.current = next
     setRoomPlayback(next)
+    if (!next.song) setPosition(0)
+    transition.current?.changed()
     const key = `${next.song?.songId}:${next.song?.songBizId}`
     const failed = audioFailure.current
     if (failed?.song === key && performance.now() < failed.until) return
@@ -265,7 +273,7 @@ export function useParty() {
           setNotice('账号已离开或切换了房间')
           return
         }
-        applyMembers(parseSnapshot(snapshot, (at + performance.now()) / 2))
+        applySnapshot(snapshot, (at + performance.now()) / 2, epoch)
       } catch (e: any) {
         if (epoch === generation.current) setMembersStatus(`成员刷新失败：${e.message}`)
       }
@@ -277,6 +285,16 @@ export function useParty() {
       if (membersInFlight.current === task) membersInFlight.current = null
     }
   }
+  useEffect(() => {
+    if (!room) return
+    const watcher = new RoomTransition(() => playbackRef.current, refreshMembers)
+    transition.current = watcher
+    watcher.changed()
+    return () => {
+      watcher.pause()
+      if (transition.current === watcher) transition.current = null
+    }
+  }, [room?.roomId])
   useEffect(() => {
     if (!room) return
     let stopped = false
@@ -565,8 +583,10 @@ export function useParty() {
     onPause: () => setPlaying(false),
     onEnded: () => {
       setPlaying(false)
-      if (roomRef.current) observe()
-      else nextLocal(1, true).catch((e) => setError(e.message))
+      if (roomRef.current) {
+        syncPlayer.current?.ended()
+        transition.current?.ended()
+      } else nextLocal(1, true).catch((e) => setError(e.message))
     },
     onError: () => {
       if (roomRef.current) {

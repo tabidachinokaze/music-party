@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChatMessage, Room } from '../../shared/types'
+import type { ChatEmoji, ChatMessage, Room } from '../../shared/types'
 import { CHAT_MAX_LENGTH, mergeChat, parseChatPage } from '../../shared/chat'
 import type { ApiCall } from './music-data'
 
@@ -63,7 +63,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any) {
           }
         } else setError('')
         hasLoaded.current = true
-        setLastUpdate(new Date().toLocaleTimeString())
+        setLastUpdate(new Date().toLocaleTimeString('zh-CN'))
       } catch (e: any) {
         if (run === epoch.current) setError(e.message || '聊天记录暂不可用')
       } finally {
@@ -108,9 +108,9 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any) {
   useEffect(() => {
     if (visible && room) fetchMessages()
   }, [visible])
-  async function send() {
+  async function send(emoji?: ChatEmoji) {
     if (!room || !account || !room.chatRoomId || sendLock.current) return
-    const text = draft.trim()
+    const text = emoji ? `[${emoji.emojiName}]` : draft.trim()
     if (!text || text.length > CHAT_MAX_LENGTH) {
       setError(`请输入 1–${CHAT_MAX_LENGTH} 字的消息`)
       return
@@ -125,7 +125,15 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any) {
       avatar: account.avatarUrl || '',
       time: Date.now(),
       text,
-      kind: 'text',
+      kind: emoji ? 'image' : 'text',
+      ...(emoji
+        ? {
+            emoji,
+            attachments: [
+              { kind: 'image' as const, title: emoji.emojiName, url: emoji.emojiImgUrl },
+            ],
+          }
+        : {}),
       delivery: 'sending',
       echoAfter: Math.max(
         -1,
@@ -139,10 +147,15 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any) {
     setError('')
     update(mergeChat(messagesRef.current, [local]))
     try {
-      await api('multiChatSend', { roomId: room.roomId, text, requestId })
+      await api('multiChatSend', {
+        roomId: room.roomId,
+        text,
+        requestId,
+        ...(emoji ? { emoji } : {}),
+      })
       if (run !== epoch.current) return
       update(mergeChat(messagesRef.current, [{ ...local, delivery: 'submitted' }]))
-      setDraft((current) => (current.trim() === text ? '' : current))
+      if (!emoji) setDraft((current) => (current.trim() === text ? '' : current))
       await fetchMessages()
     } catch (e: any) {
       if (run !== epoch.current) return

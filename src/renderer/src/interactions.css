@@ -4,7 +4,7 @@
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
-  padding: 24px 28px;
+  padding: 0;
 }
 .private-main > .browser-page {
   flex: 1;
@@ -16,11 +16,12 @@
   height: auto;
   min-height: 0;
   grid-template-columns: minmax(230px, 30%) minmax(0, 1fr);
-  border-radius: 16px;
-  background: var(--tone-17181c);
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 .conversation-pane {
-  background: var(--tone-1b1c21);
+  background: transparent;
 }
 .conversation-toolbar {
   padding: 20px 16px 16px;
@@ -141,7 +142,7 @@
 .private-compose {
   flex: none;
   padding: 14px 20px;
-  background: var(--tone-1b1c21);
+  background: transparent;
 }
 .private-compose textarea {
   height: clamp(66px, 10vh, 100px);
@@ -317,7 +318,7 @@
 }
 @media (max-width: 1100px) {
   .music-main.private-main {
-    padding: 16px;
+    padding: 0;
   }
   .private-main .private-layout {
     grid-template-columns: 220px minmax(0, 1fr);
@@ -355,4 +356,167 @@
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+}
+.private-main .private-layout {
+  width: 100%;
+}
+.private-main .conversation-toolbar {
+  padding-top: 24px;
+}
+.private-main .private-thread-heading {
+  background: transparent;
+}
+.chat-message:has(.message-resource),
+.chat-message:has(.message-image) {
+  align-items: flex-start;
+}
+.chat-message.mine:has(.message-resource),
+.chat-message.mine:has(.message-image) {
+  align-items: flex-end;
+}
+.message-image {
+  display: block;
+  margin-top: 8px;
+  padding: 0;
+  max-width: 100%;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.message-image img {
+  display: block;
+  max-width: 220px;
+  max-height: 220px;
+  object-fit: contain;
+}
+.message-image-preview {
+  display: block;
+  max-width: 100%;
+  max-height: 68vh;
+  margin: 18px auto 0;
+  object-fit: contain;
+}
+.message-media-missing {
+  display: flex;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-top: 8px;
+}
+.message-resource-wrap {
+  margin-top: 8px;
+  width: min(320px, 100%);
+}
+.message-resource {
+  width: 100%;
+  display: flex;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--tone-23242b);
+}
+.message-resource:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.message-resource > img,
+.message-resource-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex: none;
+}
+.message-resource-icon {
+  display: grid;
+  place-items: center;
+  background: var(--tone-342631);
+  color: var(--pink);
+}
+.message-resource > span:not(.message-resource-icon) {
+  flex: 1;
+  min-width: 0;
+}
+.message-resource strong,
+.message-resource small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.message-resource strong {
+  font-size: 12px;
+}
+.message-resource small {
+  margin-top: 5px;
+  font-size: 10px;
+}
+.message-resource > svg {
+  flex: none;
+  color: var(--pink);
+}
+.message-text-link {
+  display: inline;
+  padding: 0;
+  color: var(--pink);
+  text-decoration: underline;
+}
+.message-media {
+  margin-top: 8px;
+  width: min(320px, 100%);
+}
+.message-media > small {
+  display: block;
+  margin-bottom: 6px;
+}
+.message-media audio,
+.message-media video {
+  display: block;
+  width: 100%;
+  max-height: 240px;
+}
+.private-compose > .compose-tools,
+.chat-compose > .compose-tools {
+  justify-content: flex-start;
+  margin: 0 0 6px;
+}
+.compose-tools .icon-btn {
+  width: 30px;
+  min-height: 28px;
+  padding: 4px;
+}
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+}
+.emoji-grid button {
+  font-size: 25px;
+  height: 38px;
+  border-radius: 8px;
+}
+.emoji-grid button:hover,
+.sticker-grid button:hover {
+  background: var(--tone-342631);
+}
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  max-height: 230px;
+  overflow: auto;
+}
+.sticker-grid button {
+  padding: 6px;
+  border-radius: 8px;
+}
+.sticker-grid img {
+  max-width: 100%;
+  height: 60px;
+  object-fit: contain;
 }

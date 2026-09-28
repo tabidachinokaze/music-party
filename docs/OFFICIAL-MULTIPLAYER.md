@@ -92,3 +92,17 @@
 ## 私信已读（0.9.0）
 
 官方体验包 `classes8.dex` 的 messagecenter.api.c.a(Long) 及 MessageCenterDetailFragment 调用确认：`/api/communication/msg/unread/count/clean` 接收 `userId`，用于清除指定会话未读。客户端只在当前会话可见、窗口获焦且最新历史加载成功时提交单个 UID；不发送空 userId 来清除全部会话。此接口经内置 API 的固定受限通用调用执行，前端不能指定 URI 或目标列表。响应失败不清除角标，支持重试。
+
+## 完整待播列表（0.10.0）
+
+原生客户端 b0.t0(roomId) 打开的组件为 `rn-tt-playlist`。通过官方 `rncache/resinfo/get`（moduleName=rn-tt-playlist，sdkVersion=0.60）取得公开 bundle 元数据：version=1677825891305，fullMd5=bd3635b6b23e79815ea33822af2ccff1。只做静态字段核实，不把下载物纳入产品。
+
+该组件使用 `/api/listen/together/multi/match/wait/song/list`，参数 `roomId`、`page=JSON.stringify({size:20,cursor:""})`；下一页沿用 data.page.cursor 和 more。条目在 data.songLists，内含 songInfo.resourceId / bizId / title / artistName / coverUrl，以及 rcmdUid / nickname。首段可能包含当前播放条目，使用业务 ID 匹配后排除；不能用歌曲 ID 去掉所有重复歌曲。心跳 nextSongs 只是近期预览。
+
+## 消息类型与表情（0.10.0）
+
+LTMultiMatchRoomMsgInfo 定义 msgType=0 普通消息、1 互动、2 推歌、3 通用通知；普通消息附带 emoji 时为图片/表情。LTMultiEmojiInfo 提供 emojiId、emojiGroupId、emojiName、emojiImgUrl、width、height、format；LTMultiMsgBody 提供 text、mainStateText、msgRichText.contentTextList（text / highLighted / orpheus）。resourceInfo 包含资源 ID、标题、封面及歌手。
+
+官方聊天发送器对图片/表情仍使用 msgType=0，把 EmojiItem 放入 clientExt.emoji，msgBody.msg 使用名称占位。新增发送只选择已收到的表情，继续校验账号当前房间并解析真实 chatroomId，不接受前端指定聊天室。文字及媒体信息继续从诊断中脱敏。互动、推歌通知由对应官方行为产生，不伪造通知。
+
+私信兼容原有 msg JSON 与新版 msgType/body：图片 1、资源卡片 2、语音 4、视频 5、音乐资源 30–48、文件 49；旧 msg.type 与新版 msgType 的值不混用。只有实际提供的 HTTPS 媒体地址可播放，应用不猜测缺失的媒体地址、不执行 HTML 或任意 orpheus 深链。

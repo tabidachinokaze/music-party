@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { MessageCircle, RefreshCw, Send, X } from 'lucide-react'
-import type { Room } from '../../shared/types'
+import type { Room, Song } from '../../shared/types'
+import { MessageContent } from './MessageContent'
+import { EmojiPicker } from './EmojiPicker'
 import { CHAT_MAX_LENGTH } from '../../shared/chat'
 import type { useRoomChat } from './useRoomChat'
 import { useDismissable } from './player/useDismissable'
@@ -11,11 +13,15 @@ export function RoomChat({
   room,
   uid,
   onlineCount,
+  onSong,
+  onMediaPlay,
 }: {
   chat: ReturnType<typeof useRoomChat>
   room: Room | null
   uid: string
   onlineCount: number | null
+  onSong(song: Song): void
+  onMediaPlay(): void
 }) {
   const list = useRef<HTMLDivElement>(null)
   const drawer = useRef<HTMLElement>(null)
@@ -129,13 +135,20 @@ export function RoomChat({
                   {message.avatar && <img src={message.avatar} alt="" />}
                   <span>{message.uid === uid ? '我' : message.nickname}</span>
                   <time>
-                    {new Date(message.time).toLocaleTimeString([], {
+                    {new Date(message.time).toLocaleTimeString('zh-CN', {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}
                   </time>
                 </div>
-                <div className="chat-bubble">{message.text}</div>
+                <MessageContent
+                  text={message.text}
+                  attachments={message.attachments}
+                  richText={message.richText}
+                  room
+                  onSong={onSong}
+                  onMediaPlay={onMediaPlay}
+                />
                 {message.delivery && (
                   <small
                     className={
@@ -165,6 +178,23 @@ export function RoomChat({
             }}
           >
             {!room.chatRoomId && <p>正在等待官方聊天室信息，可刷新房间成员后重试。</p>}
+            <div className="compose-tools">
+              <EmojiPicker
+                disabled={chat.sending || !room.chatRoomId}
+                onInsert={(value) =>
+                  chat.setDraft((draft) =>
+                    draft.length + value.length <= CHAT_MAX_LENGTH ? draft + value : draft,
+                  )
+                }
+                stickers={chat.messages.flatMap((message) =>
+                  message.emoji ? [message.emoji] : [],
+                )}
+                onSticker={(emoji) => {
+                  nearBottom.current = true
+                  chat.send(emoji)
+                }}
+              />
+            </div>
             <textarea
               aria-label="聊天内容"
               placeholder="聊聊这首歌…"
