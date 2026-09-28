@@ -111,6 +111,7 @@ export function MediaComposer({
   const selected = useRef({ target, label, onSent })
   selected.current = { target, label, onSent }
   const scope = JSON.stringify(target)
+  const savingSticker = target.kind === 'sticker'
   useEffect(() => {
     const players = [
       ...(previewElement.current?.querySelectorAll<HTMLMediaElement>('audio,video') || []),
@@ -332,12 +333,13 @@ export function MediaComposer({
       <button
         type="button"
         className="icon-btn"
-        aria-label="发送图片或表情包"
-        title="图片 / GIF 表情包"
+        aria-label={savingSticker ? '上传自定义表情' : '发送图片或表情包'}
+        title={savingSticker ? '上传到网易云自定义表情' : '图片 / GIF 表情包'}
         disabled={disabled || busy || recording}
         onClick={() => pick('image')}
       >
         <ImagePlus size={18} />
+        {savingSticker && <span>上传表情</span>}
       </button>
       {target.kind === 'private' && (
         <>
@@ -372,12 +374,25 @@ export function MediaComposer({
       )}
       {!open && (draft || busy || error) && (
         <button type="button" className="text-btn attachment-status" onClick={() => setOpen(true)}>
-          {busy ? '附件上传中…' : draft ? '待发送附件' : '附件提示'}
+          {busy
+            ? '附件上传中…'
+            : draft
+              ? savingSticker
+                ? '待上传表情'
+                : '待发送附件'
+              : '附件提示'}
         </button>
       )}
       {open && (
-        <Overlay title={recording ? '录制语音' : '发送附件'} onClose={close}>
-          <p className="overlay-intro">发送给：{draft?.label || label}</p>
+        <Overlay
+          title={recording ? '录制语音' : savingSticker ? '上传自定义表情' : '发送附件'}
+          onClose={close}
+        >
+          <p className="overlay-intro">
+            {savingSticker
+              ? '保存到网易云账号的自定义表情包'
+              : '发送给：' + (draft?.label || label)}
+          </p>
           {recording ? (
             <div className="recording-panel">
               <span className="recording-dot" />
@@ -418,7 +433,11 @@ export function MediaComposer({
                 <div className="attachment-progress">
                   <progress max={100} value={progress.percent} />
                   <span>
-                    {progress.phase === 'sending' ? '正在发送…' : `正在上传 ${progress.percent}%`}
+                    {progress.phase === 'sending'
+                      ? savingSticker
+                        ? '正在保存表情…'
+                        : '正在发送…'
+                      : `正在上传 ${progress.percent}%`}
                   </span>
                 </div>
               )}
@@ -432,11 +451,21 @@ export function MediaComposer({
                   </button>
                 ) : (
                   <button className="secondary" onClick={close}>
-                    稍后发送
+                    {savingSticker ? '稍后上传' : '稍后发送'}
                   </button>
                 )}
                 <button className="primary" disabled={busy} onClick={send}>
-                  {uncertain ? '已确认未收到，重新发送' : error ? '重试发送附件' : '确认发送附件'}
+                  {savingSticker
+                    ? uncertain
+                      ? '已确认未保存，重新上传'
+                      : error
+                        ? '重试上传表情'
+                        : '确认上传表情'
+                    : uncertain
+                      ? '已确认未收到，重新发送'
+                      : error
+                        ? '重试发送附件'
+                        : '确认发送附件'}
                 </button>
               </div>
             </>
@@ -446,7 +475,11 @@ export function MediaComposer({
           {error && (
             <p className="private-error" role="alert">
               {error}
-              {uncertain ? '；请先刷新会话，确认对方未收到后再重发。' : ''}
+              {uncertain
+                ? savingSticker
+                  ? '；请先刷新自定义表情，确认未保存后再试。'
+                  : '；请先刷新会话，确认对方未收到后再重发。'
+                : ''}
             </p>
           )}
         </Overlay>

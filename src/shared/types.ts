@@ -37,6 +37,9 @@ export type Method =
   | 'privateRead'
   | 'privateSend'
   | 'privateInvite'
+  | 'privateSticker'
+  | 'stickerGroups'
+  | 'stickerPage'
   | 'follows'
 export interface Request {
   method: Method

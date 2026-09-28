@@ -10,6 +10,7 @@ import {
 } from '../shared/private-messages'
 import { multiEndpoints, multiMutations } from './multi-api'
 import { parseEmoji } from '../shared/message-content'
+import { normalizeStickerPage } from './stickers'
 
 type Invoke = (
   endpoint: string,
@@ -36,6 +37,9 @@ const endpoints: Record<Method, string> = {
   privateRead: 'api',
   privateSend: 'send_text',
   privateInvite: 'send_text',
+  privateSticker: 'api',
+  stickerGroups: 'api',
+  stickerPage: 'api',
   follows: 'user_follows',
   ...(Object.fromEntries(Object.keys(multiEndpoints).map((key) => [key, key])) as Record<
     keyof typeof multiEndpoints,
@@ -48,6 +52,9 @@ const fields: Partial<Record<Method, string[]>> = {
   privateRead: ['uid'],
   privateSend: ['uid', 'text', 'requestId'],
   privateInvite: ['uid', 'roomId', 'requestId'],
+  privateSticker: ['uid', 'emoji', 'requestId'],
+  stickerGroups: ['scope'],
+  stickerPage: ['groupId', 'cursor'],
   follows: ['uid', 'offset'],
   qrCheck: ['key'],
   search: ['keywords', 'kind', 'offset'],
@@ -87,7 +94,19 @@ export function validate(request: Request): Record<string, unknown> {
     throw new Error('请求包含不允许的参数')
   for (const key of allowed) {
     const value = args[key]
-    if (value === undefined && ['kind', 'offset', 'cursor', 'before', 'emoji'].includes(key))
+    if (key === 'scope') {
+      if (value !== 'room' && value !== 'private') throw new Error('表情使用场景无效')
+      continue
+    }
+    if (key === 'groupId') {
+      if (typeof value !== 'string' || !/^-?\d{1,24}$/.test(value)) throw new Error('表情分组无效')
+      continue
+    }
+    if (
+      value === undefined &&
+      ['kind', 'offset', 'cursor', 'before', 'emoji'].includes(key) &&
+      !(key === 'emoji' && request.method === 'privateSticker')
+    )
       continue
     if (key === 'emoji') {
       const emoji = parseEmoji(value)
@@ -342,6 +361,64 @@ export class ApiService {
           args.crypto = 'eapi'
           delete args.uid
         }
+        if (method === 'stickerGroups') {
+          args.data = { resourceType: args.scope === 'room' ? 3 : 2 }
+          args.uri = '/api/social/emoji/groups'
+          args.crypto = 'eapi'
+          delete args.scope
+        }
+        if (method === 'stickerPage') {
+          args.data = { emojiGroupId: args.groupId, cursor: args.cursor || '', size: 10 }
+          args.uri = '/api/social/emoji/groups/detail/page'
+          args.crypto = 'eapi'
+          delete args.groupId
+          delete args.cursor
+        }
+        if (method === 'privateSticker') {
+          const account = (
+            await this.invoke('login_status', { cookie: this.cookie, timeout: 12000 })
+          ).body?.data?.profile
+          if (!account?.userId) throw Object.assign(new Error('请先重新登录'), { code: 302 })
+          if (String(account.userId) === args.uid)
+            throw Object.assign(new Error('不能给自己发送私信'), { code: 400 })
+          const emoji = parseEmoji(args.emoji)!
+          const token = (await this.invoke('register_checktoken_v3', { timeout: 12000 })).body
+            ?.token
+          if (!token) throw new Error('未取得消息校验令牌，请重试')
+          args.data = {
+            checkToken: token,
+            sendMsgBody: JSON.stringify({
+              scene: 1,
+              receiverUserIds: args.uid,
+              channelId: args.uid,
+              symphonyId: '',
+              refMsgBody: {},
+              msgBody: {
+                msgType: 1,
+                body: JSON.stringify({
+                  url: emoji.emojiImgUrl,
+                  emojiId: emoji.emojiId,
+                  emojiGroupId: emoji.emojiGroupId,
+                  width: emoji.width,
+                  height: emoji.height,
+                  format: emoji.format,
+                  name: emoji.emojiName,
+                }),
+                unikey: args.requestId,
+                msgTime: Date.now(),
+                status: 1,
+                sendStatus: 0,
+                sender: { user: { userId: account.userId } },
+                text: { textBody: '', atBody: [] },
+              },
+            }),
+          }
+          args.uri = '/api/communication/send/msg'
+          args.crypto = 'eapi'
+          delete args.uid
+          delete args.emoji
+          delete args.requestId
+        }
         if (method === 'multiChatSend') {
           if (args.emoji) args.emoji = parseEmoji(args.emoji)
           // Resolve the IM room from the authenticated server snapshot, never from renderer input.
@@ -460,7 +537,16 @@ export class ApiService {
           this.activeKey = ''
           this.onCookie(cookie)
         }
-        return stripCredentials(body)
+        if (
+          method === 'privateSticker' &&
+          (!body.data?.msgBody?.msgId || [-2, -1].includes(body.data.msgBody.status))
+        )
+          throw new Error('表情发送结果未确认，请刷新会话')
+        return stripCredentials(
+          method === 'stickerPage'
+            ? normalizeStickerPage(body, String(request.args!.groupId))
+            : body,
+        )
       }
       const data =
         multiMutations.has(request.method) ||

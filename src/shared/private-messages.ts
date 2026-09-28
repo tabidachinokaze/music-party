@@ -3,13 +3,21 @@ import { richMessageContent, messageObject } from './message-content'
 import { neteaseAssetUrl } from './media'
 import { invitation, parseInvitation } from './protocol'
 export const PRIVATE_TEXT_LIMIT = 500
-export const SEND_METHODS = new Set(['multiChatSend', 'privateSend', 'privateInvite'])
+export const SEND_METHODS = new Set([
+  'multiChatSend',
+  'privateSend',
+  'privateInvite',
+  'privateSticker',
+])
 export const PRIVATE_METHODS = new Set([
   'privateConversations',
   'privateHistory',
   'privateRead',
   'privateSend',
   'privateInvite',
+  'privateSticker',
+  'stickerGroups',
+  'stickerPage',
   'follows',
 ])
 function uid(value: unknown): string | null {

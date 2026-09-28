@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Conversation, PrivateMessage, Room } from '../../shared/types'
+import type { ChatEmoji, Conversation, PrivateMessage, Room } from '../../shared/types'
 import {
   inviteText,
   mergeConversations,
@@ -315,9 +315,13 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
       }
     }
   }
-  async function send(room?: Room) {
+  async function send(room?: Room, emoji?: ChatEmoji) {
     const peer = selectedRef.current
-    const text = room ? inviteText(room.roomId, selfUid) : draftRef.current.trim()
+    const text = emoji
+      ? `[${emoji.emojiName}]`
+      : room
+        ? inviteText(room.roomId, selfUid)
+        : draftRef.current.trim()
     if (!peer || !selfUid || sendLock.current || !text || text.length > PRIVATE_TEXT_LIMIT)
       return false
     const userEpoch = accountEpoch.current,
@@ -330,6 +334,13 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
       time: Date.now(),
       text,
       invitations: room ? [{ roomId: room.roomId, inviterUid: selfUid, isFLT: false }] : [],
+      ...(emoji
+        ? {
+            attachments: [
+              { kind: 'image' as const, title: emoji.emojiName, url: emoji.emojiImgUrl },
+            ],
+          }
+        : {}),
       delivery: 'sending',
       echoAfter: Math.max(
         -1,
@@ -343,17 +354,17 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
     setHistoryError('')
     updateMessages(mergePrivate(messagesRef.current, [local]))
     try {
-      await api(room ? 'privateInvite' : 'privateSend', {
+      await api(emoji ? 'privateSticker' : room ? 'privateInvite' : 'privateSend', {
         uid: peer.uid,
-        ...(room ? { roomId: room.roomId } : { text }),
+        ...(emoji ? { emoji } : room ? { roomId: room.roomId } : { text }),
         requestId,
       })
       if (userEpoch !== accountEpoch.current) return false
       if (run === historyEpoch.current) {
         updateMessages(mergePrivate(messagesRef.current, [{ ...local, delivery: 'submitted' }]))
-        if (!room) setDraft((current) => (current.trim() === text ? '' : current))
+        if (!room && !emoji) setDraft((current) => (current.trim() === text ? '' : current))
         await fetchHistory()
-      } else if (!room && drafts.current.get(peer.uid)?.trim() === text)
+      } else if (!room && !emoji && drafts.current.get(peer.uid)?.trim() === text)
         drafts.current.set(peer.uid, '')
       updateConversations(
         mergeConversations(convRef.current, [
@@ -439,6 +450,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
     setDraft,
     sending,
     send,
+    sendSticker: (emoji: ChatEmoji) => send(undefined, emoji),
     unread: conversations.reduce((sum, c) => sum + c.unread, 0),
     refreshConversations: () => fetchConversations(),
     loadConversations: () => fetchConversations(true),

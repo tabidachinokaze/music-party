@@ -261,6 +261,7 @@ test('private inbox joins official invitations and shares only after recipient c
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog', { name: '图片预览' })).toHaveCount(0)
     await page.getByRole('button', { name: '选择表情', exact: true }).click()
+    await page.getByRole('button', { name: '常用表情', exact: true }).click()
     await page.getByRole('button', { name: '插入表情 🎵', exact: true }).click()
     await expect(page.getByLabel('私信内容')).toHaveValue('🎵')
     await page.getByLabel('私信内容').fill('')

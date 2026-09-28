@@ -425,6 +425,13 @@ export function PrivateMessages({
                   onMediaPlay={onMediaPlay}
                 />
                 <EmojiPicker
+                  key={`${selfUid}:${inbox.selected.uid}`}
+                  api={api}
+                  accountKey={selfUid}
+                  scope="private"
+                  recipient={inbox.selected.nickname}
+                  disabled={inbox.sending}
+                  onSticker={inbox.sendSticker}
                   onInsert={(value) =>
                     inbox.setDraft((draft) =>
                       draft.length + value.length <= PRIVATE_TEXT_LIMIT ? draft + value : draft,

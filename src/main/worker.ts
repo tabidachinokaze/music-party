@@ -6,13 +6,25 @@ import { ApiService } from './service'
 import { createHttpInvoker } from './transport'
 import { multiEndpoints, multiPayload, type MultiMethod } from './multi-api'
 import { MediaSender } from './media-send'
+import { parsePreciseJson, preciseMediaEndpoint } from './precise-json'
 
 const requireApi = createRequire(__filename)
 // Upstream can print raw error responses; diagnostics leave this process only through ApiService.
 console.log = console.info = console.warn = console.error = () => {}
 const api = requireApi('@neteasecloudmusicapienhanced/api')
 const apiRequire = createRequire(requireApi.resolve('@neteasecloudmusicapienhanced/api'))
-apiRequire('axios').default.defaults.timeout = 12000
+const axios = apiRequire('axios').default
+axios.defaults.timeout = 12000
+const responseTransforms = [].concat(axios.defaults.transformResponse || []) as any[]
+axios.defaults.transformResponse = [
+  function (this: any, data: any, headers: any, status: any) {
+    if (typeof data === 'string' && preciseMediaEndpoint(this.url)) return parsePreciseJson(data)
+    return responseTransforms.reduce(
+      (value, transform) => transform.call(this, value, headers, status),
+      data,
+    )
+  },
+]
 let keyReady: Promise<void> | undefined
 async function ensureKey() {
   if (!keyReady)
@@ -28,7 +40,7 @@ async function ensureKey() {
 }
 const bundled = async (endpoint: string, args: Record<string, unknown>) => {
   if (endpoint === 'song_url_v1') await ensureKey()
-  return api[endpoint](args)
+  return api[endpoint](preciseMediaEndpoint(args.uri) ? { ...args, e_r: 'false' } : args)
 }
 const standard = process.env.MUSIC_PARTY_API_URL
   ? createHttpInvoker(process.env.MUSIC_PARTY_API_URL)

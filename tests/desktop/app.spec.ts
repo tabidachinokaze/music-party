@@ -552,6 +552,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await expect(page.getByRole('dialog', { name: '图片预览' })).toHaveCount(0)
     await expect(page.getByLabel('官方房间聊天', { exact: true })).toBeVisible()
     await page.getByRole('button', { name: '选择表情', exact: true }).click()
+    await page.getByRole('button', { name: '最近使用', exact: true }).click()
     await page.getByRole('button', { name: '发送表情 开心', exact: true }).click()
     await expect
       .poll(() => calls.filter((call) => call.path === '/api/middle/im/chatroom/send').length)

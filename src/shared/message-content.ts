@@ -87,7 +87,7 @@ export function parseEmoji(value: unknown): ChatEmoji | undefined {
   const url = mediaUrl(item.emojiImgUrl)
   const id = String(item.emojiId ?? 0),
     group = String(item.emojiGroupId ?? 0)
-  if (!url || !/^\d{1,24}$/.test(id) || !/^\d{1,24}$/.test(group)) return
+  if (!url || !/^\d{1,24}$/.test(id) || !/^-?\d{1,24}$/.test(group)) return
   if (
     [item.emojiId, item.emojiGroupId].some((v) => typeof v === 'number' && !Number.isSafeInteger(v))
   )

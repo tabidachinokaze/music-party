@@ -183,6 +183,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any) {
     }
   }
   return {
+    api,
     acceptMedia(receipt: MediaReceipt, target: MediaTarget) {
       if (
         target.kind !== 'room' ||

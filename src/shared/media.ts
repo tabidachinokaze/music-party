@@ -1,6 +1,7 @@
 import type { MessageAttachment, ChatEmoji } from './types'
 export type MediaKind = 'image' | 'voice' | 'video' | 'file'
-export type MediaTarget = { kind: 'room'; roomId: string } | { kind: 'private'; uid: string }
+export type MediaTarget =
+  { kind: 'room'; roomId: string } | { kind: 'private'; uid: string } | { kind: 'sticker' }
 export interface MediaFile {
   name: string
   mime: string
@@ -52,7 +53,8 @@ export function validateMediaRequest(value: unknown): MediaRequest {
     !t ||
     !(
       (t.kind === 'room' && typeof t.roomId === 'string' && /^[\w-]{1,128}$/.test(t.roomId)) ||
-      (t.kind === 'private' && typeof t.uid === 'string' && /^[1-9]\d{0,23}$/.test(t.uid))
+      (t.kind === 'private' && typeof t.uid === 'string' && /^[1-9]\d{0,23}$/.test(t.uid)) ||
+      t.kind === 'sticker'
     )
   )
     throw new Error('附件收件人无效')
@@ -74,6 +76,7 @@ export function validateMediaRequest(value: unknown): MediaRequest {
   )
     throw new Error('附件为空或超过大小限制')
   if (t.kind === 'room' && f.kind !== 'image') throw new Error('房间聊天仅支持图片和表情附件')
+  if (t.kind === 'sticker' && f.kind !== 'image') throw new Error('自定义表情只能上传图片或 GIF')
   if (typeof f.mime !== 'string' || !/^[\w.+-]+\/[\w.+-]+$/.test(f.mime) || f.mime.length > 100)
     throw new Error('附件格式无效')
   const signature = (text: string, offset = 0) =>
@@ -113,7 +116,11 @@ export function validateMediaRequest(value: unknown): MediaRequest {
   return {
     requestId: v.requestId,
     target:
-      t.kind === 'room' ? { kind: 'room', roomId: t.roomId } : { kind: 'private', uid: t.uid },
+      t.kind === 'room'
+        ? { kind: 'room', roomId: t.roomId }
+        : t.kind === 'sticker'
+          ? { kind: 'sticker' }
+          : { kind: 'private', uid: t.uid },
     file: {
       name: f.name,
       mime: f.mime,

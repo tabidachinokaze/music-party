@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { richMessageContent } from '../shared/message-content'
+import { savedSticker } from './stickers'
 import {
   neteaseAssetUrl,
   validateMediaRequest,
@@ -111,6 +112,7 @@ export class MediaSender {
       const account = (await this.invoke('login_status', { cookie: auth.cookie, timeout: 12000 }))
         .body?.data?.profile
       if (!account?.userId) throw new Error('请重新登录后发送附件')
+      if (request.target.kind === 'sticker') return { account, chatRoomId: '' }
       if (request.target.kind === 'private') {
         if (String(account.userId) === request.target.uid) throw new Error('不能给自己发送私信')
         return { account, chatRoomId: '' }
@@ -232,6 +234,39 @@ export class MediaSender {
         )
       const destination = await target()
       check()
+      if (request.target.kind === 'sticker') {
+        progress('sending', 100)
+        attempted = true
+        const result = await invoke('/api/social/emoji/upload', {
+          imgs: JSON.stringify([
+            {
+              picId: uploaded.docId,
+              width: file.width,
+              height: file.height,
+              format: file.mime === 'image/jpeg' ? 'jpg' : file.mime.split('/')[1],
+            },
+          ]),
+        })
+        if (!Array.isArray(result.data?.emojiMap))
+          throw new Error('表情保存结果未确认，请刷新自定义表情')
+        if (!result.data.emojiMap.length)
+          throw Object.assign(new Error(result.data.toast || '表情未保存，请稍后重试'), {
+            definite: true,
+          })
+        const emoji = savedSticker(result.data.emojiMap[0])
+        if (!emoji) throw new Error('已提交表情，请刷新列表确认保存结果')
+        return {
+          ok: true,
+          receipt: {
+            requestId: request.requestId,
+            senderUid: String(destination.account.userId),
+            time: Date.now(),
+            text: '已添加到网易云自定义表情',
+            attachments: [],
+            emoji,
+          },
+        }
+      }
       const text =
         file.kind === 'file'
           ? `[文件] ${file.name}\n${uploaded.url}`

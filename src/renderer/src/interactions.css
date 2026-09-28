@@ -629,3 +629,63 @@
     gap: 5px;
   }
 }
+.sticker-tabs {
+  margin: 16px 0;
+  gap: 8px;
+}
+.sticker-tabs button {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+.cloud-sticker-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.cloud-sticker-toolbar > span {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+.cloud-sticker-toolbar [aria-label='上传自定义表情'] {
+  width: auto;
+  padding: 6px 10px;
+  height: 32px;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.cloud-sticker-grid {
+  max-height: 330px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.cloud-sticker-grid button {
+  min-height: 78px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.cloud-sticker-grid img {
+  width: 72px;
+  height: 72px;
+  max-width: 100%;
+  object-fit: contain;
+}
+.cloud-sticker-grid small {
+  font-size: 9px;
+}
+.sticker-group-select {
+  width: 100%;
+  margin-top: 12px;
+  padding: 8px 10px;
+  color: inherit;
+  background: var(--tone-23242b);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.sticker-notice {
+  color: var(--tone-b8c6bf);
+  font-size: 12px;
+  margin: 12px 0;
+}

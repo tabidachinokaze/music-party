@@ -122,3 +122,13 @@ LTMultiMatchRoomMsgInfo 定义 msgType=0 普通消息、1 互动、2 推歌、3 
 通用 NOS 分片使用固定官方 nosup-hz1.127.net 地址与 x-nos-token，offset/context/complete/version 参数；不跟随上传重定向。图片用 nos/token/alloc 的 yyimgs；普通文件用 dmusic 上传后通过既有单收件人 send_text 发送文件名和下载链接。原生 FILE=49 的完整上传/发送链未核实，因此不伪造该类型。
 
 房间图片沿用 msgType=0 + clientExt.emoji 格式，emojiId/groupId=0 表示上传图片，保留 GIF 格式。账号或房间变化后禁止提交旧目标；预览阶段不上传，上传阶段可取消，提交阶段出现网络超时按结果未知处理。只支持当前 NOS 通道 1，其他通道明确报错；上传资源 ID 不接受已丢失精度的数字。接收时优先使用服务端确认的媒体地址，文件链接限定网易云资源域名。
+
+## 官方自定义表情（0.12.0）
+
+官方 BigExpressionFragment / module.bigexpression.d 使用 `/api/social/emoji/groups`，私信 resourceType=2，多人一起听 resourceType=3；返回 data.emojiGroups，分组字段 id/name/edit。以 edit=true 识别自定义分组，不硬编码分组 ID。分组明细 `/api/social/emoji/groups/detail/page` 使用 emojiGroupId、cursor 和 size=10，结果位于 data.emojis / data.page.more / data.page.cursor。
+
+EmojiSubInfo 包含 emojiId、picId、emojiGroupId、emojiImgUrl、name/emojiName、width、height、format。没有显式图片 URL 时，官方 ImageUrlUtils 通过图片 ID 生成 music.126.net 地址。已验证 picId=109951166199016466 的哈希路径为 5rgzlgx3yofdin1Rnf8iQw==，与公开客户端内引用一致。内置请求针对表情及 NOS 接口使用 JSON token 原文保留大整数，避免先转 Number 再恢复导致精度丢失；这些请求仍通过 HTTPS/EAPI 加密请求发送。
+
+上传流程沿用 NOS 图片上传，随后调用 `/api/social/emoji/upload`，imgs 是数组 JSON 字符串，单项含 picId/width/height/format。data.emojiMap 非空才确认保存，data.toast 用于官方限制提示。保存不调用任何房间或私信发送接口。私信发送复用已核实的 communication/send/msg 图片类型 1，保留 emojiId/groupId 和图片 URL；不重新上传收藏图片。
+
+外部 Docker API 如果在返回前已经把大整数转成失真的 Number，客户端无法还原原始 ID；推荐使用安装包内置 API。

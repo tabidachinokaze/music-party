@@ -188,6 +188,11 @@ export function RoomChat({
                 onMediaPlay={onMediaPlay}
               />
               <EmojiPicker
+                key={`${uid}:${room.roomId}`}
+                api={chat.api}
+                accountKey={uid}
+                scope="room"
+                recipient="当前一起听房间"
                 disabled={chat.sending || !room.chatRoomId}
                 onInsert={(value) =>
                   chat.setDraft((draft) =>

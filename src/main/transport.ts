@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { parsePreciseJson, preciseMediaEndpoint } from './precise-json'
 export function createHttpInvoker(base: string, fetcher: typeof fetch = fetch) {
   const url = new URL(base)
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
@@ -29,7 +30,9 @@ export function createHttpInvoker(base: string, fetcher: typeof fetch = fetch) {
     }
     let body: any
     try {
-      body = await response.json()
+      body = preciseMediaEndpoint(args.uri)
+        ? parsePreciseJson(await response.text())
+        : await response.json()
     } catch {
       throw new Error(`ncm-api 返回非 JSON 内容（HTTP ${response.status}）`)
     }
