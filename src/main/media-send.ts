@@ -361,7 +361,7 @@ export class MediaSender {
               body: JSON.stringify(body),
               unikey: request.requestId,
               msgTime: receipt.time,
-              status: 0,
+              status: 1,
               sendStatus: 0,
               sender: { user: { userId: destination.account.userId } },
               text: { textBody: '', atBody: [] },

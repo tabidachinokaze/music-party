@@ -87,7 +87,7 @@ it('uploads a picture only to the fixed NOS host and sends the verified private 
     scene: 1,
     receiverUserIds: '456',
     channelId: '456',
-    msgBody: { msgType: 1, unikey: id },
+    msgBody: { msgType: 1, unikey: id, status: 1 },
   })
   expect(JSON.parse(body.msgBody.body)).toMatchObject({
     width: 1,
