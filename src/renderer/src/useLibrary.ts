@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Playlist, Song } from '../../shared/types'
+import type { Album, Playlist, Song } from '../../shared/types'
 import { toSong } from '../../shared/protocol'
-import { allPlaylists, songsByIds, type ApiCall } from './music-data'
+import { allAlbums, allPlaylists, songsByIds, type ApiCall } from './music-data'
 
 export function useLibrary(api: ApiCall, uid: string | null) {
   const [playlists, setPlaylists] = useState<Playlist[]>([])
+  const [albums, setAlbums] = useState<Album[]>([])
+  const [albumsError, setAlbumsError] = useState('')
+  const [albumsComplete, setAlbumsComplete] = useState(false)
   const [likes, setLikes] = useState<Set<string>>(new Set())
   const [likesReady, setLikesReady] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -18,6 +21,9 @@ export function useLibrary(api: ApiCall, uid: string | null) {
     const run = ++epoch.current
     const active = () => epoch.current === run
     setPlaylists([])
+    setAlbums([])
+    setAlbumsError('')
+    setAlbumsComplete(false)
     setLikes(new Set())
     setLikesReady(false)
     setError('')
@@ -30,6 +36,15 @@ export function useLibrary(api: ApiCall, uid: string | null) {
     }
     setLoading(true)
     Promise.allSettled([
+      allAlbums(api, active, (items) => {
+        if (active()) setAlbums(items)
+      })
+        .then(() => {
+          if (active()) setAlbumsComplete(true)
+        })
+        .catch((error) => {
+          if (active()) setAlbumsError(error.message)
+        }),
       allPlaylists(api, uid, active, (items) => {
         if (active()) setPlaylists(items)
       }).then(() => {
@@ -55,14 +70,13 @@ export function useLibrary(api: ApiCall, uid: string | null) {
       epoch.current++
     }
   }, [uid, revision])
-  async function toggleLike(song: Song) {
+  async function toggleLike(song: Song, desired = !likes.has(song.id)) {
     if (!uid) throw new Error('请先登录网易云账号')
     if (!likesReady) throw new Error('喜欢列表尚未加载完成，请稍后重试')
     if (likeLock.current.has(song.id)) return
     const run = epoch.current
     likeLock.current.add(song.id)
     setLikeBusy(new Set(likeLock.current))
-    const desired = !likes.has(song.id)
     try {
       await api('like', { id: song.id, value: desired })
       if (run === epoch.current)
@@ -81,6 +95,9 @@ export function useLibrary(api: ApiCall, uid: string | null) {
   }
   return {
     playlists,
+    albums,
+    albumsError,
+    albumsComplete,
     likes,
     likesReady,
     loading,
@@ -98,6 +115,7 @@ export function useSongCollection(
     key: string
     title: string
     playlistId?: string
+    albumId?: string
     ids?: string[]
     artistId?: string
   } | null,
@@ -173,6 +191,18 @@ export function useSongCollection(
     setLoading(true)
     const load = async () => {
       try {
+        if (source.albumId) {
+          const body = await api('album', { id: source.albumId })
+          if (run !== epoch.current) return
+          if (!Array.isArray(body.songs)) throw new Error('专辑歌曲响应异常，请重试')
+          const items: Song[] = body.songs.map(toSong)
+          allIds.current = items.map((song) => song.id)
+          setSongs(items)
+          setIds(allIds.current)
+          setTotal(items.length)
+          setLoading(false)
+          return
+        }
         let trackIds = source.ids || []
         if (source.playlistId) {
           const body = await api('playlist', { id: source.playlistId })

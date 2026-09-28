@@ -1,6 +1,34 @@
 import { expect, it, vi } from 'vitest'
 import { ApiService, validate } from '../src/main/service'
 import { createHttpInvoker } from '../src/main/transport'
+it('acknowledges only the specified private conversation through a fixed authenticated endpoint', async () => {
+  const invoke = vi.fn(async () => ({ body: { code: 200 } }))
+  const service = new ApiService(invoke)
+  expect((await service.call({ method: 'privateRead', args: { uid: '456' } })).ok).toBe(false)
+  expect(invoke).not.toHaveBeenCalled()
+  service.restore('MUSIC_U=private')
+  expect((await service.call({ method: 'privateRead', args: { uid: '456' } })).ok).toBe(true)
+  expect(invoke.mock.calls[0]).toEqual([
+    'api',
+    {
+      uri: '/api/communication/msg/unread/count/clean',
+      data: { userId: '456' },
+      crypto: 'eapi',
+      cookie: 'MUSIC_U=private',
+      timeout: 12000,
+    },
+  ])
+  for (const uid of ['', '0', '123,456'])
+    expect(() => validate({ method: 'privateRead', args: { uid } })).toThrow()
+  expect(() => validate({ method: 'privateRead', args: { uid: '456', uri: '/evil' } })).toThrow()
+})
+it('does not clear local unread counts on missing or negative upstream acknowledgement', async () => {
+  for (const body of [{}, { code: 200, data: false }, { code: 503, message: '重试' }]) {
+    const service = new ApiService(async () => ({ body }))
+    service.restore('MUSIC_U=test')
+    expect((await service.call({ method: 'privateRead', args: { uid: '456' } })).ok).toBe(false)
+  }
+})
 it('never passes renderer cookie, proxy, URLs or sequence overrides to upstream', () => {
   for (const name of ['cookie', 'proxy', 'domain', 'clientSeq'])
     expect(() => validate({ method: 'multiStatus', args: { [name]: 'evil' } })).toThrow()

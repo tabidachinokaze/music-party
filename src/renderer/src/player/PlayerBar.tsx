@@ -1,5 +1,6 @@
 import {
   ChevronUp,
+  ChevronDown,
   Headphones,
   Heart,
   ListMusic,
@@ -19,6 +20,7 @@ const time = (ms: number) =>
 export function PlayerBar({
   party: p,
   library,
+  expanded,
   onPlayer,
   onLike,
   onQueue,
@@ -29,6 +31,7 @@ export function PlayerBar({
 }: {
   party: ReturnType<typeof useParty>
   library: ReturnType<typeof useLibrary>
+  expanded: boolean
   onPlayer(): void
   onLike(): void
   onQueue(): void
@@ -45,7 +48,12 @@ export function PlayerBar({
   const count = p.room ? waitingCount(p.roomPlayback) : p.personalQueue.length
   return (
     <div className="player" aria-label="底部播放栏">
-      <button className="now-playing" aria-label="打开播放界面" onClick={onPlayer}>
+      <button
+        className="now-playing"
+        aria-label={expanded ? '收起播放页' : '打开播放界面'}
+        aria-expanded={expanded}
+        onClick={onPlayer}
+      >
         <div className="cover">
           {p.current?.cover ? (
             <img src={p.current.cover} alt="当前歌曲封面" />
@@ -53,7 +61,7 @@ export function PlayerBar({
             <Headphones size={22} />
           )}
           <span className="cover-expand">
-            <ChevronUp size={20} />
+            {expanded ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
           </span>
         </div>
         <div>
@@ -143,6 +151,7 @@ export function PlayerBar({
             aria-label="打开房间聊天"
             title="房间聊天"
             onClick={onChat}
+            data-popup-toggle="chat"
           >
             <MessageCircle size={19} />
             {unread > 0 && <span className="bar-indicator" />}
@@ -151,6 +160,7 @@ export function PlayerBar({
         <button
           className={`bar-panel-button queue-toggle ${queueOpen ? 'active' : ''}`}
           aria-label="播放队列"
+          data-popup-toggle="queue"
           title={p.room ? '房间待播列表' : '播放队列'}
           aria-expanded={queueOpen}
           onClick={onQueue}

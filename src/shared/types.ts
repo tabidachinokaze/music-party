@@ -10,6 +10,8 @@ export type Method =
   | 'stream'
   | 'playlists'
   | 'playlist'
+  | 'albums'
+  | 'album'
   | 'likes'
   | 'like'
   | 'lyrics'
@@ -26,6 +28,7 @@ export type Method =
   | 'multiChatSend'
   | 'privateConversations'
   | 'privateHistory'
+  | 'privateRead'
   | 'privateSend'
   | 'privateInvite'
   | 'follows'
@@ -61,7 +64,7 @@ export interface Bridge {
   updateAction(action: 'check' | 'download' | 'install'): Promise<UpdateState>
   onUpdate(callback: (state: UpdateState) => void): () => void
   desktopInfo(): Promise<DesktopInfo>
-  setFullScreen(value: boolean): Promise<void>
+  setFullScreen(value: boolean | 'toggle'): Promise<DesktopInfo>
   updatePreferences(value: Partial<Preferences>): Promise<DesktopInfo>
   updateMedia(value: DesktopMediaState): Promise<void>
   quit(): Promise<void>
@@ -76,6 +79,13 @@ export interface Song {
   album: string
   cover: string
   duration: number
+}
+export interface Album {
+  id: string
+  name: string
+  cover: string
+  artist: string
+  count: number
 }
 export interface MultiInvitation {
   roomId: string

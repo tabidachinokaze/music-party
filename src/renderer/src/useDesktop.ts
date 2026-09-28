@@ -15,10 +15,31 @@ export function useDesktop(
   const saved = useRef<Preferences | null>(null)
   const hydrated = useRef(false)
   const requestEpoch = useRef(0)
+  const fullScreenState = useRef({ fullScreen: false, fullScreenRevision: -1 })
+  const [fullScreenBusy, setFullScreenBusy] = useState(false)
+  const fullScreenLock = useRef(false)
   function applyInfo(next: DesktopInfo) {
-    setInfo(next)
+    if (next.fullScreenRevision >= fullScreenState.current.fullScreenRevision)
+      fullScreenState.current = {
+        fullScreen: next.fullScreen,
+        fullScreenRevision: next.fullScreenRevision,
+      }
+    setInfo({ ...next, ...fullScreenState.current })
     saved.current = next.preferences
     document.documentElement.dataset.theme = next.resolvedTheme
+  }
+  async function setFullScreen(value: boolean | 'toggle') {
+    if (fullScreenLock.current && value === 'toggle') return
+    fullScreenLock.current = true
+    setFullScreenBusy(true)
+    try {
+      applyInfo(await window.together.setFullScreen(value))
+    } catch (error: any) {
+      latest.current.party.setError(error.message || '全屏切换失败')
+    } finally {
+      fullScreenLock.current = false
+      setFullScreenBusy(false)
+    }
   }
   async function update(value: Partial<Preferences>) {
     const run = ++requestEpoch.current
@@ -234,5 +255,13 @@ export function useDesktop(
       }
     } catch {}
   }, [party.current?.id, party.position])
-  return { info, error, ready, update, quit: () => window.together.quit() }
+  return {
+    info,
+    error,
+    ready,
+    update,
+    setFullScreen,
+    fullScreenBusy,
+    quit: () => window.together.quit(),
+  }
 }

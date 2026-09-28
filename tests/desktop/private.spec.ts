@@ -12,7 +12,9 @@ test('private inbox joins official invitations and shares only after recipient c
   const stamp = Date.now() - 10000
   let active: string | null = null,
     delayAlice = false,
-    failSend = false
+    failSend = false,
+    failRead = true,
+    aliceLastTime = stamp
   const pendingResponse: { finish: (() => void) | null } = { finish: null }
   const flushPending = () => {
     const callback = pendingResponse.finish
@@ -82,6 +84,15 @@ test('private inbox joins official invitations and shares only after recipient c
       case '/user/playlist':
         body = { code: 200, playlist: [], more: false }
         break
+      case '/album/sublist':
+        body = { code: 200, data: [], hasMore: false }
+        break
+      case '/api/communication/msg/unread/count/clean':
+        body =
+          args.data.userId === '789' && failRead
+            ? { code: 503, message: '已读服务暂时不可用' }
+            : { code: 200 }
+        break
       case '/likelist':
         body = { code: 200, ids: [] }
         break
@@ -103,7 +114,7 @@ test('private inbox joins official invitations and shares only after recipient c
                   fromUser: alice,
                   toUser: self,
                   lastMsg: history.at(-1)!.msg,
-                  lastMsgTime: stamp,
+                  lastMsgTime: aliceLastTime,
                   newMsgCount: 3,
                 },
                 {
@@ -220,6 +231,43 @@ test('private inbox joins official invitations and shares only after recipient c
       '手机私信 <b>原样显示</b>',
     )
     expect(await page.locator('.private-messages b').count()).toBe(0)
+    const aliceRow = page.locator('.conversation-list').getByRole('button', { name: /^Alice/ })
+    const bobRow = page.locator('.conversation-list').getByRole('button', { name: /^Bob/ })
+    await expect(aliceRow.locator('.unread-count')).toHaveCount(0)
+    await expect(bobRow.locator('.unread-count')).toHaveText('1')
+    expect(
+      calls
+        .filter((c) => c.route === '/api/communication/msg/unread/count/clean')
+        .map((c) => c.args.data.userId),
+    ).toEqual(['456'])
+    await page.getByRole('button', { name: '刷新私信会话' }).click()
+    await expect(aliceRow.locator('.unread-count')).toHaveCount(0)
+    await bobRow.click()
+    await expect(page.getByText('已读状态同步失败：已读服务暂时不可用')).toBeVisible()
+    await expect(bobRow.locator('.unread-count')).toHaveText('1')
+    failRead = false
+    await page.getByRole('button', { name: '重试同步已读' }).click()
+    await expect(bobRow.locator('.unread-count')).toHaveCount(0)
+    // A new incoming message is unread while a different conversation is open.
+    aliceLastTime = Date.now()
+    history.push(msg(200, alice, self, '新收到的私信', aliceLastTime))
+    await page.getByRole('button', { name: '刷新私信会话' }).click()
+    await expect(aliceRow.locator('.unread-count')).toHaveText('3')
+    expect(
+      calls.filter(
+        (c) =>
+          c.route === '/api/communication/msg/unread/count/clean' && c.args.data.userId === '456',
+      ),
+    ).toHaveLength(1)
+    await aliceRow.click()
+    await expect(aliceRow.locator('.unread-count')).toHaveCount(0)
+    expect(
+      calls.filter(
+        (c) =>
+          c.route === '/api/communication/msg/unread/count/clean' && c.args.data.userId === '456',
+      ),
+    ).toHaveLength(2)
+
     await page.getByRole('button', { name: '更多会话', exact: true }).click()
     await expect(page.locator('.conversation-list')).toContainText('Carol')
     await page.getByRole('button', { name: '加载更早私信' }).click()
@@ -266,7 +314,34 @@ test('private inbox joins official invitations and shares only after recipient c
     await page.getByRole('button', { name: '发送私信', exact: true }).click()
     await expect(page.locator('.private-messages .chat-failed')).toContainText('当前不能发送私信')
     await expect(page.getByLabel('私信内容')).toHaveValue('保留失败草稿')
-    await page.screenshot({ path: 'test-results/music-party-private.png' })
+    const notice = page.getByRole('button', { name: '关闭通知', exact: true })
+    if (await notice.isVisible()) await notice.click()
+    await page.screenshot({ path: 'test-results/music-party-private.png', animations: 'disabled' })
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()[0].setBounds({ width: 1000, height: 720 }),
+    )
+    await expect.poll(() => page.evaluate(() => innerWidth)).toBeLessThanOrEqual(1000)
+    const composer = await page.locator('.private-compose').boundingBox()
+    const player = await page.getByLabel('底部播放栏').boundingBox()
+    expect(composer!.y + composer!.height).toBeLessThanOrEqual(player!.y)
+    expect(await page.locator('main').evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(
+      true,
+    )
+    await page.screenshot({
+      path: 'test-results/music-party-private-compact.png',
+      animations: 'disabled',
+    })
+    await page.evaluate(() => window.together.updatePreferences({ theme: 'light' }))
+    await page.screenshot({
+      path: 'test-results/music-party-private-light.png',
+      animations: 'disabled',
+    })
+    await page.getByRole('button', { name: '选择好友发私信' }).click()
+    await expect(page.getByRole('dialog', { name: '选择私信收件人' })).toBeVisible()
+    await page.mouse.click(5, 5)
+    await expect(page.getByRole('dialog', { name: '选择私信收件人' })).toHaveCount(0)
+    await expect(page.getByLabel('私信内容')).toHaveValue('保留失败草稿')
+
     await page.getByRole('button', { name: '选择好友发私信' }).click()
     await page.getByRole('dialog').getByRole('button', { name: 'Bob 789' }).click()
     await expect(page.getByRole('log', { name: '私信消息' })).toContainText('Bob 的消息')

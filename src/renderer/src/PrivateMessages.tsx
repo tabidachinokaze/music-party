@@ -9,12 +9,12 @@ import {
   Search,
   Send,
   Users,
-  X,
 } from 'lucide-react'
 import type { MultiInvitation, Room } from '../../shared/types'
 import { PRIVATE_TEXT_LIMIT, inviteText } from '../../shared/private-messages'
 import type { usePrivateMessages } from './usePrivateMessages'
 import type { ApiCall } from './music-data'
+import { Overlay } from './player/Overlay'
 
 type Inbox = ReturnType<typeof usePrivateMessages>
 function InviteCard({
@@ -132,6 +132,15 @@ export function PrivateMessages({
       historyAnchor.current = null
     } else if (stick.current) box.scrollTop = box.scrollHeight
   }, [inbox.messages])
+  useEffect(() => {
+    const box = log.current
+    if (!box) return
+    const observer = new ResizeObserver(() => {
+      if (stick.current) box.scrollTop = box.scrollHeight
+    })
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [inbox.selected?.uid])
   async function older() {
     if (log.current)
       historyAnchor.current = { height: log.current.scrollHeight, top: log.current.scrollTop }
@@ -149,15 +158,22 @@ export function PrivateMessages({
       <div className="empty">
         <Mail size={28} />
         <strong>登录后查看网易云私信</strong>
-        <span>到“一起听”页面扫码登录</span>
+        <span>点击左下角登录网易云账号</span>
       </div>
     )
   const selfUid = String(account.userId)
+  const filtered = inbox.conversations.filter((c) =>
+    `${c.nickname} ${c.uid}`.toLowerCase().includes(filter.toLowerCase()),
+  )
+  const dateLabel = (time: number) =>
+    new Date(time).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
   return (
     <section className="private-layout">
       <aside className="conversation-pane">
         <div className="conversation-toolbar">
-          <strong>私信会话</strong>
+          <strong>
+            私信<span className="conversation-total">{inbox.conversations.length}</span>
+          </strong>
           <button
             className="icon-btn"
             aria-label="刷新私信会话"
@@ -192,32 +208,47 @@ export function PrivateMessages({
           </p>
         )}
         <div className="conversation-list">
-          {inbox.conversations
-            .filter((c) => `${c.nickname} ${c.uid}`.toLowerCase().includes(filter.toLowerCase()))
-            .map((c) => (
-              <button
-                className={inbox.selected?.uid === c.uid ? 'selected' : ''}
-                key={c.uid}
-                onClick={() => inbox.select(c)}
-              >
-                {c.avatar ? (
-                  <img src={c.avatar} alt="" />
-                ) : (
-                  <span className="avatar">
-                    <Users size={18} />
+          {filtered.map((c) => (
+            <button
+              className={inbox.selected?.uid === c.uid ? 'selected' : ''}
+              key={c.uid}
+              aria-current={inbox.selected?.uid === c.uid ? 'true' : undefined}
+              onClick={() => inbox.select(c)}
+            >
+              {c.avatar ? (
+                <img src={c.avatar} alt="" />
+              ) : (
+                <span className="avatar">
+                  <Users size={18} />
+                </span>
+              )}
+              <span className="conversation-copy">
+                <strong>{c.nickname}</strong>
+                <small>{c.preview || '开始私信'}</small>
+              </span>
+              <span className="conversation-meta">
+                {c.time > 0 && (
+                  <time>
+                    {new Date(c.time).toLocaleDateString() === new Date().toLocaleDateString()
+                      ? new Date(c.time).toLocaleTimeString('zh-CN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : dateLabel(c.time)}
+                  </time>
+                )}
+                {c.unread > 0 && (
+                  <span className="unread-count" aria-label={`${c.unread} 条未读`}>
+                    {c.unread > 99 ? '99+' : c.unread}
                   </span>
                 )}
-                <span className="conversation-copy">
-                  <strong>{c.nickname}</strong>
-                  <small>{c.preview || '开始私信'}</small>
-                </span>
-                {c.unread > 0 && (
-                  <span className="unread-count">{c.unread > 99 ? '99+' : c.unread}</span>
-                )}
-              </button>
-            ))}
-          {!inbox.conversationBusy && !inbox.conversationError && !inbox.conversations.length && (
-            <p className="chat-empty">暂无私信，点击 + 选择好友</p>
+              </span>
+            </button>
+          ))}
+          {!inbox.conversationBusy && !inbox.conversationError && !filtered.length && (
+            <p className="chat-empty">
+              {filter ? '没有匹配的联系人' : '暂无私信，点击 + 选择好友'}
+            </p>
           )}
           {inbox.conversationBusy && (
             <p className="loading">
@@ -246,9 +277,16 @@ export function PrivateMessages({
         ) : (
           <>
             <div className="private-thread-heading">
+              <span className="avatar thread-avatar">
+                {inbox.selected.avatar ? (
+                  <img src={inbox.selected.avatar} alt="" />
+                ) : (
+                  inbox.selected.nickname.slice(0, 1)
+                )}
+              </span>
               <div>
                 <strong>{inbox.selected.nickname}</strong>
-                <small>网易云私信 · {inbox.selected.uid}</small>
+                <small>网易云私信</small>
               </div>
               <button
                 className="text-btn"
@@ -274,6 +312,14 @@ export function PrivateMessages({
                 <RefreshCw size={16} />
               </button>
             </div>
+            {inbox.readError && (
+              <div className="private-read-error" role="status">
+                <span>已读状态同步失败：{inbox.readError}</span>
+                <button className="text-btn" onClick={inbox.refreshHistory}>
+                  重试同步已读
+                </button>
+              </div>
+            )}
             {inbox.historyError && (
               <p className="private-error" role="alert">
                 {inbox.historyError}
@@ -305,44 +351,46 @@ export function PrivateMessages({
               {!inbox.historyBusy && !inbox.historyError && !inbox.messages.length && (
                 <p className="chat-empty">还没有聊天记录</p>
               )}
-              {inbox.messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={`chat-message ${message.senderId === selfUid ? 'mine' : ''}`}
-                >
-                  <div className="chat-author">
-                    <span>{message.senderId === selfUid ? '我' : inbox.selected?.nickname}</span>
-                    <time>
-                      {new Date(message.time).toLocaleString([], {
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </time>
-                  </div>
-                  <div className="chat-bubble">{message.text}</div>
-                  {message.invitations.map((invite) => (
-                    <InviteCard
-                      key={`${invite.roomId}:${invite.inviterUid}`}
-                      invite={invite}
-                      api={api}
-                      room={room}
-                      busy={busy}
-                      onJoin={join}
-                    />
-                  ))}
-                  {message.delivery && (
-                    <small className={message.error ? 'chat-failed' : ''}>
-                      {message.error ||
-                        {
-                          sending: '发送中…',
-                          submitted: '已提交，等待私信回显',
-                          failed: '发送失败',
-                          uncertain: '结果未确认',
-                        }[message.delivery]}
-                    </small>
+              {inbox.messages.map((message, index) => (
+                <div key={message.id} className="private-message-item">
+                  {(index === 0 ||
+                    new Date(inbox.messages[index - 1].time).toDateString() !==
+                      new Date(message.time).toDateString()) && (
+                    <div className="message-date">{dateLabel(message.time)}</div>
                   )}
+                  <div className={`chat-message ${message.senderId === selfUid ? 'mine' : ''}`}>
+                    <div className="chat-author">
+                      <span>{message.senderId === selfUid ? '我' : inbox.selected?.nickname}</span>
+                      <time>
+                        {new Date(message.time).toLocaleTimeString('zh-CN', {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </time>
+                    </div>
+                    <div className="chat-bubble">{message.text}</div>
+                    {message.invitations.map((invite) => (
+                      <InviteCard
+                        key={`${invite.roomId}:${invite.inviterUid}`}
+                        invite={invite}
+                        api={api}
+                        room={room}
+                        busy={busy}
+                        onJoin={join}
+                      />
+                    ))}
+                    {message.delivery && (
+                      <small className={message.error ? 'chat-failed' : ''}>
+                        {message.error ||
+                          {
+                            sending: '发送中…',
+                            submitted: '已提交，等待私信回显',
+                            failed: '发送失败',
+                            uncertain: '结果未确认',
+                          }[message.delivery]}
+                      </small>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -387,146 +435,113 @@ export function PrivateMessages({
         )}
       </div>
       {showContacts && (
-        <div className="modal-backdrop">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="contacts-title"
-            className="modal contacts-modal"
+        <Overlay title="选择私信收件人" onClose={() => setShowContacts(false)}>
+          <form
+            className="recipient-form"
+            onSubmit={(e) => {
+              e.preventDefault()
+              if (/^[1-9]\d{0,23}$/.test(newUid) && newUid !== selfUid) {
+                inbox.select({
+                  uid: newUid,
+                  nickname: `用户 ${newUid}`,
+                  avatar: '',
+                  preview: '',
+                  time: 0,
+                  unread: 0,
+                })
+                setShowContacts(false)
+              }
+            }}
           >
-            <div className="section-title">
-              <h2 id="contacts-title">选择私信收件人</h2>
+            <input
+              aria-label="收件人网易云 ID"
+              placeholder="或输入网易云用户 ID"
+              value={newUid}
+              onChange={(e) => setNewUid(e.target.value.trim())}
+            />
+            <button
+              className="secondary"
+              disabled={!/^[1-9]\d{0,23}$/.test(newUid) || newUid === selfUid}
+            >
+              打开会话
+            </button>
+          </form>
+          <p className="muted">我关注的人</p>
+          {inbox.contactsError && (
+            <p role="alert" className="private-error">
+              {inbox.contactsError}
+            </p>
+          )}
+          <div className="contacts-picker">
+            {inbox.contacts.map((c) => (
               <button
-                className="icon-btn"
-                aria-label="关闭联系人"
-                onClick={() => setShowContacts(false)}
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <form
-              className="recipient-form"
-              onSubmit={(e) => {
-                e.preventDefault()
-                if (/^[1-9]\d{0,23}$/.test(newUid) && newUid !== selfUid) {
-                  inbox.select({
-                    uid: newUid,
-                    nickname: `用户 ${newUid}`,
-                    avatar: '',
-                    preview: '',
-                    time: 0,
-                    unread: 0,
-                  })
+                key={c.uid}
+                onClick={() => {
+                  inbox.select(c)
                   setShowContacts(false)
+                }}
+              >
+                <span>{c.nickname}</span>
+                <small>{c.uid}</small>
+              </button>
+            ))}
+          </div>
+          {inbox.contactsBusy && <p className="loading">正在读取联系人…</p>}
+          {inbox.contactsMore && (
+            <button
+              className="text-btn load-more"
+              disabled={inbox.contactsBusy}
+              onClick={() => inbox.loadContacts(true)}
+            >
+              更多联系人
+            </button>
+          )}
+        </Overlay>
+      )}
+      {confirmInvite && (
+        <Overlay title={`邀请 ${confirmInvite.name} 一起听`} onClose={() => setConfirmInvite(null)}>
+          <p>将通过网易云私信发送以下多人房间链接：</p>
+          <pre className="invite-preview-text">
+            {inviteText(confirmInvite.room.roomId, selfUid)}
+          </pre>
+          <div className="row-actions">
+            <button className="secondary" onClick={() => setConfirmInvite(null)}>
+              取消
+            </button>
+            <button
+              className="primary"
+              disabled={inbox.sending || inbox.selected?.uid !== confirmInvite.uid}
+              onClick={async () => {
+                if (inbox.selected?.uid === confirmInvite.uid) {
+                  await inbox.send(confirmInvite.room)
+                  setConfirmInvite(null)
                 }
               }}
             >
-              <input
-                aria-label="收件人网易云 ID"
-                placeholder="或输入网易云用户 ID"
-                value={newUid}
-                onChange={(e) => setNewUid(e.target.value.trim())}
-              />
-              <button
-                className="secondary"
-                disabled={!/^[1-9]\d{0,23}$/.test(newUid) || newUid === selfUid}
-              >
-                打开会话
-              </button>
-            </form>
-            <p className="muted">我关注的人</p>
-            {inbox.contactsError && (
-              <p role="alert" className="private-error">
-                {inbox.contactsError}
-              </p>
-            )}
-            <div className="contacts-picker">
-              {inbox.contacts.map((c) => (
-                <button
-                  key={c.uid}
-                  onClick={() => {
-                    inbox.select(c)
-                    setShowContacts(false)
-                  }}
-                >
-                  <span>{c.nickname}</span>
-                  <small>{c.uid}</small>
-                </button>
-              ))}
-            </div>
-            {inbox.contactsBusy && <p className="loading">正在读取联系人…</p>}
-            {inbox.contactsMore && (
-              <button
-                className="text-btn load-more"
-                disabled={inbox.contactsBusy}
-                onClick={() => inbox.loadContacts(true)}
-              >
-                更多联系人
-              </button>
-            )}
+              确认发送邀请
+            </button>
           </div>
-        </div>
-      )}
-      {confirmInvite && (
-        <div className="modal-backdrop">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="private-invite-title"
-            className="modal"
-          >
-            <h2 id="private-invite-title">邀请 {confirmInvite.name} 一起听</h2>
-            <p>将通过网易云私信发送以下多人房间链接：</p>
-            <pre className="invite-preview-text">
-              {inviteText(confirmInvite.room.roomId, selfUid)}
-            </pre>
-            <div className="row-actions">
-              <button className="secondary" onClick={() => setConfirmInvite(null)}>
-                取消
-              </button>
-              <button
-                className="primary"
-                disabled={inbox.sending || inbox.selected?.uid !== confirmInvite.uid}
-                onClick={async () => {
-                  if (inbox.selected?.uid === confirmInvite.uid) {
-                    await inbox.send(confirmInvite.room)
-                    setConfirmInvite(null)
-                  }
-                }}
-              >
-                确认发送邀请
-              </button>
-            </div>
-          </div>
-        </div>
+        </Overlay>
       )}
       {switchInvite && (
-        <div className="modal-backdrop">
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="switch-invite-title"
-            className="modal"
-          >
-            <h2 id="switch-invite-title">切换一起听房间？</h2>
-            <p>将先离开当前房间，再加入这条邀请对应的官方多人房间。</p>
-            <div className="row-actions">
-              <button className="secondary" onClick={() => setSwitchInvite(null)}>
-                取消
-              </button>
-              <button
-                className="primary"
-                disabled={busy}
-                onClick={async () => {
-                  await onJoin(switchInvite)
-                  setSwitchInvite(null)
-                }}
-              >
-                确认切换房间
-              </button>
-            </div>
+        <Overlay title="切换一起听房间？" onClose={() => setSwitchInvite(null)}>
+          <p>将先离开当前房间，再加入这条邀请对应的官方多人房间。</p>
+          <div className="row-actions">
+            <button className="secondary" onClick={() => setSwitchInvite(null)}>
+              取消
+            </button>
+            <button
+              className="primary"
+              disabled={busy}
+              onClick={async () => {
+                await onJoin(switchInvite)
+                setSwitchInvite(null)
+              }}
+            >
+              确认切换房间
+            </button>
           </div>
-        </div>
+        </Overlay>
       )}
     </section>
   )

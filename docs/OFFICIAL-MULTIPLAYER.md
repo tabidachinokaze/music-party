@@ -88,3 +88,7 @@
 独立实现递归解析这些编码目标和 WebView 的 `url`，仅保留严格验证过的官方多人分享路由或已核实的 multiListenTogether/joinRoom 深链，绝不执行 URI 或访问外层地址。兼容官方 HTTP 分享地址后规范为 HTTPS；拒绝非官方网站、双人、跟听、无有效房间参数和非法编码。对消息结构遍历、URL 解码层数与扫描量设上限。私信历史只额外检查消息 body/msgBody/nativeUrl，不扫描发送者昵称或头像等资料字段。
 
 依据官方模型构造的私信卡片回归已通过；用户当前手机版本发出的具体原始数据尚未直接取得，因此真实那条私信仍待用户确认，不把仅有说明文字的消息自动推断成有效房间。
+
+## 私信已读（0.9.0）
+
+官方体验包 `classes8.dex` 的 messagecenter.api.c.a(Long) 及 MessageCenterDetailFragment 调用确认：`/api/communication/msg/unread/count/clean` 接收 `userId`，用于清除指定会话未读。客户端只在当前会话可见、窗口获焦且最新历史加载成功时提交单个 UID；不发送空 userId 来清除全部会话。此接口经内置 API 的固定受限通用调用执行，前端不能指定 URI 或目标列表。响应失败不清除角标，支持重试。

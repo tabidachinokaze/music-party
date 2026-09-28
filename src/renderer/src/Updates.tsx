@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Download, ExternalLink, RefreshCw, RotateCw } from 'lucide-react'
+import { Overlay } from './player/Overlay'
 import type { UpdateState } from '../../shared/updates'
 
 export function Updates() {
@@ -80,29 +81,26 @@ export function Updates() {
         )}
       </div>
       {confirmInstall && (
-        <div className="modal-backdrop">
-          <div role="dialog" aria-modal="true" aria-labelledby="install-title" className="modal">
-            <h2 id="install-title">安装更新并重启？</h2>
-            <p>
-              将停止本机播放、尝试退出当前多人房间，然后安装 {state?.version}
-              。未发送的消息草稿不会发送。
-            </p>
-            <div className="row-actions">
-              <button className="secondary" onClick={() => setConfirmInstall(false)}>
-                稍后安装
-              </button>
-              <button
-                className="primary"
-                onClick={() => {
-                  setConfirmInstall(false)
-                  action('install')
-                }}
-              >
-                确认安装并重启
-              </button>
-            </div>
+        <Overlay title="安装更新并重启？" onClose={() => setConfirmInstall(false)}>
+          <p>
+            将停止本机播放、尝试退出当前多人房间，然后安装 {state?.version}
+            。未发送的消息草稿不会发送。
+          </p>
+          <div className="row-actions">
+            <button className="secondary" onClick={() => setConfirmInstall(false)}>
+              稍后安装
+            </button>
+            <button
+              className="primary"
+              onClick={() => {
+                setConfirmInstall(false)
+                action('install')
+              }}
+            >
+              确认安装并重启
+            </button>
           </div>
-        </div>
+        </Overlay>
       )}
     </div>
   )

@@ -15,6 +15,7 @@ export interface DesktopInfo {
   preferences: Preferences
   trayAvailable: boolean
   fullScreen: boolean
+  fullScreenRevision: number
   resolvedTheme: 'dark' | 'light'
   platform: string
   persistenceError: string

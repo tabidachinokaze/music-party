@@ -1,6 +1,7 @@
-import { useEffect, useEffectEvent, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
   ArrowLeft,
+  Disc3,
   Headphones,
   Heart,
   Library,
@@ -29,17 +30,23 @@ import { PlayerBar } from './player/PlayerBar'
 import { QueueDrawer } from './player/QueueDrawer'
 import { RoomSetup } from './player/RoomSetup'
 import { Overlay } from './player/Overlay'
+import { usePresence } from './player/usePresence'
 
-type Page = 'player' | 'library' | 'liked' | 'search' | 'private' | 'settings' | 'diagnostics'
+type Page =
+  'player' | 'library' | 'albums' | 'liked' | 'search' | 'private' | 'settings' | 'diagnostics'
 export function App() {
   const p = useParty()
   const [tab, setTab] = useState<Page>('player')
   const [expanded, setExpanded] = useState(false)
+  const closingPlayer = useRef(false)
   const activePage = expanded ? 'player' : tab
   const [queueOpen, setQueueOpen] = useState(false)
+  const queuePresence = usePresence(queueOpen)
   const [setupOpen, setSetupOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const [confirmEnd, setConfirmEnd] = useState(false)
+  const [unlikeSong, setUnlikeSong] = useState<Song | null>(null)
+  const [unlikeError, setUnlikeError] = useState('')
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const chat = useRoomChat(p.api, p.room, p.account)
   const uid = p.account ? String(p.account.userId) : null
@@ -49,6 +56,7 @@ export function App() {
   const titles: Record<Page, string> = {
     player: '正在播放',
     library: '我的歌单',
+    albums: '收藏的专辑',
     liked: '我喜欢的音乐',
     search: '搜索',
     private: '私信',
@@ -72,6 +80,8 @@ export function App() {
   }, [p.notice])
   useEffect(() => {
     if (p.account) setLoginOpen(false)
+    setUnlikeSong(null)
+    setUnlikeError('')
   }, [p.account?.userId])
   useEffect(() => {
     if (p.room) {
@@ -83,7 +93,7 @@ export function App() {
     if (chat.visible) setQueueOpen(false)
   }, [chat.visible])
   useEffect(() => {
-    if (desktop.info?.fullScreen) showPlayer()
+    if (desktop.info?.fullScreen && !closingPlayer.current) showPlayer()
   }, [desktop.info?.fullScreen])
   useEffect(() => {
     if (!expanded) return
@@ -117,10 +127,15 @@ export function App() {
     return () => window.removeEventListener('keydown', onEscape)
   }, [])
   function setFullScreen(value: boolean) {
-    window.together.setFullScreen(value).catch((error) => p.setError(error.message))
+    desktop.setFullScreen(value)
   }
   function collapsePlayer() {
-    if (desktop.info?.fullScreen) setFullScreen(false)
+    if (desktop.info?.fullScreen || desktop.fullScreenBusy) {
+      closingPlayer.current = true
+      desktop.setFullScreen(false).finally(() => {
+        closingPlayer.current = false
+      })
+    }
     setExpanded(false)
   }
   function navigate(page: Page) {
@@ -136,6 +151,7 @@ export function App() {
     setQueueOpen((value) => !value)
   }
   function showPlayer() {
+    closingPlayer.current = false
     setExpanded(true)
   }
   function login() {
@@ -153,7 +169,10 @@ export function App() {
     p.act(p.room ? '推送歌曲' : '播放歌曲', () => p.playSong(song, ids))
   }
   function onLike(song: Song) {
-    library.toggleLike(song).catch((error) => p.setError(error.message))
+    if (library.likes.has(song.id)) {
+      setUnlikeSong(song)
+      setUnlikeError('')
+    } else library.toggleLike(song, true).catch((error) => p.setError(error.message))
   }
   async function joinPrivateInvite(invite: MultiInvitation) {
     await p.act('加入邀请房间', async () => {
@@ -216,6 +235,13 @@ export function App() {
         >
           <Library size={18} />
           我的歌单
+        </button>
+        <button
+          className={`nav ${tab === 'albums' ? 'active' : ''}`}
+          onClick={() => navigate('albums')}
+        >
+          <Disc3 size={18} />
+          收藏的专辑
         </button>
         <div className="sidebar-bottom">
           <button
@@ -294,8 +320,10 @@ export function App() {
             </span>
           </div>
         </header>
-        <main className={`music-main ${activePage === 'player' ? 'player-main' : ''}`}>
-          {activePage !== 'player' && (
+        <main
+          className={`music-main ${activePage === 'player' ? 'player-main' : activePage === 'private' ? 'private-main' : ''}`}
+        >
+          {activePage !== 'player' && activePage !== 'private' && (
             <div className="heading section-heading">
               <div>
                 <h1>{titles[activePage]}</h1>
@@ -331,7 +359,8 @@ export function App() {
               fullScreen={desktop.info?.fullScreen ?? false}
               onExpand={showPlayer}
               onCollapse={collapsePlayer}
-              onFullScreen={() => setFullScreen(!desktop.info?.fullScreen)}
+              onFullScreen={() => desktop.setFullScreen('toggle')}
+              fullScreenBusy={desktop.fullScreenBusy}
               party={p}
               library={library}
               onLike={() => {
@@ -345,7 +374,7 @@ export function App() {
               onBrowse={() => navigate('search')}
             />
           )}
-          <div hidden={activePage === 'player'}>
+          <div className="browser-page" hidden={activePage === 'player'}>
             {tab === 'player' ? null : tab === 'settings' ? (
               <Settings desktop={desktop} party={p} onDiagnostics={() => navigate('diagnostics')} />
             ) : tab === 'diagnostics' ? (
@@ -378,7 +407,8 @@ export function App() {
       <PlayerBar
         party={p}
         library={library}
-        onPlayer={showPlayer}
+        expanded={expanded}
+        onPlayer={expanded ? collapsePlayer : showPlayer}
         onLike={() => {
           if (p.current) onLike(p.current)
         }}
@@ -388,7 +418,13 @@ export function App() {
         chatOpen={chat.visible}
         unread={chat.unread}
       />
-      {queueOpen && <QueueDrawer party={p} onClose={() => setQueueOpen(false)} />}
+      {queuePresence.mounted && (
+        <QueueDrawer
+          closing={queuePresence.closing}
+          party={p}
+          onClose={() => setQueueOpen(false)}
+        />
+      )}
       <RoomChat chat={chat} room={p.room} uid={uid || ''} onlineCount={p.onlineCount} />
       <audio ref={p.audio} {...p.audioEvents} />
       {setupOpen && (
@@ -442,6 +478,36 @@ export function App() {
                 {p.error}
               </div>
             )}
+          </div>
+        </Overlay>
+      )}
+      {unlikeSong && (
+        <Overlay title="取消喜欢这首歌？" onClose={() => setUnlikeSong(null)}>
+          <p className="overlay-intro">确认将「{unlikeSong.name}」从我喜欢的音乐中移除？</p>
+          {unlikeError && (
+            <div className="alert error" role="alert">
+              {unlikeError}
+            </div>
+          )}
+          <div className="row-actions">
+            <button className="secondary" onClick={() => setUnlikeSong(null)}>
+              保留喜欢
+            </button>
+            <button
+              className="primary"
+              disabled={library.likeBusy.has(unlikeSong.id)}
+              onClick={async () => {
+                const song = unlikeSong
+                try {
+                  await library.toggleLike(song, false)
+                  setUnlikeSong((current) => (current?.id === song.id ? null : current))
+                } catch (error: any) {
+                  setUnlikeError(error.message)
+                }
+              }}
+            >
+              确认取消喜欢
+            </button>
           </div>
         </Overlay>
       )}

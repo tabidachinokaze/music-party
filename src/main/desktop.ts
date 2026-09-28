@@ -15,8 +15,10 @@ import {
   type PlayerCommand,
 } from '../shared/desktop'
 import type { SettingsStore } from './settings'
+import type { FullScreenController } from './fullscreen'
 
 export class DesktopController {
+  fullscreen: FullScreenController | null = null
   private tray: Tray | null = null
   media: DesktopMediaState = {
     title: '',
@@ -60,7 +62,8 @@ export class DesktopController {
     return {
       preferences: { ...this.store.preferences },
       trayAvailable: this.trayAvailable,
-      fullScreen: this.window()?.isFullScreen() ?? false,
+      fullScreen: this.fullscreen?.value ?? false,
+      fullScreenRevision: this.fullscreen?.revision ?? 0,
       resolvedTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
       platform: process.platform,
       persistenceError: this.store.error,

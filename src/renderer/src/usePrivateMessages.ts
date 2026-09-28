@@ -21,6 +21,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
   const [historyMore, setHistoryMore] = useState(false)
   const [historyBusy, setHistoryBusy] = useState(false)
   const [historyError, setHistoryError] = useState('')
+  const [readError, setReadError] = useState('')
   const [draft, setDraft] = useState('')
   const [sending, setSending] = useState(false)
   const [contacts, setContacts] = useState<Conversation[]>([])
@@ -41,6 +42,9 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
     sendLock = useRef(false),
     initializedHistory = useRef(false)
   const drafts = useRef(new Map<string, string>())
+  const readThrough = useRef(new Map<string, number>())
+  const serverConversationTime = useRef(new Map<string, number>())
+  const readPending = useRef(new Set<string>())
   const visibleRef = useRef(visible)
   visibleRef.current = visible
   const draftRef = useRef(draft)
@@ -62,6 +66,8 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
       try {
         const page = parseConversations(await api('privateConversations', { offset }), selfUid)
         if (epoch !== accountEpoch.current) return
+        for (const conversation of page.conversations)
+          serverConversationTime.current.set(conversation.uid, conversation.time)
         if (
           older &&
           page.more &&
@@ -69,7 +75,14 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
             page.conversations.every((c) => convRef.current.some((old) => old.uid === c.uid)))
         )
           throw new Error('会话分页未继续前进，请稍后刷新')
-        updateConversations(mergeConversations(convRef.current, page.conversations))
+        updateConversations(
+          mergeConversations(
+            convRef.current,
+            page.conversations.map((c) =>
+              (readThrough.current.get(c.uid) ?? -1) >= c.time ? { ...c, unread: 0 } : c,
+            ),
+          ),
+        )
         if (older || convOffset.current === 0) {
           convOffset.current = offset + page.count
           setConversationMore(page.more)
@@ -88,11 +101,43 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
       if (convPending.current === task) convPending.current = null
     }
   }
+  async function markRead(peer: Conversation, through: number) {
+    if (
+      !visibleRef.current ||
+      document.visibilityState !== 'visible' ||
+      !document.hasFocus() ||
+      selectedRef.current?.uid !== peer.uid
+    )
+      return
+    if ((readThrough.current.get(peer.uid) ?? -1) >= through || readPending.current.has(peer.uid))
+      return
+    const accountRun = accountEpoch.current
+    readPending.current.add(peer.uid)
+    try {
+      await api('privateRead', { uid: peer.uid })
+      if (accountRun !== accountEpoch.current) return
+      readThrough.current.set(peer.uid, through)
+      updateConversations(
+        convRef.current.map((c) =>
+          c.uid === peer.uid && (serverConversationTime.current.get(c.uid) || 0) <= through
+            ? { ...c, unread: 0 }
+            : c,
+        ),
+      )
+      if (selectedRef.current?.uid === peer.uid) setReadError('')
+    } catch (error: any) {
+      if (accountRun === accountEpoch.current && selectedRef.current?.uid === peer.uid)
+        setReadError(error.message || '已读状态同步失败')
+    } finally {
+      if (accountRun === accountEpoch.current) readPending.current.delete(peer.uid)
+    }
+  }
   async function fetchHistory(older = false) {
     const peer = selectedRef.current
     if (!selfUid || !peer || historyPending.current) return historyPending.current
     const epoch = historyEpoch.current,
       requestBefore = older ? before.current : null
+    const conversationTime = serverConversationTime.current.get(peer.uid) || 0
     if (older && !requestBefore) return
     setHistoryBusy(true)
     const task = (async () => {
@@ -115,6 +160,15 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
         }
         initializedHistory.current = true
         setHistoryError('')
+        if (!older) {
+          const through = Math.max(
+            conversationTime,
+            ...page.messages
+              .filter((message) => message.senderId === peer.uid)
+              .map((message) => message.time),
+          )
+          await markRead(peer, through)
+        }
       } catch (e: any) {
         if (epoch === historyEpoch.current) setHistoryError(e.message || '私信内容加载失败')
       } finally {
@@ -140,6 +194,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
     updateMessages([])
     setHistoryMore(false)
     setHistoryError('')
+    setReadError('')
     setHistoryBusy(false)
     const nextDraft = drafts.current.get(peer.uid) || ''
     setDraft(nextDraft)
@@ -158,6 +213,10 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
     updateConversations([])
     updateMessages([])
     drafts.current.clear()
+    readThrough.current.clear()
+    serverConversationTime.current.clear()
+    readPending.current.clear()
+    setReadError('')
     setDraft('')
     draftRef.current = ''
     sendLock.current = contactsLock.current = false
@@ -204,6 +263,18 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
   useEffect(() => {
     if (visible) fetchConversations()
   }, [visible])
+  useEffect(() => {
+    const refreshVisible = () => {
+      if (visibleRef.current && document.visibilityState === 'visible' && document.hasFocus())
+        fetchHistory()
+    }
+    window.addEventListener('focus', refreshVisible)
+    document.addEventListener('visibilitychange', refreshVisible)
+    return () => {
+      window.removeEventListener('focus', refreshVisible)
+      document.removeEventListener('visibilitychange', refreshVisible)
+    }
+  }, [selfUid])
   async function loadContacts(older = false) {
     if (!selfUid || contactsLock.current) return
     contactsLock.current = true
@@ -255,7 +326,16 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
       id: `local:${requestId}`,
       senderId: selfUid,
       recipientId: peer.uid,
-      time: Date.now(),
+      time: Math.max(
+        serverConversationTime.current.get(peer.uid) || 0,
+        ...messagesRef.current
+          .filter(
+            (message) =>
+              !message.delivery &&
+              (message.senderId === peer.uid || message.recipientId === peer.uid),
+          )
+          .map((message) => message.time),
+      ),
       text,
       invitations: room ? [{ roomId: room.roomId, inviterUid: selfUid, isFLT: false }] : [],
       delivery: 'sending',
@@ -284,7 +364,14 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
       } else if (!room && drafts.current.get(peer.uid)?.trim() === text)
         drafts.current.set(peer.uid, '')
       updateConversations(
-        mergeConversations(convRef.current, [{ ...peer, time: Date.now(), preview: text }]),
+        mergeConversations(convRef.current, [
+          {
+            ...peer,
+            unread: convRef.current.find((c) => c.uid === peer.uid)?.unread || 0,
+            time: Date.now(),
+            preview: text,
+          },
+        ]),
       )
       return true
     } catch (e: any) {
@@ -319,6 +406,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
     historyMore,
     historyBusy,
     historyError,
+    readError,
     draft,
     setDraft,
     sending,

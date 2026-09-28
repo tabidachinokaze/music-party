@@ -5,6 +5,7 @@ export const SEND_METHODS = new Set(['multiChatSend', 'privateSend', 'privateInv
 export const PRIVATE_METHODS = new Set([
   'privateConversations',
   'privateHistory',
+  'privateRead',
   'privateSend',
   'privateInvite',
   'follows',

@@ -1,7 +1,48 @@
 import { expect, it, vi } from 'vitest'
-import { allPlaylists, songsByIds, parseLyrics } from '../src/renderer/src/music-data'
+import { allAlbums, allPlaylists, songsByIds, parseLyrics } from '../src/renderer/src/music-data'
 import { nextQueueIndex } from '../src/shared/personal-queue'
 import { ApiService, validate } from '../src/main/service'
+it('loads all subscribed album pages without duplicates and preserves artist metadata', async () => {
+  const api = vi.fn(async (_method, args) =>
+    args.offset === 0
+      ? {
+          data: [
+            { id: 1, name: '专辑', artists: [{ name: 'A' }, { name: 'B' }], size: 10 },
+            { id: 2 },
+          ],
+          hasMore: true,
+        }
+      : { data: [{ id: 2 }, { id: 3 }], hasMore: false },
+  )
+  const albums = await allAlbums(
+    api,
+    () => true,
+    () => {},
+  )
+  expect(albums.map((album) => album.id)).toEqual(['1', '2', '3'])
+  expect(albums[0]).toMatchObject({ artist: 'A / B', count: 10 })
+  expect(api.mock.calls[1][1]).toEqual({ offset: 2 })
+})
+it('does not report repeated or cancelled album pages as a complete library', async () => {
+  await expect(
+    allAlbums(
+      async () => ({ data: [{ id: 1 }], hasMore: true }),
+      () => true,
+      () => {},
+    ),
+  ).rejects.toThrow('分页未继续前进')
+  let active = true
+  const progress = vi.fn()
+  await allAlbums(
+    async () => {
+      active = false
+      return { data: [{ id: 1 }], hasMore: false }
+    },
+    () => active,
+    progress,
+  )
+  expect(progress).not.toHaveBeenCalled()
+})
 it('loads every playlist page, deduplicates overlaps, and uses the actual page offset', async () => {
   const api = vi.fn(async (_method, args) =>
     args.offset === 0

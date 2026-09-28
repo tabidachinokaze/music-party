@@ -4,13 +4,16 @@ import type { Song } from '../../../shared/types'
 import type { useParty } from '../useParty'
 import { waitingCount, waitingSongs } from '../../../shared/playback-queue'
 import { toSong } from '../../../shared/protocol'
+import { useDismissable } from './useDismissable'
 
 export function QueueDrawer({
   party: p,
   onClose,
+  closing,
 }: {
   party: ReturnType<typeof useParty>
   onClose(): void
+  closing: boolean
 }) {
   const [limit, setLimit] = useState(100)
   const [tracks, setTracks] = useState<Record<string, Song | null>>({})
@@ -18,6 +21,7 @@ export function QueueDrawer({
   const [loading, setLoading] = useState(false)
   const cache = useRef<Record<string, Song | null>>({})
   const drawer = useRef<HTMLElement>(null)
+  useDismissable(drawer, onClose, !closing, '[data-popup-toggle="queue"]')
   const inRoom = !!p.room
   const scope = `${p.account?.userId || 'guest'}:${p.room?.roomId || 'personal'}`
   const queued = p.room
@@ -62,6 +66,7 @@ export function QueueDrawer({
     }
   }, [scope, idsKey])
   useEffect(() => {
+    if (closing) return
     const previous = document.activeElement as HTMLElement | null
     drawer.current?.querySelector<HTMLButtonElement>('[aria-label="关闭播放队列"]')?.focus()
     const close = (event: KeyboardEvent) => {
@@ -80,7 +85,7 @@ export function QueueDrawer({
       window.removeEventListener('keydown', close)
       if (previous?.isConnected) previous.focus()
     }
-  }, [])
+  }, [closing])
   const title = inRoom ? '房间待播列表' : '播放队列'
   const count = inRoom ? waitingCount(p.roomPlayback) : p.personalQueue.length
   const entries = inRoom
@@ -89,6 +94,9 @@ export function QueueDrawer({
   return (
     <aside
       className="queue-drawer"
+      data-closing={closing}
+      aria-hidden={closing}
+      inert={closing}
       ref={drawer}
       role="dialog"
       aria-label={title}

@@ -1,4 +1,4 @@
-import type { Artist, Method, Playlist, Song } from '../../shared/types'
+import type { Album, Artist, Method, Playlist, Song } from '../../shared/types'
 import { toSong } from '../../shared/protocol'
 export type ApiCall = (method: Method, args?: Record<string, unknown>) => Promise<any>
 export function playlistFrom(value: any): Playlist {
@@ -48,6 +48,42 @@ export async function songsByIds(api: ApiCall, ids: string[]): Promise<Song[]> {
   if (!Array.isArray(body.songs)) throw new Error('歌曲响应格式异常')
   const byId = new Map<string, Song>(body.songs.map((s: any) => [String(s.id), toSong(s)]))
   return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))
+}
+export async function allAlbums(
+  api: ApiCall,
+  active: () => boolean,
+  progress: (items: Album[]) => void,
+): Promise<Album[]> {
+  const byId = new Map<string, Album>()
+  let offset = 0
+  while (active()) {
+    const body = await api('albums', { offset })
+    if (!active()) return []
+    if (!Array.isArray(body.data)) throw new Error('收藏专辑响应异常，请重试')
+    const before = byId.size
+    for (const item of body.data) {
+      if (!/^[1-9]\d*$/.test(String(item.id))) continue
+      byId.set(String(item.id), {
+        id: String(item.id),
+        name: item.name || '未命名专辑',
+        cover: item.picUrl || '',
+        count: Number(item.size || 0),
+        artist: (item.artists || [])
+          .map((artist: any) => artist.name)
+          .filter(Boolean)
+          .join(' / '),
+      })
+    }
+    progress([...byId.values()])
+    offset += body.data.length
+    const more =
+      body.hasMore ??
+      body.more ??
+      (Number.isFinite(body.count) ? offset < body.count : body.data.length === 50)
+    if (!more) return [...byId.values()]
+    if (!body.data.length || before === byId.size) throw new Error('收藏专辑分页未继续前进，请重试')
+  }
+  return []
 }
 export interface LyricLine {
   time: number

@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   ArrowLeft,
+  Disc3,
+  Trash2,
+  X,
   ArrowRight,
   Heart,
   Library,
@@ -17,7 +20,14 @@ import { artistFrom, playlistFrom, type ApiCall } from './music-data'
 import { useSongCollection, type useLibrary } from './useLibrary'
 
 type LibraryState = ReturnType<typeof useLibrary>
-type Source = { key: string; title: string; playlistId?: string; artistId?: string; ids?: string[] }
+type Source = {
+  key: string
+  title: string
+  playlistId?: string
+  albumId?: string
+  artistId?: string
+  ids?: string[]
+}
 export function SongRows({
   songs,
   ids,
@@ -65,7 +75,7 @@ export function SongRows({
             {Math.floor(song.duration / 60000)}:
             {String(Math.floor(song.duration / 1000) % 60).padStart(2, '0')}
           </span>
-          <div className="song-actions">
+          <div className="song-actions" onDoubleClick={(event) => event.stopPropagation()}>
             <button
               className={`icon-btn ${library.likes.has(song.id) ? 'liked' : ''}`}
               aria-label={`${library.likes.has(song.id) ? '取消喜欢' : '喜欢'} ${song.name}`}
@@ -102,7 +112,7 @@ export function MusicBrowser({
 }: {
   api: ApiCall
   uid: string | null
-  view: 'library' | 'liked' | 'search'
+  view: 'library' | 'albums' | 'liked' | 'search'
   library: LibraryState
   room: boolean
   currentId?: string
@@ -330,6 +340,63 @@ export function MusicBrowser({
             </button>
           )}
         </>
+      ) : view === 'albums' ? (
+        <>
+          <div className="section-title">
+            <div>
+              <h2>收藏的专辑</h2>
+              <p>
+                {library.albumsComplete ? '全部专辑' : '已加载专辑'} · {library.albums.length} 张
+              </p>
+            </div>
+            <button className="secondary" disabled={library.loading} onClick={library.refresh}>
+              <RefreshCw size={15} />
+              刷新专辑
+            </button>
+          </div>
+          {library.albumsError && (
+            <div className="alert error" role="alert">
+              {library.albumsError}
+            </div>
+          )}
+          <div className="playlist-grid album-grid">
+            {library.albums.map((album) => (
+              <button
+                className="playlist-card"
+                key={album.id}
+                onClick={() =>
+                  setSource({ key: `album:${album.id}`, title: album.name, albumId: album.id })
+                }
+              >
+                {album.cover ? (
+                  <img src={album.cover} alt="" loading="lazy" />
+                ) : (
+                  <div className="playlist-art">
+                    <Disc3 size={36} />
+                  </div>
+                )}
+                <strong>{album.name}</strong>
+                <small>
+                  {album.artist}
+                  {album.count ? ` · ${album.count} 首` : ''}
+                </small>
+              </button>
+            ))}
+          </div>
+          {library.loading && !library.albumsComplete && (
+            <div className="loading">
+              <LoaderCircle size={16} className="spin" />
+              正在读取收藏专辑…
+            </div>
+          )}
+          {library.albumsComplete && !library.albums.length && (
+            <div className="empty">
+              <Disc3 size={28} />
+              <strong>还没有收藏专辑</strong>
+              <span>在网易云收藏的专辑会显示在这里</span>
+            </div>
+          )}
+        </>
       ) : view === 'library' ? (
         <>
           <div className="section-title">
@@ -405,18 +472,35 @@ export function MusicBrowser({
             <div className="search-history">
               <span>最近搜索</span>
               {history.map((q) => (
-                <button
-                  key={q}
-                  onClick={() => {
-                    setQuery(q)
-                    search(true, kind, q)
-                  }}
-                >
-                  {q}
-                </button>
+                <div className="search-history-chip" key={q}>
+                  <button
+                    title={q}
+                    onClick={() => {
+                      setQuery(q)
+                      search(true, kind, q)
+                    }}
+                  >
+                    {q}
+                  </button>
+                  <button
+                    className="history-delete"
+                    aria-label={`删除搜索记录 ${q}`}
+                    title="删除这条记录"
+                    onClick={() => {
+                      const next = history.filter((item) => item !== q)
+                      setHistory(next)
+                      try {
+                        localStorage.setItem('music-party-search-history', JSON.stringify(next))
+                      } catch {}
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
               ))}
               <button
-                className="text-btn"
+                className="text-btn history-clear"
+                aria-label="清空搜索记录"
                 onClick={() => {
                   setHistory([])
                   try {
@@ -424,6 +508,7 @@ export function MusicBrowser({
                   } catch {}
                 }}
               >
+                <Trash2 size={14} />
                 清空
               </button>
             </div>

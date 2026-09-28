@@ -14,6 +14,7 @@ import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Reply, Request, Trace } from '../shared/types'
 import { SEND_METHODS } from '../shared/private-messages'
+import { FullScreenController } from './fullscreen'
 import { validate } from './service'
 import { SettingsStore } from './settings'
 import { DesktopController } from './desktop'
@@ -36,7 +37,8 @@ let updates: UpdateController | null = null
 let updateTimer: ReturnType<typeof setTimeout> | undefined
 let boundsTimer: ReturnType<typeof setTimeout> | undefined
 function saveBounds() {
-  if (!win || win.isDestroyed() || win.isFullScreen() || !store) return
+  if (!win || win.isDestroyed() || win.isFullScreen() || desktop?.fullscreen?.value || !store)
+    return
   try {
     store.saveWindow({ ...win.getNormalBounds(), maximized: win.isMaximized() })
   } catch {
@@ -236,11 +238,12 @@ app.whenReady().then(() => {
     assertSender(event)
     return desktop!.info()
   })
-  ipcMain.handle('desktop-fullscreen', (event, value: unknown) => {
+  ipcMain.handle('desktop-fullscreen', async (event, value: unknown) => {
     assertSender(event)
-    if (typeof value !== 'boolean') throw new Error('全屏状态无效')
-    if (value) saveBounds()
-    win!.setFullScreen(value)
+    if (typeof value !== 'boolean' && value !== 'toggle') throw new Error('全屏状态无效')
+    saveBounds()
+    await desktop!.fullscreen!.set(value)
+    return desktop!.info()
   })
   ipcMain.handle('desktop-settings', (event, value: unknown) => {
     assertSender(event)
@@ -326,9 +329,8 @@ app.whenReady().then(() => {
     win.on('move', scheduleBounds)
     win.on('maximize', scheduleBounds)
     win.on('unmaximize', scheduleBounds)
-    win.on('enter-full-screen', () => desktop?.notify())
+    desktop!.fullscreen = new FullScreenController(win, () => desktop?.notify())
     win.on('leave-full-screen', () => {
-      desktop?.notify()
       scheduleBounds()
     })
     win.on('close', (event) => {

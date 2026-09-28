@@ -54,6 +54,17 @@ test('immersive playback and native fullscreen preserve navigation, focus and no
     await expect(page.getByLabel('搜索音乐库')).toHaveValue('保留搜索内容')
     await expect(page.getByRole('button', { name: '打开播放界面' })).toBeFocused()
 
+    // Each direction must complete on a single click, across repeated transitions.
+    await page.getByRole('button', { name: '打开播放界面' }).click()
+    for (let i = 0; i < 3; i++) {
+      await page.getByRole('button', { name: '进入系统全屏' }).click()
+      await expect.poll(nativeFullScreen).toBe(true)
+      await page.getByRole('button', { name: '退出系统全屏' }).click()
+      await expect.poll(nativeFullScreen).toBe(false)
+    }
+    await page.getByRole('button', { name: '收起播放页' }).click()
+    await expect(page.getByLabel('搜索音乐库')).toBeVisible()
+
     // Native menu/window-manager changes must also update the player and its fullscreen button.
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].setFullScreen(true))
     await expect(page.getByRole('button', { name: '退出系统全屏' })).toBeVisible()

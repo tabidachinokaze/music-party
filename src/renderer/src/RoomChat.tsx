@@ -3,6 +3,8 @@ import { MessageCircle, RefreshCw, Send, X } from 'lucide-react'
 import type { Room } from '../../shared/types'
 import { CHAT_MAX_LENGTH } from '../../shared/chat'
 import type { useRoomChat } from './useRoomChat'
+import { useDismissable } from './player/useDismissable'
+import { usePresence } from './player/usePresence'
 
 export function RoomChat({
   chat,
@@ -17,6 +19,8 @@ export function RoomChat({
 }) {
   const list = useRef<HTMLDivElement>(null)
   const drawer = useRef<HTMLElement>(null)
+  const presence = usePresence(chat.visible)
+  useDismissable(drawer, () => chat.setVisible(false), chat.visible, '[data-popup-toggle="chat"]')
   const nearBottom = useRef(true)
   const historyAnchor = useRef<{ height: number; top: number } | null>(null)
   useEffect(() => {
@@ -57,9 +61,16 @@ export function RoomChat({
       historyAnchor.current = null
     })
   }
-  if (!chat.visible) return null
+  if (!presence.mounted) return null
   return (
-    <aside ref={drawer} className="chat-drawer" aria-label="官方房间聊天">
+    <aside
+      ref={drawer}
+      className="chat-drawer"
+      aria-label="官方房间聊天"
+      data-closing={presence.closing}
+      aria-hidden={presence.closing}
+      inert={presence.closing}
+    >
       <div className="chat-heading">
         <MessageCircle size={19} />
         <div>

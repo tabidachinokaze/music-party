@@ -34,6 +34,7 @@ export function PlayerView({
   onBrowse,
   expanded,
   fullScreen,
+  fullScreenBusy,
   onExpand,
   onCollapse,
   onFullScreen,
@@ -49,6 +50,7 @@ export function PlayerView({
   onBrowse(): void
   expanded: boolean
   fullScreen: boolean
+  fullScreenBusy: boolean
   onExpand(): void
   onCollapse(): void
   onFullScreen(): void
@@ -113,6 +115,7 @@ export function PlayerView({
               <button
                 className="player-fullscreen"
                 aria-label={fullScreen ? '退出系统全屏' : '进入系统全屏'}
+                disabled={fullScreenBusy}
                 title={fullScreen ? '退出系统全屏（Esc）' : '进入系统全屏'}
                 onClick={onFullScreen}
               >
@@ -168,7 +171,7 @@ export function PlayerView({
               <Mail size={15} />
               私信邀请
             </button>
-            <button className="room-chat-button" onClick={onChat}>
+            <button className="room-chat-button" onClick={onChat} data-popup-toggle="chat">
               <MessageCircle size={16} />
               房间聊天
               {unread > 0 && <span className="unread-count">{unread > 99 ? '99+' : unread}</span>}

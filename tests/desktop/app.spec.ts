@@ -185,6 +185,35 @@ test('official multiplayer lifecycle with three members, remote song changes and
         active = false
         body = { code: 200, data: { success: true } }
         break
+      case '/album/sublist':
+        body = {
+          code: 200,
+          count: 51,
+          hasMore: !args.offset,
+          data: Array.from({ length: args.offset ? 1 : 50 }, (_, i) => ({
+            id: 8000 + Number(args.offset || 0) + i,
+            name: `收藏专辑${Number(args.offset || 0) + i + 1}`,
+            artists: [{ name: '专辑歌手' }],
+            size: 2,
+          })),
+        }
+        break
+      case '/album':
+        body = {
+          code: 200,
+          album: { id: args.id },
+          songs: [
+            {
+              id: 6100,
+              name: '专辑第一首',
+              ar: [{ name: '专辑歌手' }],
+              al: { name: '收藏专辑1' },
+              dt: 30000,
+            },
+            { id: 6101, name: '专辑第二首', dt: 30000 },
+          ],
+        }
+        break
       case '/song/detail':
         body = {
           code: 200,
@@ -475,18 +504,21 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await page.getByRole('button', { name: '正在播放', exact: true }).click()
     await expect(page.getByRole('button', { name: /^跳转歌词/ })).toHaveCount(0)
     await page.getByRole('button', { name: '播放队列', exact: true }).click()
+    await expect(page.getByRole('dialog', { name: '房间待播列表' })).toBeVisible()
+    await page.locator('.album-artwork').click()
+    await expect(page.getByRole('dialog', { name: '房间待播列表' })).toHaveCount(0)
+    await page.getByRole('button', { name: '播放队列', exact: true }).click()
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog', { name: '房间待播列表' })).toHaveCount(0)
     await page.getByRole('button', { name: '离开房间', exact: true }).click()
     expect(calls.filter((call) => call.path.endsWith('/exit'))).toHaveLength(0)
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog', { name: '离开多人房间？' })).toHaveCount(0)
-    await expect(page.getByRole('dialog', { name: '房间待播列表' })).toBeVisible()
-    await page.keyboard.press('Escape')
-    await expect(page.getByRole('dialog', { name: '房间待播列表' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '收起播放界面' })).toBeVisible()
-    await page.getByRole('button', { name: '播放队列', exact: true }).click()
     await page.getByRole('button', { name: '离开房间', exact: true }).click()
     await page.getByRole('button', { name: '确认离开' }).click()
     await expect(page.getByText('已离开多人房间', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '播放队列', exact: true }).click()
     await expect(page.getByRole('dialog', { name: '播放队列', exact: true })).toBeVisible()
     await expect(page.locator('.queue-track-copy strong')).toHaveText('测试歌曲111')
     await expect(page.getByRole('button', { name: '清空队列', exact: true })).toBeVisible()
@@ -587,6 +619,15 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await page.getByRole('button', { name: '我喜欢的音乐', exact: true }).click()
     await expect(page.getByText('已加载 2 / 2 首')).toBeVisible()
     await page.getByRole('button', { name: '取消喜欢 测试歌曲111', exact: true }).click()
+    await expect(page.getByRole('dialog', { name: '取消喜欢这首歌？' })).toBeVisible()
+    expect(calls.filter((call) => call.path === '/like')).toHaveLength(0)
+    await page.mouse.click(5, 5)
+    await expect(page.getByRole('dialog', { name: '取消喜欢这首歌？' })).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: '取消喜欢 测试歌曲111', exact: true }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: '取消喜欢 测试歌曲111', exact: true }).click()
+    await page.getByRole('button', { name: '确认取消喜欢' }).click()
     await expect(page.getByText('已加载 1 / 1 首')).toBeVisible()
     expect(calls.find((call) => call.path === '/like')!.args.like).toBe('false')
     await page.getByRole('button', { name: '打开播放界面' }).click()
@@ -617,6 +658,26 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await page.locator('.filter-tabs').getByRole('button', { name: '歌手', exact: true }).click()
     await page.getByRole('button', { name: '搜索歌手', exact: true }).click()
     await expect(page.getByRole('button', { name: '播放 歌手歌曲' })).toBeVisible()
+    await page.getByRole('button', { name: '返回', exact: true }).click()
+    const searches = calls.filter((call) => call.path === '/cloudsearch').length
+    await page.getByRole('button', { name: '删除搜索记录 111', exact: true }).click()
+    await expect(page.getByRole('button', { name: '删除搜索记录 111', exact: true })).toHaveCount(0)
+    expect(calls.filter((call) => call.path === '/cloudsearch')).toHaveLength(searches)
+    expect(
+      await page.evaluate(() => JSON.parse(localStorage.getItem('music-party-search-history')!)),
+    ).not.toContain('111')
+    await page.getByRole('button', { name: '清空搜索记录' }).click()
+    await expect(page.locator('.search-history')).toHaveCount(0)
+    await page.getByRole('button', { name: '收藏的专辑', exact: true }).click()
+    await expect(page.getByText('全部专辑 · 51 张')).toBeVisible()
+    await page.getByRole('button', { name: /^收藏专辑1 专辑歌手/ }).click()
+    await expect(page.getByText('已加载 2 / 2 首')).toBeVisible()
+    await expect(page.getByRole('button', { name: '播放 专辑第一首', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '播放全部', exact: true }).click()
+    await expect
+      .poll(() => calls.filter((call) => call.path === '/song/url/v1').at(-1)?.args.id)
+      .toBe('6100')
+    await page.screenshot({ path: 'test-results/music-party-album.png' })
     expect(errors).toEqual([])
     const invalid = await page.evaluate(() =>
       window.together.call({ method: 'multiStatus', args: { cookie: 'bad' } }),

@@ -24,12 +24,15 @@ const endpoints: Record<Method, string> = {
   stream: 'song_url_v1',
   playlists: 'user_playlist',
   playlist: 'playlist_detail',
+  albums: 'album_sublist',
+  album: 'album',
   likes: 'likelist',
   like: 'like',
   lyrics: 'lyric',
   artistSongs: 'artist_songs',
   privateConversations: 'msg_private',
   privateHistory: 'msg_private_history',
+  privateRead: 'api',
   privateSend: 'send_text',
   privateInvite: 'send_text',
   follows: 'user_follows',
@@ -41,6 +44,7 @@ const endpoints: Record<Method, string> = {
 const fields: Partial<Record<Method, string[]>> = {
   privateConversations: ['offset'],
   privateHistory: ['uid', 'before'],
+  privateRead: ['uid'],
   privateSend: ['uid', 'text', 'requestId'],
   privateInvite: ['uid', 'roomId', 'requestId'],
   follows: ['uid', 'offset'],
@@ -50,6 +54,8 @@ const fields: Partial<Record<Method, string[]>> = {
   stream: ['id'],
   playlists: ['uid', 'offset'],
   playlist: ['id'],
+  albums: ['offset'],
+  album: ['id'],
   likes: ['uid'],
   like: ['id', 'value'],
   lyrics: ['id'],
@@ -220,7 +226,7 @@ export class ApiService {
         }
         if (
           ((method.startsWith('multi') && method !== 'multiPreview') ||
-            ['playlists', 'likes', 'like'].includes(method) ||
+            ['playlists', 'albums', 'likes', 'like'].includes(method) ||
             PRIVATE_METHODS.has(method)) &&
           !this.cookie
         )
@@ -255,6 +261,13 @@ export class ApiService {
           delete args.roomId
         }
         if (['privateConversations', 'privateHistory', 'follows'].includes(method)) args.limit = 30
+        if (method === 'privateRead') {
+          // Official message-center API; always acknowledge one opened conversation, never all.
+          args.data = { userId: args.uid }
+          args.uri = '/api/communication/msg/unread/count/clean'
+          args.crypto = 'eapi'
+          delete args.uid
+        }
         if (method === 'multiChatSend') {
           // Resolve the IM room from the authenticated server snapshot, never from renderer input.
           const status = await this.invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
@@ -282,7 +295,7 @@ export class ApiService {
           })
           delete args.kind
         }
-        if (method === 'playlists') args.limit = 50
+        if (method === 'playlists' || method === 'albums') args.limit = 50
         if (method === 'artistSongs') Object.assign(args, { limit: 100, order: 'hot' })
         // Upstream like.js converts the string 'false'; passing a boolean there would incorrectly like a song.
         if (method === 'like') {
@@ -318,6 +331,8 @@ export class ApiService {
         trace.response = traceBody(body)
         const code = body?.code ?? body?.data?.code
         const validQr = method === 'qrCheck' && [800, 801, 802, 803].includes(Number(code))
+        if (method === 'privateRead' && (Number(code) !== 200 || body?.data === false))
+          throw new Error(body?.message || '私信已读状态未确认，请重试')
         if (
           !body ||
           (code !== undefined && Number(code) !== 200 && !validQr) ||
