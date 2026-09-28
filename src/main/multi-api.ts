@@ -7,6 +7,10 @@ export const multiEndpoints = {
   multiStatus: '/api/listen/together/multi/match/status/get',
   multiHeartbeat: '/api/listen/together/multi/match/heartbeat',
   multiQueue: '/api/listen/together/multi/match/wait/song/list',
+  multiSongInfo: '/api/listen/together/multi/played/song/info',
+  multiRemove: '/api/listen/together/multi/match/song/operate',
+  multiUp: '/api/listen/together/multi/match/song/operate',
+  multiLike: '/api/listen/together/multi/match/song/operate',
   multiAdd: '/api/listen/together/multi/match/song/operate',
   multiNext: '/api/listen/together/multi/match/song/operate',
   multiLeave: '/api/listen/together/multi/match/exit',
@@ -47,6 +51,18 @@ export function multiPayload(method: MultiMethod, args: Record<string, unknown>,
       return { roomId }
     case 'multiQueue':
       return { roomId, page: JSON.stringify({ size: 20, cursor: args.cursor || '' }) }
+    case 'multiSongInfo':
+      return { roomId, songBizId: args.bizId }
+    case 'multiRemove':
+    case 'multiUp':
+    case 'multiLike':
+      return {
+        roomId,
+        songId: args.songId,
+        bizId: args.bizId,
+        operate: { multiRemove: 7, multiUp: 2, multiLike: 3 }[method],
+        checkToken,
+      }
     case 'multiLeave':
       return { roomId, exitType: 'NORMAL_END' }
     case 'multiAdd':
@@ -62,4 +78,7 @@ export const multiMutations = new Set([
   'multiNext',
   'multiLeave',
   'multiChatSend',
+  'multiRemove',
+  'multiUp',
+  'multiLike',
 ])

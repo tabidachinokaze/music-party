@@ -16,6 +16,7 @@ import {
   Music2,
   RefreshCw,
   Users,
+  ThumbsUp,
 } from 'lucide-react'
 import type { useParty } from '../useParty'
 import type { useLibrary } from '../useLibrary'
@@ -167,6 +168,23 @@ export function PlayerView({
             </button>
           </div>
           <div className="room-inline-actions">
+            <button
+              className={`room-song-like ${p.roomReaction.liked ? 'liked' : ''}`}
+              aria-label="一起听点赞"
+              title="为房间当前歌曲点赞"
+              disabled={
+                !!p.busy ||
+                p.roomReaction.loading ||
+                p.roomReaction.liked ||
+                !p.roomPlayback?.song ||
+                p.current?.id !== p.roomPlayback.song.songId
+              }
+              onClick={() => p.act('一起听点赞', p.likeRoomSong)}
+            >
+              <ThumbsUp size={16} />
+              {p.roomReaction.liked ? '已点赞' : '点赞'}
+              <span>{Math.max(p.roomReaction.count, p.roomPlayback?.likeCount || 0)}</span>
+            </button>
             <button className="secondary" onClick={onInvite}>
               <Mail size={15} />
               私信邀请

@@ -11,6 +11,8 @@ test('official multiplayer lifecycle with three members, remote song changes and
     version = 1,
     port = 0
   let queue: any[] = []
+  const roomLikes = new Set<string>(),
+    roomUps = new Set<string>()
   let heartbeatSeconds = 1,
     boundaryChecks = -1
   let liked = ['111', '112']
@@ -35,6 +37,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
     playedTime: 5000,
     songDuration: 30000,
     waitSongCount: queue.length,
+    playingSongZanCnt: roomLikes.has(`1000${currentSong}`) ? 1 : 0,
   })
   const snapshot = () => ({
     roomId: 'multi-test-room',
@@ -123,6 +126,15 @@ test('official multiplayer lifecycle with three members, remote song changes and
         active = true
         body = { code: 200, data: { success: true, multiLtRoomSnapshot: snapshot() } }
         break
+      case '/api/listen/together/multi/played/song/info':
+        body = {
+          code: 200,
+          data: {
+            liked: roomLikes.has(args.data.songBizId),
+            songInfo: { zanCnt: roomLikes.has(args.data.songBizId) ? 1 : 0 },
+          },
+        }
+        break
       case '/api/listen/together/multi/match/wait/song/list': {
         const cursor = JSON.parse(args.data.page).cursor
         const offset = Number(cursor || 0)
@@ -135,6 +147,8 @@ test('official multiplayer lifecycle with three members, remote song changes and
             coverUrl: '',
           },
           rcmdUid: song.songRcmdUid,
+          selfRcmd: String(song.songRcmdUid) === '123',
+          uped: roomUps.has(String(song.songBizId)),
           nickname: `听友${song.songRcmdUid}`,
         }))
         body = {
@@ -173,6 +187,22 @@ test('official multiplayer lifecycle with three members, remote song changes and
         if (args.data.operate === 4) {
           body = { code: 200, data: { failedCode: 10000, failedMsg: '没有切歌权限' } }
           break
+        }
+        if (args.data.operate === 2) {
+          const index = queue.findIndex(
+            (song) => String(song.songBizId) === String(args.data.bizId),
+          )
+          if (index >= 0) queue.unshift(...queue.splice(index, 1))
+          roomUps.add(String(args.data.bizId))
+          version++
+        }
+        if (args.data.operate === 3) {
+          roomLikes.add(String(args.data.bizId))
+          version++
+        }
+        if (args.data.operate === 7) {
+          queue = queue.filter((song) => String(song.songBizId) !== String(args.data.bizId))
+          version++
         }
         if (args.data.operate === 1) {
           queue.push({ songId: args.data.songId, songBizId: '999', songRcmdUid: '123' })
@@ -423,6 +453,13 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await page.getByRole('button', { name: '创建多人一起听' }).click()
     await expect(page.getByRole('heading', { name: '3 人一起听' })).toBeVisible()
     await expect(page.locator('.member')).toHaveCount(3)
+    await page.getByRole('button', { name: '一起听点赞', exact: true }).click()
+    await expect(page.getByRole('button', { name: '一起听点赞', exact: true })).toBeDisabled()
+    expect(
+      calls.filter((call) => call.path.endsWith('/song/operate') && call.args.data.operate === 3),
+    ).toHaveLength(1)
+    expect(calls.filter((call) => call.path === '/like')).toHaveLength(0)
+
     await page.getByRole('button', { name: '查看房间成员' }).click()
     memberIds = [123, 456, 789, 1000]
     await page.getByRole('button', { name: '刷新成员', exact: true }).click()
@@ -686,6 +723,23 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await page.getByRole('button', { name: '刷新待播列表' }).click()
     await expect(page.getByText('45 首待播', { exact: true })).toBeVisible()
     await expect(page.locator('.queue-track')).toHaveCount(45)
+    await page.locator('.queue-track').nth(2).getByRole('button', { name: /^顶歌/ }).click()
+    await expect(page.locator('.queue-track-copy strong').first()).toHaveText('测试歌曲702')
+    await expect(
+      page.locator('.queue-track').first().getByRole('button', { name: /^顶歌/ }),
+    ).toBeDisabled()
+    await page
+      .locator('.queue-track')
+      .first()
+      .getByRole('button', { name: /^删除推荐/ })
+      .click()
+    expect(
+      calls.filter((call) => call.path.endsWith('/song/operate') && call.args.data.operate === 7),
+    ).toHaveLength(0)
+    await page.getByRole('button', { name: '确认删除推荐' }).click()
+    await expect(page.getByText('44 首待播', { exact: true })).toBeVisible()
+    expect(queue.filter((song) => song.songId === '702')).toHaveLength(8)
+
     expect(
       calls
         .filter((call) => call.path.endsWith('/wait/song/list'))

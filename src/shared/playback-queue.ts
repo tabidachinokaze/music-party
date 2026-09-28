@@ -21,6 +21,11 @@ export function parseRoomQueue(body: any): {
       songBizId: id(song?.bizId),
       songRcmdUid: id(item.rcmdUid ?? 0),
       recommender: typeof item.nickname === 'string' ? item.nickname : '',
+      selfRecommended: item.selfRcmd === true,
+      uped: item.uped === true,
+      upCount: Math.max(0, Number(song.upCnt) || 0),
+      liked: item.liked === true,
+      likeCount: Math.max(0, Number(song.zanCnt) || 0),
       track: {
         id: songId,
         name: song.title || '未知歌曲',

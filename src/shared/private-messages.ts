@@ -1,5 +1,6 @@
 import type { Conversation, MultiInvitation, PrivateMessage, PrivatePage } from './types'
 import { richMessageContent, messageObject } from './message-content'
+import { neteaseAssetUrl } from './media'
 import { invitation, parseInvitation } from './protocol'
 export const PRIVATE_TEXT_LIMIT = 500
 export const SEND_METHODS = new Set(['multiChatSend', 'privateSend', 'privateInvite'])
@@ -122,6 +123,11 @@ export function messageContent(
   const data = { ...messageObject(envelope), ...payload(value) }
   const invitations = findInvitations(envelope ? [data, envelope] : data)
   const content = richMessageContent(data)
+  if (typeof data.msg === 'string' && data.msg.startsWith('[文件] ')) {
+    const [name, url] = data.msg.slice(5).split('\n')
+    const safe = neteaseAssetUrl(url)
+    if (name && safe) content.attachments = [{ kind: 'file', title: name, actionUrl: safe }]
+  }
   if (invitations.length && content.attachments)
     content.attachments = content.attachments.filter((item) => item.resourceType !== 'general')
   const body = messageObject(data.body ?? data.msgBody)
@@ -231,6 +237,13 @@ export function mergePrivate(
   previous: PrivateMessage[],
   incoming: PrivateMessage[],
 ): PrivateMessage[] {
+  const sameMedia = (a: string | undefined, b: string | undefined) => {
+    if (!a || !b) return false
+    if (a === b) return true
+    const left = neteaseAssetUrl(a),
+      right = neteaseAssetUrl(b)
+    return !!left && !!right && new URL(left).pathname === new URL(right).pathname
+  }
   const values = new Map(previous.map((m) => [m.id, m]))
   incoming.forEach((m) => values.set(m.id, m))
   const server = [...values.values()].filter((m) => !m.delivery)
@@ -241,7 +254,16 @@ export function mergePrivate(
         !used.has(m.id) &&
         m.senderId === local.senderId &&
         m.recipientId === local.recipientId &&
-        m.text === local.text &&
+        (m.text === local.text ||
+          !!local.attachments?.some((a) =>
+            m.attachments?.some(
+              (b) =>
+                a.kind === b.kind &&
+                ((a.resourceId && a.resourceId === b.resourceId) ||
+                  sameMedia(a.url, b.url) ||
+                  (a.actionUrl && a.actionUrl === b.actionUrl)),
+            ),
+          )) &&
         m.time > (local.echoAfter ?? -1) &&
         Math.abs(m.time - local.time) <= 60000,
     )

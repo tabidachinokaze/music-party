@@ -13,6 +13,7 @@ import {
 import type { MultiInvitation, Room, Song } from '../../shared/types'
 import { MessageContent } from './MessageContent'
 import { EmojiPicker } from './EmojiPicker'
+import { MediaComposer } from './MediaComposer'
 import { PRIVATE_TEXT_LIMIT, inviteText } from '../../shared/private-messages'
 import type { usePrivateMessages } from './usePrivateMessages'
 import type { ApiCall } from './music-data'
@@ -416,6 +417,13 @@ export function PrivateMessages({
               }}
             >
               <div className="compose-tools">
+                <MediaComposer
+                  target={{ kind: 'private', uid: inbox.selected.uid }}
+                  label={inbox.selected.nickname}
+                  disabled={inbox.sending}
+                  onSent={inbox.acceptMedia}
+                  onMediaPlay={onMediaPlay}
+                />
                 <EmojiPicker
                   onInsert={(value) =>
                     inbox.setDraft((draft) =>

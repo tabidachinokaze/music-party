@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ChatEmoji, ChatMessage, Room } from '../../shared/types'
 import { CHAT_MAX_LENGTH, mergeChat, parseChatPage } from '../../shared/chat'
 import type { ApiCall } from './music-data'
+import type { MediaReceipt, MediaTarget } from '../../shared/media'
 
 export function useRoomChat(api: ApiCall, room: Room | null, account: any) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -182,6 +183,38 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any) {
     }
   }
   return {
+    acceptMedia(receipt: MediaReceipt, target: MediaTarget) {
+      if (
+        target.kind !== 'room' ||
+        target.roomId !== room?.roomId ||
+        receipt.senderUid !== String(account?.userId)
+      )
+        return
+      update(
+        mergeChat(messagesRef.current, [
+          {
+            id: `local:${receipt.requestId}`,
+            roomId: target.roomId,
+            uid: receipt.senderUid,
+            nickname: account?.nickname || '我',
+            avatar: account?.avatarUrl || '',
+            time: receipt.time,
+            text: receipt.text,
+            kind: 'image',
+            emoji: receipt.emoji,
+            attachments: receipt.attachments,
+            delivery: 'submitted',
+            echoAfter: Math.max(
+              -1,
+              ...messagesRef.current
+                .filter((message) => !message.delivery && message.uid === receipt.senderUid)
+                .map((message) => message.time),
+            ),
+          },
+        ]),
+      )
+      fetchMessages()
+    },
     messages,
     loading,
     error,

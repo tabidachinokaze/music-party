@@ -3,6 +3,7 @@ import { MessageCircle, RefreshCw, Send, X } from 'lucide-react'
 import type { Room, Song } from '../../shared/types'
 import { MessageContent } from './MessageContent'
 import { EmojiPicker } from './EmojiPicker'
+import { MediaComposer } from './MediaComposer'
 import { CHAT_MAX_LENGTH } from '../../shared/chat'
 import type { useRoomChat } from './useRoomChat'
 import { useDismissable } from './player/useDismissable'
@@ -67,9 +68,9 @@ export function RoomChat({
       historyAnchor.current = null
     })
   }
-  if (!presence.mounted) return null
   return (
     <aside
+      hidden={!presence.mounted}
       ref={drawer}
       className="chat-drawer"
       aria-label="官方房间聊天"
@@ -179,6 +180,13 @@ export function RoomChat({
           >
             {!room.chatRoomId && <p>正在等待官方聊天室信息，可刷新房间成员后重试。</p>}
             <div className="compose-tools">
+              <MediaComposer
+                target={{ kind: 'room', roomId: room.roomId }}
+                label="当前一起听房间"
+                disabled={chat.sending || !room.chatRoomId}
+                onSent={chat.acceptMedia}
+                onMediaPlay={onMediaPlay}
+              />
               <EmojiPicker
                 disabled={chat.sending || !room.chatRoomId}
                 onInsert={(value) =>

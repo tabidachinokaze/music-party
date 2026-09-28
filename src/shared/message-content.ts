@@ -1,4 +1,5 @@
 import type { ChatEmoji, MessageAttachment, MessageTextPart } from './types'
+import { neteaseAssetUrl } from './media'
 
 export function messageObject(value: unknown): any {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value
@@ -122,13 +123,20 @@ export function richMessageContent(value: unknown): {
             item.imgUrl ||
             item.emojiImgUrl ||
             item.voiceUrl ||
+            item.playUrlInfo?.url ||
             item.videoUrl,
     )
     attachments.push({
       kind,
       title: text(item.name || item.title) || title,
       url,
-      cover: mediaUrl(item.coverUrl || item.cover),
+      cover: mediaUrl(
+        item.coverUrl || item.cover || item.coverImage?.url || item.coverImage?.picUrl,
+      ),
+      resourceId:
+        typeof (item.md5 || item.voiceKey || item.videoKey) === 'string'
+          ? item.md5 || item.voiceKey || item.videoKey
+          : undefined,
     })
   }
   const emoji = parseEmoji(data.emoji)
@@ -136,10 +144,16 @@ export function richMessageContent(value: unknown): {
   const images = data.pics || data.pictures || data.images
   if (Array.isArray(images)) images.slice(0, 9).forEach((pic) => addMedia('image', pic, '图片'))
   else addMedia('image', data.picInfo || data.picture || data.image || data.picUrl, '图片')
-  addMedia('audio', data.voice || data.audio || data.voiceUrl, '语音消息')
+  addMedia('audio', data.voice || data.audio || (data.voiceUrl ? data : null), '语音消息')
   const video = messageObject(data.video)
-  if (video.url || video.videoUrl || data.videoUrl)
-    addMedia('video', data.video || data.videoUrl, '视频消息')
+  if (
+    video.url ||
+    video.videoUrl ||
+    video.playUrlInfo?.url ||
+    data.videoUrl ||
+    data.playUrlInfo?.url
+  )
+    addMedia('video', data.video || data, '视频消息')
   // New message-center envelopes use msgType; legacy private-history type values are different.
   if (root.msgType === 1 && !attachments.length) addMedia('image', body, '图片')
   if (root.msgType === 4 && !attachments.length) addMedia('audio', body, '语音消息')
@@ -192,7 +206,8 @@ export function richMessageContent(value: unknown): {
       48: 'mlog',
     }
     if (!raw && typed[root.msgType] === key) raw = body
-    if (!raw || (key === 'video' && (video.url || video.videoUrl))) continue
+    if (!raw || (key === 'video' && (video.url || video.videoUrl || video.playUrlInfo?.url)))
+      continue
     const item = messageObject(raw)
     const rawId = item.id ?? item.resourceId ?? item.userId ?? item.vid ?? item.resId ?? ''
     const id = typeof rawId === 'number' && !Number.isSafeInteger(rawId) ? '' : String(rawId)
@@ -241,7 +256,7 @@ export function richMessageContent(value: unknown): {
       kind: 'file',
       title: text(file.name || file.fileName) || '文件',
       subtitle: text(file.description),
-      actionUrl: musicMessageLink(file.url),
+      actionUrl: musicMessageLink(file.url) || neteaseAssetUrl(file.url),
     })
   }
   const parts = messageObject(data.msgRichText).contentTextList

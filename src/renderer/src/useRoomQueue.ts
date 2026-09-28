@@ -8,6 +8,7 @@ export function useRoomQueue(
   roomId: string | undefined,
   version: number | undefined,
   enabled: boolean,
+  actionRevision = 0,
 ) {
   const [entries, setEntries] = useState<RoomQueueEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -61,6 +62,6 @@ export function useRoomQueue(
     return () => {
       epoch.current++
     }
-  }, [roomId, version, enabled, revision])
+  }, [roomId, version, enabled, revision, actionRevision])
   return { entries, loading, complete, error, refresh: () => setRevision((value) => value + 1) }
 }

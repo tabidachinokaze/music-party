@@ -1,5 +1,6 @@
 import type { ProjectLink, UpdateState } from './updates'
 import type { DesktopInfo, DesktopMediaState, PlayerCommand, Preferences } from './desktop'
+import type { MediaRequest, MediaReply, MediaProgress } from './media'
 export type Method =
   | 'account'
   | 'qrCreate'
@@ -22,6 +23,10 @@ export type Method =
   | 'multiStatus'
   | 'multiHeartbeat'
   | 'multiQueue'
+  | 'multiSongInfo'
+  | 'multiRemove'
+  | 'multiUp'
+  | 'multiLike'
   | 'multiAdd'
   | 'multiNext'
   | 'multiLeave'
@@ -62,6 +67,10 @@ export interface Bridge {
   copy(text: string): Promise<void>
   openProject(link: ProjectLink): Promise<void>
   openMessageLink(url: string): Promise<void>
+  sendMedia(request: MediaRequest): Promise<MediaReply>
+  cancelMedia(requestId: string): Promise<void>
+  onMediaProgress(callback: (progress: MediaProgress) => void): () => void
+  requestMicrophone(): Promise<void>
   updateState(): Promise<UpdateState>
   updateAction(action: 'check' | 'download' | 'install'): Promise<UpdateState>
   onUpdate(callback: (state: UpdateState) => void): () => void
@@ -108,6 +117,11 @@ export interface QueueSong {
 export interface RoomQueueEntry extends QueueSong {
   track: Song
   recommender: string
+  selfRecommended: boolean
+  uped: boolean
+  upCount: number
+  liked: boolean
+  likeCount: number
 }
 export interface RoomPlayback {
   song: QueueSong | null
@@ -118,6 +132,7 @@ export interface RoomPlayback {
   sampledAt: number
   forceSync: boolean
   waitSongCount: number
+  likeCount?: number
 }
 export interface Member {
   uid: string

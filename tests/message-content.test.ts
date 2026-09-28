@@ -104,6 +104,15 @@ it('supports legacy resources and modern picture, voice, video, generic card and
   expect(messageContent({ msgType: 0, text: { textBody: '新格式正文' } }).text).toBe('新格式正文')
 })
 it('preserves literal text and refuses executable, local, credentialed or non-Netease links', () => {
+  expect(
+    richMessageContent({
+      msgType: 5,
+      body: {
+        videoUrl: 'file:///local.mp4',
+        playUrlInfo: { url: 'https://m10.music.126.net/clip.mp4' },
+      },
+    }).attachments?.[0].url,
+  ).toBe('https://m10.music.126.net/clip.mp4')
   for (const url of [
     'file:///etc/passwd',
     'javascript:alert(1)',

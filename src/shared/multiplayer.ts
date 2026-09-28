@@ -32,6 +32,7 @@ export function parseRoomPlayback(value: any, sampledAt: number): RoomPlayback |
     sampledAt,
     forceSync: value.forceSync === true,
     waitSongCount: finite(value.waitSongCount, nextSongs.length),
+    likeCount: finite(value.playingSongZanCnt),
   }
 }
 export function parseSnapshot(value: any, sampledAt: number): RoomSnapshot {

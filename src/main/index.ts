@@ -8,6 +8,7 @@ import {
   safeStorage,
   screen,
   shell,
+  systemPreferences,
   utilityProcess,
 } from 'electron'
 import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
@@ -16,6 +17,12 @@ import type { Reply, Request, Trace } from '../shared/types'
 import { SEND_METHODS } from '../shared/private-messages'
 import { FullScreenController } from './fullscreen'
 import { musicMessageLink } from '../shared/message-content'
+import {
+  neteaseAssetUrl,
+  validateMediaRequest,
+  type MediaReply,
+  type MediaRequest,
+} from '../shared/media'
 import { validate } from './service'
 import { SettingsStore } from './settings'
 import { DesktopController } from './desktop'
@@ -37,6 +44,18 @@ let exitPreparation: Promise<void> | null = null
 let updates: UpdateController | null = null
 let updateTimer: ReturnType<typeof setTimeout> | undefined
 let boundsTimer: ReturnType<typeof setTimeout> | undefined
+let microphoneUntil = 0
+const mediaPending = new Map<
+  number,
+  {
+    resolve: (reply: MediaReply) => void
+    timer: ReturnType<typeof setTimeout>
+    requestId: string
+    phase: string
+    started: number
+    meta: { kind: string; destination: string; size: number; mime: string }
+  }
+>()
 function saveBounds() {
   if (!win || win.isDestroyed() || win.isFullScreen() || desktop?.fullscreen?.value || !store)
     return
@@ -86,6 +105,35 @@ function startWorker() {
   }
   child.postMessage({ type: 'restore', cookie })
   child.on('message', (message) => {
+    if (message.type === 'media-progress') {
+      for (const task of mediaPending.values())
+        if (task.requestId === message.progress.requestId) task.phase = message.progress.phase
+      win?.webContents.send('media-progress', message.progress)
+    }
+    if (message.type === 'media-reply') {
+      const task = mediaPending.get(message.id)
+      if (task) {
+        clearTimeout(task.timer)
+        mediaPending.delete(message.id)
+        const trace: Trace = {
+          id: -message.id,
+          time: new Date().toISOString(),
+          method: 'mediaSend',
+          duration: Date.now() - task.started,
+          ok: message.reply.ok,
+          request: task.meta,
+          response: {
+            ok: message.reply.ok,
+            code: message.reply.code,
+            phase: task.phase,
+            deliveryUnknown: message.reply.deliveryUnknown === true,
+          },
+        }
+        traces = [...traces.slice(-299), trace]
+        win?.webContents.send('trace', trace)
+        task.resolve(message.reply)
+      }
+    }
     if (message.type === 'cookie') {
       try {
         if (!message.cookie) rmSync(sessionFile, { force: true })
@@ -109,6 +157,15 @@ function startWorker() {
     }
   })
   child.on('exit', () => {
+    for (const task of mediaPending.values()) {
+      clearTimeout(task.timer)
+      task.resolve({
+        ok: false,
+        error: 'API 进程已退出，请刷新会话确认附件状态',
+        deliveryUnknown: task.phase === 'sending',
+      })
+    }
+    mediaPending.clear()
     child = null
     for (const task of pending.values()) {
       clearTimeout(task.timer)
@@ -215,9 +272,62 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('message-link-open', async (event, value: unknown) => {
     assertSender(event)
-    const url = musicMessageLink(value)
+    const url = musicMessageLink(value) || neteaseAssetUrl(value)
     if (!url) throw new Error('消息没有可用的网易云链接')
     await shell.openExternal(url)
+  })
+  ipcMain.handle('microphone-request', async (event) => {
+    assertSender(event)
+    if (process.platform === 'darwin' && !(await systemPreferences.askForMediaAccess('microphone')))
+      throw new Error('请在系统设置中允许麦克风访问')
+    microphoneUntil = Date.now() + 10000
+  })
+  ipcMain.handle('media-cancel', (event, requestId: unknown) => {
+    assertSender(event)
+    if (typeof requestId === 'string' && /^[0-9a-f-]{36}$/i.test(requestId))
+      child?.postMessage({ type: 'media-cancel', requestId })
+  })
+  ipcMain.handle('media-send', (event, value: unknown) => {
+    assertSender(event)
+    let request: MediaRequest
+    try {
+      request = validateMediaRequest(value)
+    } catch (error: any) {
+      return { ok: false, error: error.message }
+    }
+    if (!child) return { ok: false, error: 'API 进程不可用，请重启应用' }
+    if (mediaPending.size) return { ok: false, error: '请等待当前附件完成' }
+    return new Promise<MediaReply>((resolve) => {
+      const id = ++nextId
+      const requestId = request.requestId
+      const timer = setTimeout(
+        () => {
+          const task = mediaPending.get(id)
+          mediaPending.delete(id)
+          child?.postMessage({ type: 'media-cancel', requestId })
+          resolve({
+            ok: false,
+            error: '附件请求超时，请刷新会话确认结果',
+            deliveryUnknown: task?.phase === 'sending',
+          })
+        },
+        10 * 60 * 1000,
+      )
+      mediaPending.set(id, {
+        resolve,
+        timer,
+        requestId,
+        phase: 'uploading',
+        started: Date.now(),
+        meta: {
+          kind: request.file.kind,
+          destination: request.target.kind,
+          size: request.file.data.byteLength,
+          mime: request.file.mime,
+        },
+      })
+      child!.postMessage({ type: 'media-send', id, request })
+    })
   })
   ipcMain.handle('update-state', (event) => {
     assertSender(event)
@@ -352,9 +462,23 @@ app.whenReady().then(() => {
     })
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     win.webContents.on('will-navigate', (event) => event.preventDefault())
-    win.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) =>
-      callback(false),
+    win.webContents.session.setPermissionCheckHandler(
+      (wc, permission, _origin, details) =>
+        wc === win?.webContents &&
+        permission === 'media' &&
+        Date.now() < microphoneUntil &&
+        details.mediaType === 'audio',
     )
+    win.webContents.session.setPermissionRequestHandler((wc, permission, callback, details) => {
+      const allowed =
+        wc === win?.webContents &&
+        permission === 'media' &&
+        Date.now() < microphoneUntil &&
+        'mediaTypes' in details &&
+        details.mediaTypes?.length === 1 &&
+        details.mediaTypes[0] === 'audio'
+      callback(!!allowed)
+    })
     if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
     else win.loadFile(join(__dirname, '../renderer/index.html'))
     win.on('closed', () => {

@@ -9,6 +9,7 @@ import {
   PRIVATE_TEXT_LIMIT,
 } from '../../shared/private-messages'
 import type { ApiCall } from './music-data'
+import type { MediaReceipt, MediaTarget } from '../../shared/media'
 
 export function usePrivateMessages(api: ApiCall, account: any, visible: boolean) {
   const selfUid = account ? String(account.userId) : ''
@@ -326,16 +327,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
       id: `local:${requestId}`,
       senderId: selfUid,
       recipientId: peer.uid,
-      time: Math.max(
-        serverConversationTime.current.get(peer.uid) || 0,
-        ...messagesRef.current
-          .filter(
-            (message) =>
-              !message.delivery &&
-              (message.senderId === peer.uid || message.recipientId === peer.uid),
-          )
-          .map((message) => message.time),
-      ),
+      time: Date.now(),
       text,
       invitations: room ? [{ roomId: room.roomId, inviterUid: selfUid, isFLT: false }] : [],
       delivery: 'sending',
@@ -368,7 +360,16 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
           {
             ...peer,
             unread: convRef.current.find((c) => c.uid === peer.uid)?.unread || 0,
-            time: Date.now(),
+            time: Math.max(
+              serverConversationTime.current.get(peer.uid) || 0,
+              ...messagesRef.current
+                .filter(
+                  (message) =>
+                    !message.delivery &&
+                    (message.senderId === peer.uid || message.recipientId === peer.uid),
+                )
+                .map((message) => message.time),
+            ),
             preview: text,
           },
         ]),
@@ -396,6 +397,33 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
     }
   }
   return {
+    acceptMedia(receipt: MediaReceipt, target: MediaTarget) {
+      if (target.kind !== 'private' || receipt.senderUid !== selfUid) return
+      if (selectedRef.current?.uid === target.uid) {
+        updateMessages(
+          mergePrivate(messagesRef.current, [
+            {
+              id: receipt.messageId ? `server:${receipt.messageId}` : `local:${receipt.requestId}`,
+              senderId: selfUid,
+              recipientId: target.uid,
+              time: receipt.time,
+              text: receipt.text,
+              attachments: receipt.attachments,
+              invitations: [],
+              delivery: 'submitted',
+              echoAfter: Math.max(
+                -1,
+                ...messagesRef.current
+                  .filter((message) => !message.delivery && message.senderId === selfUid)
+                  .map((message) => message.time),
+              ),
+            },
+          ]),
+        )
+        fetchHistory()
+      }
+      fetchConversations()
+    },
     conversations,
     conversationMore,
     conversationBusy,

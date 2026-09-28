@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { ListMusic, Music2, Play, RefreshCw, X } from 'lucide-react'
+import { ArrowUpToLine, ListMusic, Music2, Play, RefreshCw, Trash2, X } from 'lucide-react'
 import type { Song, QueueSong, RoomQueueEntry } from '../../../shared/types'
 import type { useParty } from '../useParty'
 import { waitingCount } from '../../../shared/playback-queue'
 import { toSong } from '../../../shared/protocol'
 import { useDismissable } from './useDismissable'
 import { useRoomQueue } from '../useRoomQueue'
+import { Overlay } from './Overlay'
 
 export function QueueDrawer({
   party: p,
@@ -20,11 +21,18 @@ export function QueueDrawer({
   const [tracks, setTracks] = useState<Record<string, Song | null>>({})
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [removing, setRemoving] = useState<RoomQueueEntry | null>(null)
   const cache = useRef<Record<string, Song | null>>({})
   const drawer = useRef<HTMLElement>(null)
   useDismissable(drawer, onClose, !closing, '[data-popup-toggle="queue"]')
   const inRoom = !!p.room
-  const roomQueue = useRoomQueue(p.api, p.room?.roomId, p.roomPlayback?.version, !closing)
+  const roomQueue = useRoomQueue(
+    p.api,
+    p.room?.roomId,
+    p.roomPlayback?.version,
+    !closing,
+    p.queueRevision,
+  )
   const scope = `${p.account?.userId || 'guest'}:${p.room?.roomId || 'personal'}`
   const currentIndex = roomQueue.entries.findIndex(
     (entry) => entry.songBizId === p.roomPlayback?.song?.songBizId,
@@ -36,6 +44,7 @@ export function QueueDrawer({
     cache.current = {}
     setTracks({})
     setLimit(100)
+    setRemoving(null)
   }, [scope])
   useEffect(() => {
     let active = true
@@ -95,7 +104,7 @@ export function QueueDrawer({
       ? queued.length
       : waitingCount(p.roomPlayback)
     : p.personalQueue.length
-  const entries: (QueueSong & Partial<Pick<RoomQueueEntry, 'track' | 'recommender'>>)[] = inRoom
+  const entries: (QueueSong & Partial<RoomQueueEntry>)[] = inRoom
     ? queued.slice(0, limit)
     : ids.map((songId, index) => ({ songId, songBizId: `${index}`, songRcmdUid: '' }))
   return (
@@ -212,6 +221,34 @@ export function QueueDrawer({
           return inRoom ? (
             <div className="queue-track" key={entry.songBizId}>
               {content}
+              <div className="queue-entry-actions">
+                <button
+                  className="icon-btn"
+                  aria-label={`顶歌 ${track?.name || entry.songId}`}
+                  title="UP 顶歌，提高待播优先级"
+                  disabled={!!p.busy || entry.uped}
+                  onClick={() =>
+                    p.act('顶歌', () => p.recommendOperation('multiUp', entry as RoomQueueEntry))
+                  }
+                >
+                  <ArrowUpToLine size={15} />
+                  <small>{entry.upCount || ''}</small>
+                </button>
+                {entry.songRcmdUid === String(p.account?.userId) && (
+                  <button
+                    className="icon-btn"
+                    aria-label={`删除推荐 ${track?.name || entry.songId}`}
+                    title="删除自己的推荐"
+                    disabled={!!p.busy}
+                    onClick={() => {
+                      p.setError('')
+                      setRemoving(entry as RoomQueueEntry)
+                    }}
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <button
@@ -250,6 +287,33 @@ export function QueueDrawer({
       <div className="queue-drawer-footer">
         {inRoom ? '待播顺序由一起听房间同步' : '个人播放队列'}
       </div>
+      {removing && (
+        <Overlay title="删除自己的推荐？" onClose={() => setRemoving(null)}>
+          <p className="overlay-intro">将「{removing.track.name}」从房间待播列表移除。</p>
+          {p.error && (
+            <p className="private-error" role="alert">
+              {p.error}
+            </p>
+          )}
+          <div className="row-actions">
+            <button className="secondary" onClick={() => setRemoving(null)}>
+              取消
+            </button>
+            <button
+              className="primary"
+              disabled={!!p.busy}
+              onClick={() =>
+                p.act('删除推荐', async () => {
+                  await p.recommendOperation('multiRemove', removing)
+                  setRemoving(null)
+                })
+              }
+            >
+              确认删除推荐
+            </button>
+          </div>
+        </Overlay>
+      )}
     </aside>
   )
 }

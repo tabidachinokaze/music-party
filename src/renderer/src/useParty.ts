@@ -6,7 +6,15 @@ import {
   parseSnapshot,
   shouldAccept,
 } from '../../shared/multiplayer'
-import type { Member, Method, Room, RoomPlayback, Song, Trace } from '../../shared/types'
+import type {
+  Member,
+  Method,
+  Room,
+  RoomPlayback,
+  RoomQueueEntry,
+  Song,
+  Trace,
+} from '../../shared/types'
 import { RoomPlayer } from './room-player'
 import { RoomTransition } from './room-transition'
 import { nextQueueIndex, type RepeatMode } from '../../shared/personal-queue'
@@ -27,6 +35,13 @@ export function useParty() {
   const [membersStatus, setMembersStatus] = useState('等待房间成员信息')
   const [onlineCount, setOnlineCount] = useState<number | null>(null)
   const [roomPlayback, setRoomPlayback] = useState<RoomPlayback | null>(null)
+  const [queueRevision, setQueueRevision] = useState(0)
+  const [roomReaction, setRoomReaction] = useState({
+    bizId: '',
+    liked: false,
+    count: 0,
+    loading: false,
+  })
   const playbackRef = useRef<RoomPlayback | null>(null)
   const [songs, setSongs] = useState<Song[]>([])
   const [searched, setSearched] = useState(false)
@@ -58,6 +73,28 @@ export function useParty() {
   const membersInFlight = useRef<Promise<void> | null>(null)
   const disconnected = useRef(false)
   const audioFailure = useRef<{ song: string; until: number } | null>(null)
+  useEffect(() => {
+    let active = true
+    const bizId = roomPlayback?.song?.songBizId
+    setRoomReaction({ bizId: bizId || '', liked: false, count: 0, loading: !!room && !!bizId })
+    if (room && bizId)
+      api('multiSongInfo', { roomId: room.roomId, bizId })
+        .then((body) => {
+          if (active)
+            setRoomReaction({
+              bizId,
+              liked: body.data?.liked === true,
+              count: Math.max(0, Number(body.data?.songInfo?.zanCnt) || 0),
+              loading: false,
+            })
+        })
+        .catch(() => {
+          if (active) setRoomReaction((value) => ({ ...value, loading: false }))
+        })
+    return () => {
+      active = false
+    }
+  }, [room?.roomId, roomPlayback?.song?.songBizId])
 
   async function api(method: Method, args?: Record<string, unknown>) {
     const reply = await window.together.call({ method, args })
@@ -529,6 +566,34 @@ export function useParty() {
     setNotice('切歌请求已被房间接受')
     await observe()
   }
+  async function recommendOperation(method: 'multiRemove' | 'multiUp', entry: RoomQueueEntry) {
+    const target = roomRef.current,
+      epoch = generation.current
+    if (!target) throw new Error('请先加入多人房间')
+    await api(method, { roomId: target.roomId, songId: entry.songId, bizId: entry.songBizId })
+    if (epoch !== generation.current) return
+    setQueueRevision((value) => value + 1)
+    setNotice(method === 'multiRemove' ? '已删除这首推荐' : '已顶歌，待播顺序由官方房间更新')
+    await observe()
+  }
+  async function likeRoomSong() {
+    const target = roomRef.current,
+      song = playbackRef.current?.song,
+      epoch = generation.current
+    if (!target || !song) return
+    await api('multiLike', { roomId: target.roomId, songId: song.songId, bizId: song.songBizId })
+    if (epoch !== generation.current || playbackRef.current?.song?.songBizId !== song.songBizId)
+      return
+    setRoomReaction((value) => ({
+      bizId: song.songBizId,
+      liked: true,
+      count: Math.max(value.count, playbackRef.current?.likeCount || 0) + 1,
+      loading: false,
+    }))
+    setQueueRevision((value) => value + 1)
+    setNotice('已为房间当前歌曲点赞')
+    await observe()
+  }
   async function togglePlay() {
     if (!current) return
     if (roomRef.current) {
@@ -628,6 +693,10 @@ export function useParty() {
     refreshMembers,
     onlineCount,
     roomPlayback,
+    roomReaction,
+    queueRevision,
+    recommendOperation,
+    likeRoomSong,
     songs,
     searched,
     current,

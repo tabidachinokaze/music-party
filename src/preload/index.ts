@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { UpdateState } from '../shared/updates'
 import type { DesktopInfo, PlayerCommand } from '../shared/desktop'
 import type { Bridge, Trace } from '../shared/types'
+import type { MediaProgress } from '../shared/media'
 const bridge: Bridge = {
   call: (request) => ipcRenderer.invoke('api', request),
   onTrace(callback) {
@@ -14,6 +15,15 @@ const bridge: Bridge = {
   copy: (text) => ipcRenderer.invoke('copy', text),
   openProject: (link) => ipcRenderer.invoke('project-open', link),
   openMessageLink: (url) => ipcRenderer.invoke('message-link-open', url),
+  sendMedia: (request) => ipcRenderer.invoke('media-send', request),
+  cancelMedia: (requestId) => ipcRenderer.invoke('media-cancel', requestId),
+  requestMicrophone: () => ipcRenderer.invoke('microphone-request'),
+  onMediaProgress(callback) {
+    const listener = (_event: Electron.IpcRendererEvent, progress: MediaProgress) =>
+      callback(progress)
+    ipcRenderer.on('media-progress', listener)
+    return () => ipcRenderer.removeListener('media-progress', listener)
+  },
   updateState: () => ipcRenderer.invoke('update-state'),
   updateAction: (action) => ipcRenderer.invoke('update-action', action),
   onUpdate(callback) {

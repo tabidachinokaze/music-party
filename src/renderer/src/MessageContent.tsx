@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ExternalLink, FileText, ImageOff, Music2, Play, Plus } from 'lucide-react'
 import type { MessageAttachment, MessageTextPart, Song } from '../../shared/types'
 import { Overlay } from './player/Overlay'
@@ -17,6 +17,12 @@ function Attachment({
   const [failed, setFailed] = useState(false)
   const [preview, setPreview] = useState(false)
   const [error, setError] = useState('')
+  const audio = useRef<HTMLAudioElement>(null),
+    video = useRef<HTMLVideoElement>(null)
+  useEffect(() => {
+    const players = [audio.current, video.current]
+    return () => players.forEach((player) => player?.pause())
+  }, [item.url])
   const playableSong = item.resourceType === 'song' && /^\d+$/.test(item.resourceId || '')
   const open = () => {
     if (playableSong)
@@ -75,6 +81,7 @@ function Attachment({
           <p>媒体暂不可用</p>
         ) : item.kind === 'audio' ? (
           <audio
+            ref={audio}
             aria-label={item.title}
             controls
             preload="none"
@@ -84,6 +91,7 @@ function Attachment({
           />
         ) : (
           <video
+            ref={video}
             aria-label={item.title}
             controls
             preload="none"

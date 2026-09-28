@@ -106,3 +106,19 @@ LTMultiMatchRoomMsgInfo 定义 msgType=0 普通消息、1 互动、2 推歌、3 
 官方聊天发送器对图片/表情仍使用 msgType=0，把 EmojiItem 放入 clientExt.emoji，msgBody.msg 使用名称占位。新增发送只选择已收到的表情，继续校验账号当前房间并解析真实 chatroomId，不接受前端指定聊天室。文字及媒体信息继续从诊断中脱敏。互动、推歌通知由对应官方行为产生，不伪造通知。
 
 私信兼容原有 msg JSON 与新版 msgType/body：图片 1、资源卡片 2、语音 4、视频 5、音乐资源 30–48、文件 49；旧 msg.type 与新版 msgType 的值不混用。只有实际提供的 HTTPS 媒体地址可播放，应用不猜测缺失的媒体地址、不执行 HTML 或任意 orpheus 深链。
+
+## 房间互动（0.11.0）
+
+官方枚举 LTMultiSongOperateType：UP=2、LIKE=3，均携带 roomId/songId/bizId/checkToken。RN 队列组件的删除调用同一 song/operate，operate=7；结果检查 data.result 或 failedCode。队列的 selfRcmd、uped、liked 与 songInfo.upCnt/zanCnt 用于展示。点赞当前状态通过已核实的 multi/played/song/info（roomId/songBizId）读取。
+
+删除前服务侧核对当前房间、登录 UID 和完整待播中的 rcmdUid，按 bizId + resourceId 匹配，不允许删除正在播放或其他人的推荐。点赞前检查当前播放业务条目，避免歌曲已切换时误赞旧条目。UP 是官方顶歌优先级操作，客户端不伪造固定排序。
+
+## 附件上传与私信消息（0.11.0）
+
+官方发送链：messagecenter.detail.d → communication/send/msg，参数 sendMsgBody 和 checkToken。RawMessage 包含 channelId、scene=1、receiverUserIds（本实现只给一个 UID）、msgBody 和空 refMsgBody/symphonyId。msgBody 内 msgType=1 图片、4 语音、5 视频，body 为 JSON 字符串，unikey 为客户端请求 UUID。
+
+官方 PostImageHelper 上传图片后设置远端 URL；PicMsg 字段包括 url/name/width/height/format/size/md5/emojiId/emojiGroupId。PostVoiceHelper 使用 nos/token/whalealloc，type=audio，bucket=ymusic，bizKey=519abfd2，上传后设置 voiceKey 和 nosKey；VoiceMsg.duration 单位为秒。PostVideoHelper 使用 type=video、bucket=cloudmusic、bizKey=cb8c016e，写入 videoKey、nosKey 与 coverImage；duration 保持毫秒。
+
+通用 NOS 分片使用固定官方 nosup-hz1.127.net 地址与 x-nos-token，offset/context/complete/version 参数；不跟随上传重定向。图片用 nos/token/alloc 的 yyimgs；普通文件用 dmusic 上传后通过既有单收件人 send_text 发送文件名和下载链接。原生 FILE=49 的完整上传/发送链未核实，因此不伪造该类型。
+
+房间图片沿用 msgType=0 + clientExt.emoji 格式，emojiId/groupId=0 表示上传图片，保留 GIF 格式。账号或房间变化后禁止提交旧目标；预览阶段不上传，上传阶段可取消，提交阶段出现网络超时按结果未知处理。只支持当前 NOS 通道 1，其他通道明确报错；上传资源 ID 不接受已丢失精度的数字。接收时优先使用服务端确认的媒体地址，文件链接限定网易云资源域名。

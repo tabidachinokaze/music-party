@@ -69,6 +69,10 @@ const fields: Partial<Record<Method, string[]>> = {
   multiChatSend: ['roomId', 'text', 'emoji', 'requestId'],
   multiHeartbeat: ['roomId'],
   multiQueue: ['roomId', 'cursor'],
+  multiSongInfo: ['roomId', 'bizId'],
+  multiRemove: ['roomId', 'songId', 'bizId'],
+  multiUp: ['roomId', 'songId', 'bizId'],
+  multiLike: ['roomId', 'songId', 'bizId'],
   multiLeave: ['roomId'],
   multiAdd: ['roomId', 'songId'],
   multiNext: ['roomId', 'songId', 'bizId'],
@@ -242,6 +246,67 @@ export class ApiService {
           throw new Error('请先扫码登录')
         if (method === 'qrCheck' && args.key !== this.activeKey)
           throw new Error('二维码已更新，请扫描新的二维码')
+        if (['multiRemove', 'multiUp', 'multiLike'].includes(method)) {
+          const status = await this.invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
+          if (status.body?.data?.multiLtRoomSnapshot?.roomId !== args.roomId)
+            throw new Error('账号已不在此房间，请重新同步')
+          if (method === 'multiLike') {
+            const current = status.body.data.multiLtRoomSnapshot.roomPlaySongInfo?.playSong
+            if (
+              String(current?.songBizId) !== args.bizId ||
+              String(current?.songId) !== args.songId
+            )
+              throw new Error('房间已切换歌曲，请给当前歌曲点赞')
+          }
+          if (method === 'multiRemove') {
+            const account = await this.invoke('login_status', {
+              cookie: this.cookie,
+              timeout: 12000,
+            })
+            const uid = String(account.body?.data?.profile?.userId || '')
+            if (!/^[1-9]\d*$/.test(uid)) throw new Error('登录已失效，请重新登录')
+            let cursor = '',
+              found = false
+            const seen = new Set<string>()
+            do {
+              const response = await this.invoke('multiQueue', {
+                roomId: args.roomId,
+                ...(cursor ? { cursor } : {}),
+                cookie: this.cookie,
+                timeout: 12000,
+              })
+              const data = response.body?.data
+              if (response.body?.code !== 200 || !Array.isArray(data?.songLists))
+                throw new Error('无法确认推荐者，请刷新队列')
+              const entry = data.songLists.find(
+                (row: any) =>
+                  String(row.songInfo?.bizId) === args.bizId &&
+                  String(row.songInfo?.resourceId) === args.songId,
+              )
+              if (entry) {
+                if (String(entry.rcmdUid) !== uid) throw new Error('只能删除自己推荐的歌曲')
+                if (
+                  String(
+                    status.body.data.multiLtRoomSnapshot.roomPlaySongInfo?.playSong?.songBizId,
+                  ) === args.bizId
+                )
+                  throw new Error('不能删除正在播放的歌曲')
+                found = true
+                break
+              }
+              if (!data.page?.more) break
+              if (
+                typeof data.page.cursor !== 'string' ||
+                !data.page.cursor ||
+                seen.has(data.page.cursor)
+              )
+                throw new Error('队列分页异常，请刷新后重试')
+              cursor = data.page.cursor
+              seen.add(cursor)
+            } while (true)
+            if (!found) throw new Error('这首推荐已不在待播队列中')
+          }
+        }
         if (method === 'privateSend' || method === 'privateInvite') {
           const account = await this.invoke('login_status', { cookie: this.cookie, timeout: 12000 })
           const selfUid = String(account.body?.data?.profile?.userId || '')
@@ -371,6 +436,12 @@ export class ApiService {
           throw new Error(
             body.data?.failedMsg || `房间未接受操作（${body.data?.failedCode ?? '缺少确认'}）`,
           )
+        if (
+          ['multiRemove', 'multiUp', 'multiLike'].includes(method) &&
+          (body.data?.result === false ||
+            !(body.data?.failedCode === 0 || body.data?.result === true))
+        )
+          throw new Error(body.data?.failedMsg || '房间未接受操作，请刷新后重试')
         if (method === 'multiJoin' && body.data?.multiLtRoomSnapshot?.roomId !== args.roomId)
           throw new Error('加入返回了不同房间，请先刷新当前房间状态')
         if (method === 'qrCreate') {

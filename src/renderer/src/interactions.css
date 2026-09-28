@@ -520,3 +520,112 @@
   height: 60px;
   object-fit: contain;
 }
+.queue-entry-actions {
+  display: flex;
+  flex: none;
+  gap: 2px;
+  margin-left: auto;
+}
+.queue-entry-actions .icon-btn {
+  min-width: 28px;
+  width: auto;
+  height: 28px;
+  padding: 4px;
+  gap: 3px;
+}
+.queue-entry-actions small {
+  font-size: 9px;
+}
+.queue-track .queue-track-copy {
+  min-width: 0;
+}
+.room-song-like {
+  gap: 6px;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+.room-song-like.liked {
+  color: var(--pink);
+  opacity: 1;
+  border-color: var(--tone-665064);
+}
+.room-song-like span {
+  min-width: 10px;
+}
+.attachment-input {
+  display: none;
+}
+.chat-drawer[hidden] {
+  display: none;
+}
+.attachment-status {
+  font-size: 10px;
+  color: var(--pink);
+}
+.attachment-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 16px 0;
+  overflow: hidden;
+}
+.attachment-preview img,
+.attachment-preview video {
+  max-width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+}
+.attachment-preview audio {
+  max-width: 100%;
+}
+.attachment-preview strong {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.attachment-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 16px 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+.attachment-progress progress {
+  width: 100%;
+  accent-color: var(--pink);
+}
+.attachment-note {
+  font-size: 12px;
+  margin-block: 14px;
+}
+.recording-panel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 30px 10px;
+}
+.recording-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--pink);
+  animation: shade-in 0.8s ease-in-out infinite alternate;
+}
+@media (max-width: 1100px) {
+  .room-song-like {
+    font-size: 10px;
+    padding: 6px;
+  }
+  .room-inline-actions {
+    gap: 5px;
+  }
+}
