@@ -1,6 +1,11 @@
 import { useEffect, useState } from 'react'
 import {
   ArrowRight,
+  ChevronDown,
+  Expand,
+  Maximize,
+  Minimize,
+  Search,
   Check,
   Copy,
   Headphones,
@@ -27,6 +32,11 @@ export function PlayerView({
   onInvite,
   onLeave,
   onBrowse,
+  expanded,
+  fullScreen,
+  onExpand,
+  onCollapse,
+  onFullScreen,
 }: {
   party: ReturnType<typeof useParty>
   library: ReturnType<typeof useLibrary>
@@ -37,6 +47,11 @@ export function PlayerView({
   onInvite(): void
   onLeave(): void
   onBrowse(): void
+  expanded: boolean
+  fullScreen: boolean
+  onExpand(): void
+  onCollapse(): void
+  onFullScreen(): void
 }) {
   const [membersOpen, setMembersOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -55,22 +70,63 @@ export function PlayerView({
   return (
     <section className={`listening-view ${p.room ? 'is-together' : ''}`} aria-label="播放界面">
       <div className="listening-topline">
-        <span className="eyebrow">NOW PLAYING</span>
-        {p.room ? (
-          <span
-            className={`playback-status ${connected ? 'connected' : 'reconnecting'}`}
-            title={p.health}
-          >
-            <span className="dot" />
-            {connected ? '与房间同步' : '正在恢复同步'}
-          </span>
-        ) : (
-          <button className="together-launch" onClick={onTogether}>
-            <Headphones size={16} />
-            一起听
-            <ArrowRight size={14} />
-          </button>
-        )}
+        <div className="player-view-heading">
+          {expanded && (
+            <button
+              className="player-collapse"
+              aria-label="收起播放界面"
+              title="收起，返回原页面（Esc）"
+              onClick={onCollapse}
+            >
+              <ChevronDown size={22} />
+              <span>收起</span>
+            </button>
+          )}
+          <span className="eyebrow">NOW PLAYING</span>
+        </div>
+        <div className="player-view-actions">
+          {p.room ? (
+            <span
+              className={`playback-status ${connected ? 'connected' : 'reconnecting'}`}
+              title={p.health}
+            >
+              <span className="dot" />
+              {connected ? '与房间同步' : '正在恢复同步'}
+            </span>
+          ) : (
+            <button className="together-launch" onClick={onTogether}>
+              <Headphones size={16} />
+              一起听
+              <ArrowRight size={14} />
+            </button>
+          )}
+          {expanded ? (
+            <>
+              <button
+                className="icon-btn"
+                aria-label="搜索并选歌"
+                title="搜索并选歌（Ctrl / ⌘ F）"
+                onClick={onBrowse}
+              >
+                <Search size={18} />
+              </button>
+              <button
+                className="player-fullscreen"
+                aria-label={fullScreen ? '退出系统全屏' : '进入系统全屏'}
+                title={fullScreen ? '退出系统全屏（Esc）' : '进入系统全屏'}
+                onClick={onFullScreen}
+              >
+                {fullScreen ? <Minimize size={18} /> : <Maximize size={18} />}
+                <span>{fullScreen ? '退出全屏' : '全屏'}</span>
+              </button>
+            </>
+          ) : (
+            <button className="player-fullscreen" aria-label="展开播放界面" onClick={onExpand}>
+              <Expand size={18} />
+              <span>展开</span>
+            </button>
+          )}
+        </div>
       </div>
       {p.room && (
         <div className="listening-room">

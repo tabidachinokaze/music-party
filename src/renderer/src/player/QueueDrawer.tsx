@@ -65,7 +65,12 @@ export function QueueDrawer({
     const previous = document.activeElement as HTMLElement | null
     drawer.current?.querySelector<HTMLButtonElement>('[aria-label="关闭播放队列"]')?.focus()
     const close = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (
+        event.key === 'Escape' &&
+        !event.isComposing &&
+        !event.defaultPrevented &&
+        !document.querySelector('[aria-modal="true"]')
+      ) {
         event.preventDefault()
         onClose()
       }

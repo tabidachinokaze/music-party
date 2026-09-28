@@ -14,6 +14,7 @@ export interface WindowGeometry {
 export interface DesktopInfo {
   preferences: Preferences
   trayAvailable: boolean
+  fullScreen: boolean
   resolvedTheme: 'dark' | 'light'
   platform: string
   persistenceError: string

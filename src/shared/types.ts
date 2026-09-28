@@ -61,6 +61,7 @@ export interface Bridge {
   updateAction(action: 'check' | 'download' | 'install'): Promise<UpdateState>
   onUpdate(callback: (state: UpdateState) => void): () => void
   desktopInfo(): Promise<DesktopInfo>
+  setFullScreen(value: boolean): Promise<void>
   updatePreferences(value: Partial<Preferences>): Promise<DesktopInfo>
   updateMedia(value: DesktopMediaState): Promise<void>
   quit(): Promise<void>

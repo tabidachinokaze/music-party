@@ -34,6 +34,8 @@ type Page = 'player' | 'library' | 'liked' | 'search' | 'private' | 'settings' |
 export function App() {
   const p = useParty()
   const [tab, setTab] = useState<Page>('player')
+  const [expanded, setExpanded] = useState(false)
+  const activePage = expanded ? 'player' : tab
   const [queueOpen, setQueueOpen] = useState(false)
   const [setupOpen, setSetupOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
@@ -42,8 +44,8 @@ export function App() {
   const chat = useRoomChat(p.api, p.room, p.account)
   const uid = p.account ? String(p.account.userId) : null
   const library = useLibrary(p.api, uid)
-  const inbox = usePrivateMessages(p.api, p.account, tab === 'private')
-  const desktop = useDesktop(p, (page) => setTab(page === 'lyrics' ? 'player' : page))
+  const inbox = usePrivateMessages(p.api, p.account, activePage === 'private')
+  const desktop = useDesktop(p, (page) => (page === 'lyrics' ? showPlayer() : navigate(page)))
   const titles: Record<Page, string> = {
     player: '正在播放',
     library: '我的歌单',
@@ -73,13 +75,58 @@ export function App() {
   }, [p.account?.userId])
   useEffect(() => {
     if (p.room) {
-      setTab('player')
+      showPlayer()
       setSetupOpen(false)
     } else chat.setVisible(false)
   }, [p.room?.roomId])
   useEffect(() => {
     if (chat.visible) setQueueOpen(false)
   }, [chat.visible])
+  useEffect(() => {
+    if (desktop.info?.fullScreen) showPlayer()
+  }, [desktop.info?.fullScreen])
+  useEffect(() => {
+    if (!expanded) return
+    const previous = document.activeElement as HTMLElement | null
+    document.querySelector<HTMLButtonElement>('[aria-label="收起播放界面"]')?.focus()
+    return () => {
+      if (previous?.isConnected && previous.getClientRects().length) previous.focus()
+    }
+  }, [expanded])
+  useEffect(() => {
+    const key = (event: KeyboardEvent) => {
+      if (
+        event.key !== 'Escape' ||
+        event.repeat ||
+        event.isComposing ||
+        event.defaultPrevented ||
+        document.querySelector('[aria-modal="true"]') ||
+        queueOpen ||
+        chat.visible
+      )
+        return
+      if (desktop.info?.fullScreen) {
+        event.preventDefault()
+        setFullScreen(false)
+      } else if (expanded) {
+        event.preventDefault()
+        collapsePlayer()
+      }
+    }
+    window.addEventListener('keydown', key)
+    return () => window.removeEventListener('keydown', key)
+  }, [expanded, desktop.info?.fullScreen, queueOpen, chat.visible])
+  function setFullScreen(value: boolean) {
+    window.together.setFullScreen(value).catch((error) => p.setError(error.message))
+  }
+  function collapsePlayer() {
+    if (desktop.info?.fullScreen) setFullScreen(false)
+    setExpanded(false)
+  }
+  function navigate(page: Page) {
+    collapsePlayer()
+    setTab(page)
+  }
   function showChat() {
     setQueueOpen(false)
     chat.setVisible(!chat.visible)
@@ -89,7 +136,7 @@ export function App() {
     setQueueOpen((value) => !value)
   }
   function showPlayer() {
-    setTab('player')
+    setExpanded(true)
   }
   function login() {
     setLoginOpen(true)
@@ -126,7 +173,7 @@ export function App() {
     })
   }
   return (
-    <div className="app-shell music-shell">
+    <div className={`app-shell music-shell ${expanded ? 'player-expanded' : ''}`}>
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-icon">
@@ -150,7 +197,7 @@ export function App() {
         </button>
         <button
           className={`nav ${tab === 'search' ? 'active' : ''}`}
-          onClick={() => setTab('search')}
+          onClick={() => navigate('search')}
         >
           <Search size={18} />
           搜索
@@ -158,14 +205,14 @@ export function App() {
         <div className="nav-caption library-caption">我的音乐</div>
         <button
           className={`nav ${tab === 'liked' ? 'active' : ''}`}
-          onClick={() => setTab('liked')}
+          onClick={() => navigate('liked')}
         >
           <Heart size={18} />
           我喜欢的音乐
         </button>
         <button
           className={`nav ${tab === 'library' ? 'active' : ''}`}
-          onClick={() => setTab('library')}
+          onClick={() => navigate('library')}
         >
           <Library size={18} />
           我的歌单
@@ -173,7 +220,7 @@ export function App() {
         <div className="sidebar-bottom">
           <button
             className={`nav ${tab === 'private' ? 'active' : ''}`}
-            onClick={() => setTab('private')}
+            onClick={() => navigate('private')}
           >
             <Mail size={18} />
             私信
@@ -183,7 +230,7 @@ export function App() {
           </button>
           <button
             className={`nav ${tab === 'settings' || tab === 'diagnostics' ? 'active' : ''}`}
-            onClick={() => setTab('settings')}
+            onClick={() => navigate('settings')}
           >
             <Settings2 size={18} />
             设置{updateAvailable && <span className="unread-count">更新</span>}
@@ -193,7 +240,7 @@ export function App() {
           <button
             className="account-profile"
             aria-label={p.account ? '账户设置' : '扫码登录'}
-            onClick={p.account ? () => setTab('settings') : login}
+            onClick={p.account ? () => navigate('settings') : login}
           >
             <span className="avatar">
               {p.account?.avatarUrl ? (
@@ -223,21 +270,21 @@ export function App() {
       <div className="workspace">
         <header className="music-header">
           <div className="page-location">
-            {tab !== 'player' && (
+            {activePage !== 'player' && (
               <button className="icon-btn" aria-label="返回播放界面" onClick={showPlayer}>
                 <ArrowLeft size={17} />
               </button>
             )}
-            <span>{titles[tab]}</span>
+            <span>{titles[activePage]}</span>
           </div>
           <div className="header-right">
-            {p.room && tab !== 'player' && (
+            {p.room && activePage !== 'player' && (
               <button className="header-room-pill" onClick={showPlayer}>
                 <Headphones size={14} />
                 {p.onlineCount ?? '…'} 人一起听
               </button>
             )}
-            <button className="header-search" onClick={() => setTab('search')}>
+            <button className="header-search" onClick={() => navigate('search')}>
               <Search size={15} />
               <span>搜索音乐</span>
               <kbd>Ctrl F</kbd>
@@ -247,11 +294,11 @@ export function App() {
             </span>
           </div>
         </header>
-        <main className={`music-main ${tab === 'player' ? 'player-main' : ''}`}>
-          {tab !== 'player' && (
+        <main className={`music-main ${activePage === 'player' ? 'player-main' : ''}`}>
+          {activePage !== 'player' && (
             <div className="heading section-heading">
               <div>
-                <h1>{titles[tab]}</h1>
+                <h1>{titles[activePage]}</h1>
                 {tab === 'private' && <p>一段对话，一场一起听。</p>}
               </div>
             </div>
@@ -278,8 +325,13 @@ export function App() {
               {p.busy}…
             </div>
           )}
-          {tab === 'player' ? (
+          {activePage === 'player' && (
             <PlayerView
+              expanded={expanded}
+              fullScreen={desktop.info?.fullScreen ?? false}
+              onExpand={showPlayer}
+              onCollapse={collapsePlayer}
+              onFullScreen={() => setFullScreen(!desktop.info?.fullScreen)}
               party={p}
               library={library}
               onLike={() => {
@@ -288,36 +340,39 @@ export function App() {
               onTogether={together}
               onChat={showChat}
               unread={chat.unread}
-              onInvite={() => setTab('private')}
+              onInvite={() => navigate('private')}
               onLeave={() => setConfirmEnd(true)}
-              onBrowse={() => setTab('search')}
-            />
-          ) : tab === 'settings' ? (
-            <Settings desktop={desktop} party={p} onDiagnostics={() => setTab('diagnostics')} />
-          ) : tab === 'diagnostics' ? (
-            <Diagnostics traces={p.traces} onExport={() => p.act('导出记录', p.exportTrace)} />
-          ) : tab === 'private' ? (
-            <PrivateMessages
-              inbox={inbox}
-              account={p.account}
-              room={p.room}
-              api={p.api}
-              busy={!!p.busy}
-              onJoin={joinPrivateInvite}
-            />
-          ) : (
-            <MusicBrowser
-              api={p.api}
-              uid={uid}
-              view={tab}
-              library={library}
-              room={!!p.room}
-              currentId={p.current?.id}
-              busy={!!p.busy}
-              onPlay={onPlay}
-              onLike={onLike}
+              onBrowse={() => navigate('search')}
             />
           )}
+          <div hidden={activePage === 'player'}>
+            {tab === 'player' ? null : tab === 'settings' ? (
+              <Settings desktop={desktop} party={p} onDiagnostics={() => navigate('diagnostics')} />
+            ) : tab === 'diagnostics' ? (
+              <Diagnostics traces={p.traces} onExport={() => p.act('导出记录', p.exportTrace)} />
+            ) : tab === 'private' ? (
+              <PrivateMessages
+                inbox={inbox}
+                account={p.account}
+                room={p.room}
+                api={p.api}
+                busy={!!p.busy}
+                onJoin={joinPrivateInvite}
+              />
+            ) : (
+              <MusicBrowser
+                api={p.api}
+                uid={uid}
+                view={tab}
+                library={library}
+                room={!!p.room}
+                currentId={p.current?.id}
+                busy={!!p.busy}
+                onPlay={onPlay}
+                onLike={onLike}
+              />
+            )}
+          </div>
         </main>
       </div>
       <PlayerBar
@@ -346,7 +401,7 @@ export function App() {
           }}
           onBrowse={() => {
             setSetupOpen(false)
-            setTab('search')
+            navigate('search')
           }}
         />
       )}

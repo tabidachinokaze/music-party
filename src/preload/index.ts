@@ -21,6 +21,7 @@ const bridge: Bridge = {
     return () => ipcRenderer.removeListener('update-state-changed', listener)
   },
   desktopInfo: () => ipcRenderer.invoke('desktop-info'),
+  setFullScreen: (value) => ipcRenderer.invoke('desktop-fullscreen', value),
   updatePreferences: (value) => ipcRenderer.invoke('desktop-settings', value),
   updateMedia: (value) => ipcRenderer.invoke('desktop-media', value),
   quit: () => ipcRenderer.invoke('desktop-quit'),

@@ -60,6 +60,7 @@ export class DesktopController {
     return {
       preferences: { ...this.store.preferences },
       trayAvailable: this.trayAvailable,
+      fullScreen: this.window()?.isFullScreen() ?? false,
       resolvedTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
       platform: process.platform,
       persistenceError: this.store.error,

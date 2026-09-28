@@ -23,7 +23,7 @@ export function Overlay({
     ]
     focusable()[0]?.focus()
     const key = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !event.isComposing) {
         event.preventDefault()
         onClose()
       }

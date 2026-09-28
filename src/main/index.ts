@@ -36,7 +36,7 @@ let updates: UpdateController | null = null
 let updateTimer: ReturnType<typeof setTimeout> | undefined
 let boundsTimer: ReturnType<typeof setTimeout> | undefined
 function saveBounds() {
-  if (!win || win.isDestroyed() || !store) return
+  if (!win || win.isDestroyed() || win.isFullScreen() || !store) return
   try {
     store.saveWindow({ ...win.getNormalBounds(), maximized: win.isMaximized() })
   } catch {
@@ -236,6 +236,12 @@ app.whenReady().then(() => {
     assertSender(event)
     return desktop!.info()
   })
+  ipcMain.handle('desktop-fullscreen', (event, value: unknown) => {
+    assertSender(event)
+    if (typeof value !== 'boolean') throw new Error('全屏状态无效')
+    if (value) saveBounds()
+    win!.setFullScreen(value)
+  })
   ipcMain.handle('desktop-settings', (event, value: unknown) => {
     assertSender(event)
     return desktop!.updatePreferences(value)
@@ -320,6 +326,11 @@ app.whenReady().then(() => {
     win.on('move', scheduleBounds)
     win.on('maximize', scheduleBounds)
     win.on('unmaximize', scheduleBounds)
+    win.on('enter-full-screen', () => desktop?.notify())
+    win.on('leave-full-screen', () => {
+      desktop?.notify()
+      scheduleBounds()
+    })
     win.on('close', (event) => {
       saveBounds()
       if (!quitting && store.preferences.closeToTray && desktop?.trayAvailable) {

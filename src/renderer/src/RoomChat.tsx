@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { MessageCircle, RefreshCw, Send, X } from 'lucide-react'
 import type { Room } from '../../shared/types'
 import { CHAT_MAX_LENGTH } from '../../shared/chat'
@@ -16,8 +16,30 @@ export function RoomChat({
   onlineCount: number | null
 }) {
   const list = useRef<HTMLDivElement>(null)
+  const drawer = useRef<HTMLElement>(null)
   const nearBottom = useRef(true)
   const historyAnchor = useRef<{ height: number; top: number } | null>(null)
+  useEffect(() => {
+    if (!chat.visible) return
+    const previous = document.activeElement as HTMLElement | null
+    drawer.current?.querySelector<HTMLButtonElement>('[aria-label="关闭聊天"]')?.focus()
+    const key = (event: KeyboardEvent) => {
+      if (
+        event.key === 'Escape' &&
+        !event.isComposing &&
+        !event.defaultPrevented &&
+        !document.querySelector('[aria-modal="true"]')
+      ) {
+        event.preventDefault()
+        chat.setVisible(false)
+      }
+    }
+    window.addEventListener('keydown', key)
+    return () => {
+      window.removeEventListener('keydown', key)
+      if (previous?.isConnected && previous.getClientRects().length) previous.focus()
+    }
+  }, [chat.visible])
   useLayoutEffect(() => {
     const box = list.current
     if (!box) return
@@ -37,7 +59,7 @@ export function RoomChat({
   }
   if (!chat.visible) return null
   return (
-    <aside className="chat-drawer" aria-label="官方房间聊天">
+    <aside ref={drawer} className="chat-drawer" aria-label="官方房间聊天">
       <div className="chat-heading">
         <MessageCircle size={19} />
         <div>
