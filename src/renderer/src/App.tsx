@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useEffectEvent, useState } from 'react'
 import {
   ArrowLeft,
   Headphones,
@@ -93,29 +93,29 @@ export function App() {
       if (previous?.isConnected && previous.getClientRects().length) previous.focus()
     }
   }, [expanded])
-  useEffect(() => {
-    const key = (event: KeyboardEvent) => {
-      if (
-        event.key !== 'Escape' ||
-        event.repeat ||
-        event.isComposing ||
-        event.defaultPrevented ||
-        document.querySelector('[aria-modal="true"]') ||
-        queueOpen ||
-        chat.visible
-      )
-        return
-      if (desktop.info?.fullScreen) {
-        event.preventDefault()
-        setFullScreen(false)
-      } else if (expanded) {
-        event.preventDefault()
-        collapsePlayer()
-      }
+  const onEscape = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      event.key !== 'Escape' ||
+      event.repeat ||
+      event.isComposing ||
+      event.defaultPrevented ||
+      document.querySelector('[aria-modal="true"]') ||
+      queueOpen ||
+      chat.visible
+    )
+      return
+    if (desktop.info?.fullScreen) {
+      event.preventDefault()
+      setFullScreen(false)
+    } else if (expanded) {
+      event.preventDefault()
+      collapsePlayer()
     }
-    window.addEventListener('keydown', key)
-    return () => window.removeEventListener('keydown', key)
-  }, [expanded, desktop.info?.fullScreen, queueOpen, chat.visible])
+  })
+  useEffect(() => {
+    window.addEventListener('keydown', onEscape)
+    return () => window.removeEventListener('keydown', onEscape)
+  }, [])
   function setFullScreen(value: boolean) {
     window.together.setFullScreen(value).catch((error) => p.setError(error.message))
   }
