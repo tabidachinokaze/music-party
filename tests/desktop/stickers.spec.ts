@@ -122,6 +122,7 @@ test('official custom stickers load every page, upload to the library and send d
     },
   })
   try {
+    const page = await app.firstWindow()
     await app.evaluate(({ ipcMain }, port) => {
       ipcMain.removeHandler('media-send')
       ipcMain.handle('media-send', async (_event, request) => {
@@ -144,8 +145,7 @@ test('official custom stickers load every page, upload to the library and send d
         }
       })
     }, port)
-    const page = await app.firstWindow(),
-      errors: string[] = []
+    const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.route('https://p1.music.126.net/**', (route) =>
       route.fulfill({ contentType: 'image/png', body: thumbnail }),

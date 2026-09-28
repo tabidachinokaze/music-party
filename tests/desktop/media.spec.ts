@@ -65,6 +65,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     },
   })
   try {
+    const page = await app.firstWindow()
     await app.evaluate(({ ipcMain, BrowserWindow }) => {
       const state = {
         calls: [] as any[],
@@ -123,7 +124,6 @@ test('private attachment previews, upload retry, recording, video and fixed reci
       ipcMain.removeHandler('media-cancel')
       ipcMain.handle('media-cancel', () => state.pending?.())
     })
-    const page = await app.firstWindow()
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.route('https://p1.music.126.net/media-test.png', (route) =>
