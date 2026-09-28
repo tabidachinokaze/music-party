@@ -47,8 +47,10 @@ test('immersive playback and native fullscreen preserve navigation, focus and no
     await page.screenshot({ path: 'test-results/music-party-native-fullscreen.png' })
     await page.keyboard.press('Escape')
     await expect.poll(nativeFullScreen).toBe(false)
-    await expect(page.getByRole('button', { name: '收起播放界面' })).toBeVisible()
+    // Native transitions notify the renderer asynchronously; wait before the next Escape.
+    await expect(page.getByRole('button', { name: '进入系统全屏' })).toBeVisible()
     await page.keyboard.press('Escape')
+    await expect(page.getByLabel('搜索音乐库')).toBeVisible()
     await expect(page.getByLabel('搜索音乐库')).toHaveValue('保留搜索内容')
     await expect(page.getByRole('button', { name: '打开播放界面' })).toBeFocused()
 
