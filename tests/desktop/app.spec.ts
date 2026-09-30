@@ -820,7 +820,14 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await expect(page.getByText('已加载 100 / 205 首')).toBeVisible()
     await page.getByRole('button', { name: '加载更多歌曲' }).click()
     await expect(page.getByText('已加载 200 / 205 首')).toBeVisible()
-    await page.getByRole('button', { name: '加载更多歌曲' }).click()
+    await page.getByLabel('搜索当前歌单或专辑').fill('5204')
+    await expect(page.getByRole('button', { name: '推送 测试歌曲5204', exact: true })).toBeVisible()
+    await expect(page.getByText('找到 1 首', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '推送 测试歌曲5000', exact: true })).toHaveCount(
+      0,
+    )
+    await page.getByRole('button', { name: '推送 测试歌曲5204', exact: true }).click()
+    await page.getByRole('button', { name: '清空列表搜索' }).click()
     await expect(page.getByText('已加载 205 / 205 首')).toBeVisible()
     await page.getByRole('button', { name: '推送 测试歌曲5000' }).click()
     expect(
@@ -885,10 +892,20 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await page.getByRole('button', { name: /^收藏专辑1 专辑歌手/ }).click()
     await expect(page.getByText('已加载 2 / 2 首')).toBeVisible()
     await expect(page.getByRole('button', { name: '播放 专辑第一首', exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '播放全部', exact: true }).click()
+    await expect(page.getByLabel('搜索当前歌单或专辑')).toHaveValue('')
+    await page.getByLabel('搜索当前歌单或专辑').fill('不存在的歌曲')
+    await expect(page.getByText('没有找到匹配歌曲', { exact: true })).toBeVisible()
+    await page.getByLabel('搜索当前歌单或专辑').fill('  专辑歌手  收藏专辑1  ')
+    await expect(page.getByRole('button', { name: '播放 专辑第二首', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: '播放搜索结果', exact: true }).click()
     await expect
       .poll(() => calls.filter((call) => call.path === '/song/url/v1').at(-1)?.args.id)
       .toBe('6100')
+    await page.getByRole('button', { name: '播放队列', exact: true }).click()
+    await expect(page.getByText('1 首', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '关闭播放队列' }).click()
+    await page.getByLabel('搜索当前歌单或专辑').press('Escape')
+    await expect(page.getByRole('button', { name: '播放 专辑第二首', exact: true })).toBeVisible()
     await page.screenshot({ path: 'test-results/music-party-album.png' })
     expect(errors).toEqual([])
     const invalid = await page.evaluate(() =>

@@ -4,11 +4,13 @@
 
 网易云音乐**官方多人一起听**桌面客户端。好友继续使用网易云官方 App；桌面端复用网易云的房间、成员、队列与播放状态。
 
-当前版本 **0.12.0：官方自定义表情同步版**。0.1.0 误用了双人接口，已替换。多人接口已根据官方分享页与其链接的 Android 客户端核实并接入；用户已实测恢复房间、链接加入、音乐同步、推歌、请求下一首可用；创建房间和不同人数/权限组合继续验收。
+当前版本 **0.12.1：歌单与专辑内搜索**。0.1.0 误用了双人接口，已替换。多人接口已根据官方分享页与其链接的 Android 客户端核实并接入；用户已实测恢复房间、链接加入、音乐同步、推歌、请求下一首可用；创建房间和不同人数/权限组合继续验收。
+
+歌单和专辑详情支持按歌曲、歌手、专辑名搜索，自动读取后续分页，支持清空和播放搜索结果；多人房间内仍可逐首推歌。
 
 ## 桌面产物
 
-Linux x64：`dist/music-party-0.12.0-linux-x86_64.AppImage`，也可运行 `dist/linux-unpacked/music-party`。
+Linux x64：`dist/music-party-0.12.1-linux-x86_64.AppImage`，也可运行 `dist/linux-unpacked/music-party`。
 
 应用包含 Electron、前端和 `api-enhanced`，无需 Docker、Node 或相邻源码仓库。API 在独立 utility process 中运行，不监听 HTTP 端口。GitHub Release 工作流同时构建 Linux x64 AppImage 和 Windows x64 NSIS 安装包。macOS 尚未提供签名和验收版本。
 

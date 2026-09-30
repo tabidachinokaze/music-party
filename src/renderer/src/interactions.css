@@ -689,3 +689,37 @@
   font-size: 12px;
   margin: 12px 0;
 }
+
+.collection-search-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.collection-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(100%, 380px);
+  padding: 4px 10px;
+  border: 1px solid var(--tone-30313a);
+  border-radius: 10px;
+}
+.collection-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: transparent;
+  outline: none;
+}
+.collection-search:focus-within {
+  border-color: var(--tone-efb0bd);
+}
+.collection-search input::-webkit-search-cancel-button {
+  display: none;
+}
+.collection-search-status {
+  font-size: 12px;
+  color: var(--tone-777986);
+}

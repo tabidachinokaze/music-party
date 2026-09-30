@@ -157,6 +157,42 @@ export function MusicBrowser({
       ? { key: `liked:${uid}:${likedIds.join(',')}`, title: '我喜欢的音乐', ids: likedIds }
       : source
   const collection = useSongCollection(api, effectiveSource)
+  const [collectionSearch, setCollectionSearch] = useState({ key: '', text: '' })
+  const collectionKey = `${uid}:${view}:${effectiveSource?.key || ''}`
+  useEffect(() => setCollectionSearch({ key: collectionKey, text: '' }), [collectionKey])
+  const collectionQuery = collectionSearch.key === collectionKey ? collectionSearch.text : ''
+  const searchable = !!(effectiveSource?.playlistId || effectiveSource?.albumId)
+  const terms = collectionQuery
+    .normalize('NFKC')
+    .trim()
+    .toLocaleLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+  const filtering = searchable && terms.length > 0
+  const visibleSongs = filtering
+    ? collection.songs.filter((song) => {
+        const text = `${song.name} ${song.artist} ${song.album}`
+          .normalize('NFKC')
+          .toLocaleLowerCase()
+        return terms.every((term) => text.includes(term))
+      })
+    : collection.songs
+  // Search the entire collection, including tracks beyond the first loaded page.
+  // Stop on errors; retry remains an explicit user action.
+  useEffect(() => {
+    if (!filtering || !collection.more || collection.loading || collection.error) return
+    const timer = window.setTimeout(() => void collection.loadMore(), 200)
+    return () => window.clearTimeout(timer)
+  }, [
+    collectionKey,
+    collectionQuery,
+    filtering,
+    collection.more,
+    collection.loading,
+    collection.error,
+    collection.songs.length,
+  ])
+
   async function search(reset: boolean, newKind = kind, newQuery = query) {
     if (!newQuery.trim() || (!reset && searchBusy)) return
     const epoch = ++searchEpoch.current
@@ -294,14 +330,61 @@ export function MusicBrowser({
             {!room && (
               <button
                 className="primary"
-                disabled={!collection.songs.length || busy}
-                onClick={() => onPlay(collection.songs[0], collection.ids)}
+                disabled={
+                  !visibleSongs.length ||
+                  busy ||
+                  (filtering && (collection.loading || collection.more || !!collection.error))
+                }
+                onClick={() =>
+                  onPlay(
+                    visibleSongs[0],
+                    filtering ? visibleSongs.map((song) => song.id) : collection.ids,
+                  )
+                }
               >
                 <Play size={15} />
-                播放全部
+                {filtering ? '播放搜索结果' : '播放全部'}
               </button>
             )}
           </div>
+          {searchable && (
+            <div className="collection-search-bar">
+              <div className="collection-search">
+                <Search size={17} aria-hidden="true" />
+                <input
+                  type="search"
+                  aria-label="搜索当前歌单或专辑"
+                  placeholder="搜索歌曲、歌手、专辑"
+                  value={collectionQuery}
+                  onChange={(event) =>
+                    setCollectionSearch({ key: collectionKey, text: event.target.value })
+                  }
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') {
+                      event.stopPropagation()
+                      setCollectionSearch({ key: collectionKey, text: '' })
+                    }
+                  }}
+                />
+                {collectionQuery && (
+                  <button
+                    className="icon-btn"
+                    aria-label="清空列表搜索"
+                    onClick={() => setCollectionSearch({ key: collectionKey, text: '' })}
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+              {filtering && (
+                <span className="collection-search-status" role="status">
+                  {collection.loading || collection.more
+                    ? `已找到 ${visibleSongs.length} 首 · ${collection.error ? '搜索未完成，请重试' : '正在搜索完整列表…'}`
+                    : `找到 ${visibleSongs.length} 首`}
+                </span>
+              )}
+            </div>
+          )}
           {collection.error && (
             <div className="alert error" role="alert">
               {collection.error}
@@ -309,8 +392,8 @@ export function MusicBrowser({
             </div>
           )}
           <SongRows
-            songs={collection.songs}
-            ids={collection.ids}
+            songs={visibleSongs}
+            ids={filtering ? visibleSongs.map((song) => song.id) : collection.ids}
             room={room}
             currentId={currentId}
             busy={busy}
@@ -324,10 +407,10 @@ export function MusicBrowser({
               正在加载歌曲…
             </div>
           )}
-          {!collection.loading && !collection.error && !collection.songs.length && (
+          {!collection.loading && !collection.error && !collection.more && !visibleSongs.length && (
             <div className="empty">
               <Music2 size={25} />
-              <strong>这里还没有歌曲</strong>
+              <strong>{filtering ? '没有找到匹配歌曲' : '这里还没有歌曲'}</strong>
             </div>
           )}
           {collection.more && (
