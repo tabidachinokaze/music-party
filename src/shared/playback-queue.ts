@@ -16,14 +16,20 @@ export function parseRoomQueue(body: any): {
       return text
     }
     const songId = id(song?.resourceId)
+    const upCount =
+      typeof song.upCnt === 'number' || (typeof song.upCnt === 'string' && /^\d+$/.test(song.upCnt))
+        ? Number(song.upCnt)
+        : NaN
+    const upCountKnown = Number.isSafeInteger(upCount) && upCount >= 0
     return {
       songId,
       songBizId: id(song?.bizId),
       songRcmdUid: id(item.rcmdUid ?? 0),
       recommender: typeof item.nickname === 'string' ? item.nickname : '',
       selfRecommended: item.selfRcmd === true,
-      uped: item.uped === true,
-      upCount: Math.max(0, Number(song.upCnt) || 0),
+      uped: typeof song.uped === 'boolean' ? song.uped : item.uped === true,
+      upCount: upCountKnown ? upCount : 0,
+      upCountKnown,
       liked: item.liked === true,
       likeCount: Math.max(0, Number(song.zanCnt) || 0),
       track: {

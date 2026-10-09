@@ -1,0 +1,175 @@
+.private-bubbles {
+  position: fixed;
+  top: var(--private-bubble-top, 20px);
+  right: 20px;
+  width: min(320px, calc(100vw - 40px));
+  max-height: calc(100dvh - var(--private-bubble-top, 20px) - 20px);
+  z-index: 9;
+  display: grid;
+  gap: 10px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  pointer-events: none;
+}
+.private-bubbles::-webkit-scrollbar {
+  display: none;
+}
+.private-bubbles[hidden] {
+  display: none;
+}
+.private-bubble {
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: color-mix(in srgb, var(--tone-202025) 88%, transparent);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 14%);
+  backdrop-filter: blur(18px);
+  pointer-events: auto;
+  animation: private-bubble-arrive 160ms ease-out;
+}
+.private-bubble[data-collapsed='true'] {
+  width: max-content;
+  justify-self: end;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.private-bubble[data-collapsed='true'] .private-bubble-dismiss {
+  display: none;
+}
+.private-bubble[data-collapsed='true']:hover .private-bubble-dismiss,
+.private-bubble[data-collapsed='true']:focus-within .private-bubble-dismiss {
+  display: flex;
+}
+.private-conversation-bubble {
+  position: fixed;
+  top: var(--private-bubble-top, 72px);
+  right: 20px;
+  width: min(380px, calc(100dvw - 40px));
+  height: min(600px, calc(100dvh - var(--private-bubble-top, 72px) - 24px));
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--tone-202025);
+  box-shadow: 0 12px 40px #0004;
+  z-index: 12;
+  overflow: hidden;
+}
+.private-bubble-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: none;
+  padding: 10px 14px;
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  border-bottom: 1px solid var(--line);
+}
+.private-conversation-bubble .private-layout {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+.private-bubble-open {
+  flex: 1;
+  min-width: 0;
+  padding: 8px;
+  gap: 10px;
+  text-align: left;
+  border-radius: 28px;
+  justify-content: flex-start;
+}
+.private-bubble-open:hover {
+  background: color-mix(in srgb, var(--pink) 8%, transparent);
+}
+.private-bubble-avatar {
+  display: grid;
+  place-items: center;
+  position: relative;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--tone-30232e);
+  color: var(--pink);
+}
+.private-bubble-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.private-bubble-count {
+  position: absolute;
+  top: -3px;
+  right: -5px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--pink);
+  color: var(--tone-191a1f);
+  font-size: calc(10px * var(--ui-font-scale, 1));
+  font-weight: 700;
+  line-height: 17px;
+  text-align: center;
+}
+.private-bubble-online {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--tone-202025);
+  border-radius: 50%;
+  background: var(--tone-90c4b1);
+}
+.private-bubble-content {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.private-bubble-content strong,
+.private-bubble-content > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.private-bubble-content strong {
+  color: var(--pink);
+  font-size: calc(12px * var(--ui-font-scale, 1));
+}
+.private-bubble-content > span {
+  color: var(--tone-c7c9d1);
+  font-size: calc(12px * var(--ui-font-scale, 1));
+}
+.private-bubble-dismiss {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-right: 10px;
+  border-radius: 50%;
+  color: var(--muted);
+}
+.private-bubble-dismiss:hover {
+  color: var(--tone-e9e9ed);
+  background: var(--tone-30313a);
+}
+@keyframes private-bubble-arrive {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .private-bubble {
+    animation: none;
+  }
+}

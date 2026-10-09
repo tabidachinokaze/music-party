@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Cloud, LoaderCircle, RefreshCw, Smile } from 'lucide-react'
 import type { ApiCall } from './music-data'
 import { useCloudStickers } from './useCloudStickers'
+import { useScrollPagination } from './useScrollPagination'
 import { MediaComposer } from './MediaComposer'
+import { stickersChanged } from './sticker-cache'
 import { stickerKey } from '../../shared/stickers'
 import type { ChatEmoji } from '../../shared/types'
 import { Overlay } from './player/Overlay'
@@ -65,6 +67,9 @@ export function EmojiPicker({
   accountKey,
   scope,
   recipient,
+  triggerLabel = '选择表情',
+  triggerIcon,
+  defaultTab = 'cloud',
 }: {
   onInsert(value: string): void
   stickers?: ChatEmoji[]
@@ -74,27 +79,91 @@ export function EmojiPicker({
   accountKey: string
   scope: 'room' | 'private'
   recipient: string
+  triggerLabel?: string
+  triggerIcon?: ReactNode
+  defaultTab?: 'cloud' | 'basic' | 'recent'
 }) {
   const [open, setOpen] = useState(false)
-  const [tab, setTab] = useState<'cloud' | 'basic' | 'recent'>('cloud')
+  const [tab, setTab] = useState<'cloud' | 'basic' | 'recent'>(defaultTab)
   const [notice, setNotice] = useState('')
+  const [editing, setEditing] = useState(false),
+    [selectedIds, setSelectedIds] = useState(new Set<string>()),
+    [removing, setRemoving] = useState(false)
+  const grid = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
   const cloud = useCloudStickers(api, accountKey, scope, open && tab === 'cloud')
+  const stickerPages = useScrollPagination({
+    enabled: open && tab === 'cloud' && !!accountKey && !editing && !removing,
+    loading: cloud.loading,
+    hasMore: !!cloud.groupId && !cloud.complete,
+    blocked: !!cloud.error,
+    scope: `${accountKey}:${scope}:${cloud.groupId}`,
+    contentKey: `${cloud.items.length}:${cloud.cursor}`,
+    onLoad: cloud.loadMore,
+  })
+  function captureScroll(node: HTMLDivElement) {
+    const bounds = node.getBoundingClientRect()
+    const anchors: { key: string; offset: number }[] = []
+    for (const child of node.children) {
+      const button = child as HTMLElement,
+        rect = button.getBoundingClientRect()
+      if (rect.bottom <= bounds.top) continue
+      if (rect.top >= bounds.bottom && anchors.length) break
+      if (button.dataset.stickerKey)
+        anchors.push({ key: button.dataset.stickerKey, offset: rect.top - bounds.top })
+    }
+    cloud.saveScroll(node.scrollTop, anchors)
+  }
+  useLayoutEffect(() => {
+    const node = grid.current
+    if (!node) return
+    node.scrollTop = cloud.scroll
+    for (const anchor of cloud.anchors) {
+      const button = [...node.children].find(
+        (child) => (child as HTMLElement).dataset.stickerKey === anchor.key,
+      )
+      if (!button) continue
+      node.scrollTop +=
+        button.getBoundingClientRect().top - node.getBoundingClientRect().top - anchor.offset
+      break
+    }
+    captureScroll(node)
+  }, [open, tab, cloud.groupId, cloud.items])
+  async function removeSelected() {
+    if (!selectedIds.size || removing) return
+    const ids = [...selectedIds]
+    setRemoving(true)
+    setNotice('')
+    try {
+      await api('stickerRemove', { emojiIds: ids })
+      stickersChanged(accountKey, ids)
+      setSelectedIds(new Set())
+      setEditing(false)
+      setNotice(`已删除 ${ids.length} 个表情`)
+    } catch (error: any) {
+      setNotice(error.message || '删除失败，请重试')
+    } finally {
+      setRemoving(false)
+    }
+  }
   const recent = [...new Map(stickers.map((item) => [item.emojiImgUrl, item])).values()]
     .slice(-32)
     .reverse()
   return (
     <>
       <button
+        ref={trigger}
         className="icon-btn"
         type="button"
-        aria-label="选择表情"
+        aria-label={triggerLabel}
+        title={triggerLabel}
         disabled={disabled}
         onClick={() => setOpen(true)}
       >
-        <Smile size={19} />
+        {triggerIcon ?? <Smile size={19} />}
       </button>
       {open && (
-        <Overlay title="表情" onClose={() => setOpen(false)}>
+        <Overlay title="表情" sideAnchor={trigger.current} onClose={() => setOpen(false)}>
           <div className="filter-tabs sticker-tabs">
             <button className={tab === 'cloud' ? 'selected' : ''} onClick={() => setTab('cloud')}>
               <Cloud size={14} />
@@ -116,17 +185,17 @@ export function EmojiPicker({
             <>
               <div className="cloud-sticker-toolbar">
                 <span>
-                  {cloud.complete ? `${cloud.items.length} 个表情` : '正在同步网易云表情'}
+                  {`${cloud.items.length} 个表情${cloud.complete ? '' : ' · 可继续加载'}`}
                 </span>
                 <MediaComposer
                   target={{ kind: 'sticker' }}
+                  accountKey={accountKey}
                   label="网易云自定义表情"
                   disabled={!accountKey || disabled}
                   onMediaPlay={() => {}}
                   onSent={(receipt) => {
                     if (receipt.senderUid === accountKey) {
                       setNotice('已添加到网易云自定义表情')
-                      cloud.refresh()
                     }
                   }}
                 />
@@ -134,7 +203,7 @@ export function EmojiPicker({
                   className="icon-btn"
                   title="刷新自定义表情"
                   aria-label="刷新自定义表情"
-                  disabled={cloud.loading}
+                  disabled={cloud.loading || removing || editing}
                   onClick={() => {
                     setNotice('')
                     cloud.refresh()
@@ -143,12 +212,35 @@ export function EmojiPicker({
                   <RefreshCw size={16} />
                 </button>
               </div>
+              <div className="cloud-sticker-toolbar">
+                <button
+                  type="button"
+                  className="text-btn"
+                  disabled={removing || !cloud.items.length}
+                  onClick={() => {
+                    setEditing(!editing)
+                    setSelectedIds(new Set())
+                  }}
+                >
+                  {editing ? '取消整理' : '整理表情'}
+                </button>
+                {editing && (
+                  <button
+                    type="button"
+                    className="text-btn"
+                    disabled={removing || !selectedIds.size}
+                    onClick={removeSelected}
+                  >
+                    {removing ? '正在删除…' : `删除所选 (${selectedIds.size})`}
+                  </button>
+                )}
+              </div>
               {cloud.groups.length > 1 && (
                 <select
                   className="sticker-group-select"
                   aria-label="表情分组"
                   value={cloud.groupId}
-                  disabled={cloud.loading}
+                  disabled={cloud.loading || removing || editing}
                   onChange={(event) => cloud.select(event.target.value)}
                 >
                   {cloud.groups.map((group) => (
@@ -169,20 +261,38 @@ export function EmojiPicker({
               {cloud.error && (
                 <p className="private-error" role="alert">
                   {cloud.error}
-                  <button className="text-btn" onClick={cloud.refresh}>
+                  <button className="text-btn" onClick={cloud.retry}>
                     重试
                   </button>
                 </p>
               )}
-              <div className="sticker-grid cloud-sticker-grid">
+              <div
+                className="sticker-grid cloud-sticker-grid"
+                ref={grid}
+                onScroll={(event) => {
+                  const node = event.currentTarget
+                  captureScroll(node)
+                }}
+              >
                 {cloud.items.map((item) => (
                   <button
                     type="button"
                     key={stickerKey(item)}
+                    data-sticker-key={stickerKey(item)}
                     title={item.restricted ? item.restriction : item.emojiName}
-                    aria-label={`发送自定义表情 ${item.emojiName}`}
-                    disabled={disabled || item.restricted || !onSticker}
+                    aria-label={`${editing ? '选择删除' : '发送自定义表情'} ${item.emojiName}`}
+                    aria-pressed={editing ? selectedIds.has(item.emojiId) : undefined}
+                    disabled={
+                      removing ||
+                      (editing ? item.emojiId === '0' : disabled || item.restricted || !onSticker)
+                    }
                     onClick={() => {
+                      if (editing) {
+                        const next = new Set(selectedIds)
+                        next.has(item.emojiId) ? next.delete(item.emojiId) : next.add(item.emojiId)
+                        setSelectedIds(next)
+                        return
+                      }
                       onSticker?.(item)
                       setOpen(false)
                     }}
@@ -196,12 +306,13 @@ export function EmojiPicker({
                     {item.restricted && <small>暂不可用</small>}
                   </button>
                 ))}
+                <div ref={stickerPages} className="pagination-sentinel" aria-hidden="true" />
               </div>
               {cloud.loading && (
-                <p className="loading">
+                <div className="cloud-sticker-loading" role="status">
                   <LoaderCircle size={15} className="spin" />
-                  正在读取表情…
-                </p>
+                  {cloud.items.length ? '正在读取更多表情…' : '正在读取表情…'}
+                </div>
               )}
               {!cloud.loading && !cloud.error && !cloud.items.length && (
                 <p className="chat-empty">

@@ -1,6 +1,15 @@
 import type { ProjectLink, UpdateState } from './updates'
-import type { DesktopInfo, DesktopMediaState, PlayerCommand, Preferences } from './desktop'
+import type {
+  DesktopInfo,
+  DesktopMediaState,
+  PlayerCommand,
+  Preferences,
+  PreparedPlayerBackground,
+} from './desktop'
 import type { MediaRequest, MediaReply, MediaProgress } from './media'
+import type { PrivateNotificationBatch } from './private-notices'
+import type { MiniNotice } from '../main/mini-notifications'
+import type { StickerImageRequest } from './sticker-actions'
 export type Method =
   | 'account'
   | 'qrCreate'
@@ -11,6 +20,7 @@ export type Method =
   | 'stream'
   | 'playlists'
   | 'playlist'
+  | 'playlistAdd'
   | 'albums'
   | 'album'
   | 'likes'
@@ -22,11 +32,16 @@ export type Method =
   | 'multiJoin'
   | 'multiStatus'
   | 'multiHeartbeat'
+  | 'multiPlayed'
   | 'multiQueue'
   | 'multiSongInfo'
   | 'multiRemove'
   | 'multiUp'
   | 'multiLike'
+  | 'multiRedHeart'
+  | 'multiMatch'
+  | 'multiMatchCancel'
+  | 'multiRematchLeave'
   | 'multiAdd'
   | 'multiNext'
   | 'multiLeave'
@@ -38,8 +53,11 @@ export type Method =
   | 'privateSend'
   | 'privateInvite'
   | 'privateSticker'
+  | 'privatePresence'
   | 'stickerGroups'
   | 'stickerPage'
+  | 'stickerCollect'
+  | 'stickerRemove'
   | 'follows'
 export interface Request {
   method: Method
@@ -71,6 +89,7 @@ export interface Bridge {
   openProject(link: ProjectLink): Promise<void>
   openMessageLink(url: string): Promise<void>
   sendMedia(request: MediaRequest): Promise<MediaReply>
+  saveStickerImage(request: StickerImageRequest): Promise<MediaReply>
   cancelMedia(requestId: string): Promise<void>
   onMediaProgress(callback: (progress: MediaProgress) => void): () => void
   requestMicrophone(): Promise<void>
@@ -80,12 +99,19 @@ export interface Bridge {
   desktopInfo(): Promise<DesktopInfo>
   setFullScreen(value: boolean | 'toggle'): Promise<DesktopInfo>
   updatePreferences(value: Partial<Preferences>): Promise<DesktopInfo>
+  preparePlayerBackground(bytes: Uint8Array): Promise<PreparedPlayerBackground>
   updateMedia(value: DesktopMediaState): Promise<void>
   quit(): Promise<void>
   onDesktopInfo(callback: (info: DesktopInfo) => void): () => void
   onPlayerCommand(callback: (command: PlayerCommand) => void): () => void
   onLifecycle(callback: (event: 'suspend' | 'resume') => void): () => void
+  privateNotifications(cursor?: number, session?: string): Promise<AccountNotifications>
+  onPrivateNotifications(callback: (batch: AccountNotifications) => void): () => void
+  matchOpen(id: string): Promise<void>
+  matchPoll(id: string): Promise<MiniNotice[]>
+  matchClose(id?: string): Promise<void>
 }
+export type AccountNotifications = PrivateNotificationBatch & { accountUid: string }
 export interface Song {
   id: string
   name: string
@@ -111,6 +137,7 @@ export interface Room {
   inviterUid: string
   role: 'host' | 'guest' | 'unknown'
   chatRoomId?: string | null
+  roomBizType?: number | string | null
 }
 export interface QueueSong {
   songId: string
@@ -123,6 +150,7 @@ export interface RoomQueueEntry extends QueueSong {
   selfRecommended: boolean
   uped: boolean
   upCount: number
+  upCountKnown?: boolean
   liked: boolean
   likeCount: number
 }
@@ -149,6 +177,7 @@ export interface RoomSnapshot {
   membersKnown: boolean
   onlineCount: number | null
   chatRoomId: string | null
+  roomBizType?: number | string | null
 }
 declare global {
   interface Window {
@@ -182,6 +211,7 @@ export interface ChatMessage {
   time: number
   text: string
   kind: 'text' | 'notice' | 'image' | 'resource' | 'interaction'
+  interactType?: number
   attachments?: MessageAttachment[]
   richText?: MessageTextPart[]
   emoji?: ChatEmoji
@@ -202,6 +232,7 @@ export interface Conversation {
   preview: string
   time: number
   unread: number
+  online?: boolean | null
 }
 export interface PrivateMessage {
   id: string
@@ -239,6 +270,9 @@ export interface MessageAttachment {
   resourceType?: string
   resourceId?: string
   actionUrl?: string
+  width?: number
+  height?: number
+  emoji?: ChatEmoji
 }
 export interface PrivatePage {
   messages: PrivateMessage[]

@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { UpdateState } from '../shared/updates'
 import type { DesktopInfo, PlayerCommand } from '../shared/desktop'
-import type { Bridge, Trace } from '../shared/types'
+import type { Bridge, Trace, AccountNotifications } from '../shared/types'
 import type { MediaProgress } from '../shared/media'
 const bridge: Bridge = {
   call: (request) => ipcRenderer.invoke('api', request),
@@ -16,6 +16,18 @@ const bridge: Bridge = {
   openProject: (link) => ipcRenderer.invoke('project-open', link),
   openMessageLink: (url) => ipcRenderer.invoke('message-link-open', url),
   sendMedia: (request) => ipcRenderer.invoke('media-send', request),
+  saveStickerImage: (request) => ipcRenderer.invoke('sticker-image', request),
+  privateNotifications: (cursor, session) =>
+    ipcRenderer.invoke('private-notifications', cursor, session),
+  onPrivateNotifications(callback) {
+    const listener = (_event: Electron.IpcRendererEvent, batch: AccountNotifications) =>
+      callback(batch)
+    ipcRenderer.on('private-notifications', listener)
+    return () => ipcRenderer.removeListener('private-notifications', listener)
+  },
+  matchOpen: (id) => ipcRenderer.invoke('match-open', id),
+  matchPoll: (id) => ipcRenderer.invoke('match-poll', id),
+  matchClose: (id) => ipcRenderer.invoke('match-close', id),
   cancelMedia: (requestId) => ipcRenderer.invoke('media-cancel', requestId),
   requestMicrophone: () => ipcRenderer.invoke('microphone-request'),
   onMediaProgress(callback) {
@@ -34,6 +46,7 @@ const bridge: Bridge = {
   desktopInfo: () => ipcRenderer.invoke('desktop-info'),
   setFullScreen: (value) => ipcRenderer.invoke('desktop-fullscreen', value),
   updatePreferences: (value) => ipcRenderer.invoke('desktop-settings', value),
+  preparePlayerBackground: (bytes) => ipcRenderer.invoke('player-background-image', bytes),
   updateMedia: (value) => ipcRenderer.invoke('desktop-media', value),
   quit: () => ipcRenderer.invoke('desktop-quit'),
   onDesktopInfo(callback) {

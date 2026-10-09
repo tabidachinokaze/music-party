@@ -15,9 +15,7 @@ export function Diagnostics({ traces, onExport }: { traces: Trace[]; onExport():
   return (
     <div className="diagnostics">
       <div className="section-title">
-        <h2>
-          请求与响应 <span className="muted">{traces.length} / 300</span>
-        </h2>
+        <span className="muted">已记录 {traces.length} / 300 条请求</span>
         <button className="secondary" onClick={onExport}>
           <Download size={15} />
           导出记录

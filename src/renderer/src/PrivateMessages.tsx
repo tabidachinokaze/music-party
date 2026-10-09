@@ -7,17 +7,22 @@ import {
   Plus,
   RefreshCw,
   Search,
-  Send,
+  Sticker,
   Users,
 } from 'lucide-react'
 import type { MultiInvitation, Room, Song } from '../../shared/types'
 import { MessageContent } from './MessageContent'
+import { ChatMessageCard } from './ChatMessageCard'
 import { EmojiPicker } from './EmojiPicker'
 import { MediaComposer } from './MediaComposer'
 import { PRIVATE_TEXT_LIMIT, inviteText } from '../../shared/private-messages'
 import type { usePrivateMessages } from './usePrivateMessages'
 import type { ApiCall } from './music-data'
 import { Overlay } from './player/Overlay'
+import { useScrollPagination } from './useScrollPagination'
+import { ChatComposer } from './ChatComposer'
+import { captureHistoryAnchor, restoreHistoryAnchor, type HistoryAnchor } from './history-scroll'
+import { privateViewAccount, privateViewPosition, savePrivateView } from './private-view-state'
 
 type Inbox = ReturnType<typeof usePrivateMessages>
 function InviteCard({
@@ -102,7 +107,10 @@ export function PrivateMessages({
   busy,
   onJoin,
   onSong,
+  onAlbum,
+  onAudition,
   onMediaPlay,
+  compact = false,
 }: {
   inbox: Inbox
   account: any
@@ -111,7 +119,10 @@ export function PrivateMessages({
   busy: boolean
   onJoin(invite: MultiInvitation): Promise<void>
   onSong(song: Song): void
+  onAlbum(id: string, title: string): void
+  onAudition(song: Song): void
   onMediaPlay(): void
+  compact?: boolean
 }) {
   const [filter, setFilter] = useState('')
   const [showContacts, setShowContacts] = useState(false)
@@ -124,21 +135,54 @@ export function PrivateMessages({
   const [switchInvite, setSwitchInvite] = useState<MultiInvitation | null>(null)
   const log = useRef<HTMLDivElement>(null),
     stick = useRef(true),
-    historyAnchor = useRef<{ height: number; top: number } | null>(null)
-  useEffect(() => {
-    stick.current = true
+    historyAnchor = useRef<HistoryAnchor | null>(null)
+  const conversationPages = useScrollPagination({
+    enabled: Boolean(account) && !compact,
+    loading: inbox.conversationBusy,
+    hasMore: inbox.conversationMore,
+    blocked: Boolean(inbox.conversationError),
+    scope: `${account?.userId}:conversations`,
+    contentKey: inbox.conversations.length,
+    onLoad: inbox.loadConversations,
+  })
+  const historyPages = useScrollPagination({
+    enabled: Boolean(account && inbox.selected),
+    loading: inbox.historyBusy,
+    hasMore: inbox.historyMore,
+    blocked: Boolean(inbox.historyError),
+    scope: `${account?.userId}:${inbox.selected?.uid}`,
+    contentKey: inbox.messages.length,
+    direction: 'top',
+    autoFill: false,
+    onLoad: older,
+  })
+  const contactPages = useScrollPagination({
+    enabled: showContacts,
+    loading: inbox.contactsBusy,
+    hasMore: inbox.contactsMore,
+    blocked: Boolean(inbox.contactsError),
+    scope: `${account?.userId}:contacts`,
+    contentKey: inbox.contacts.length,
+    onLoad: () => inbox.loadContacts(true),
+  })
+  const readingKey = `${compact ? 'bubble' : 'inbox'}:${inbox.selected?.uid}`
+  useLayoutEffect(() => {
+    privateViewAccount(String(account?.userId || ''))
+    const saved = privateViewPosition(readingKey)
+    stick.current = saved?.latest ?? true
+    historyAnchor.current = saved && !saved.latest ? saved.anchor : null
     setConfirmInvite(null)
     setSwitchInvite(null)
-  }, [inbox.selected?.uid, account?.userId])
+  }, [readingKey, account?.userId])
   useLayoutEffect(() => {
     const box = log.current
     if (!box) return
     const anchor = historyAnchor.current
     if (anchor) {
-      box.scrollTop = anchor.top + box.scrollHeight - anchor.height
+      restoreHistoryAnchor(box, anchor)
       historyAnchor.current = null
     } else if (stick.current) box.scrollTop = box.scrollHeight
-  }, [inbox.messages])
+  }, [inbox.messages, readingKey])
   useEffect(() => {
     const box = log.current
     if (!box) return
@@ -149,11 +193,11 @@ export function PrivateMessages({
     return () => observer.disconnect()
   }, [inbox.selected?.uid])
   async function older() {
-    if (log.current)
-      historyAnchor.current = { height: log.current.scrollHeight, top: log.current.scrollTop }
+    const anchor = log.current ? captureHistoryAnchor(log.current) : null
+    historyAnchor.current = anchor
     await inbox.loadHistory()
     requestAnimationFrame(() => {
-      historyAnchor.current = null
+      if (historyAnchor.current === anchor) historyAnchor.current = null
     })
   }
   function join(invite: MultiInvitation) {
@@ -162,7 +206,7 @@ export function PrivateMessages({
   }
   if (!account)
     return (
-      <div className="empty">
+      <div className="empty private-inbox-empty">
         <Mail size={28} />
         <strong>登录后查看网易云私信</strong>
         <span>点击左下角登录网易云账号</span>
@@ -175,30 +219,40 @@ export function PrivateMessages({
   const dateLabel = (time: number) =>
     new Date(time).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
   return (
-    <section className="private-layout">
+    <section className={`private-layout ${compact ? 'private-compact' : ''}`}>
       <aside className="conversation-pane">
         <div className="conversation-toolbar">
-          <strong>
-            私信<span className="conversation-total">{inbox.conversations.length}</span>
-          </strong>
-          <button
-            className="icon-btn"
-            aria-label="刷新私信会话"
-            disabled={inbox.conversationBusy}
-            onClick={inbox.refreshConversations}
+          <strong>{inbox.conversations.length} 个会话</strong>
+          <span
+            className="private-connection"
+            title={
+              inbox.notificationsConnected
+                ? 'Mini 通知已连接'
+                : '通知重连中，打开页面时保留历史查询补偿'
+            }
           >
-            <RefreshCw size={15} />
-          </button>
-          <button
-            className="icon-btn"
-            aria-label="选择好友发私信"
-            onClick={() => {
-              setShowContacts(true)
-              inbox.loadContacts()
-            }}
-          >
-            <Plus size={18} />
-          </button>
+            {inbox.notificationsConnected ? '实时' : '重连中'}
+          </span>
+          <div className="conversation-actions">
+            <button
+              className="icon-btn"
+              aria-label="刷新私信会话"
+              disabled={inbox.conversationBusy}
+              onClick={inbox.refreshConversations}
+            >
+              <RefreshCw size={15} />
+            </button>
+            <button
+              className="icon-btn"
+              aria-label="选择好友发私信"
+              onClick={() => {
+                setShowContacts(true)
+                inbox.loadContacts()
+              }}
+            >
+              <Plus size={18} />
+            </button>
+          </div>
         </div>
         <label className="contact-filter">
           <Search size={15} />
@@ -222,13 +276,16 @@ export function PrivateMessages({
               aria-current={inbox.selected?.uid === c.uid ? 'true' : undefined}
               onClick={() => inbox.select(c)}
             >
-              {c.avatar ? (
-                <img src={c.avatar} alt="" />
-              ) : (
-                <span className="avatar">
-                  <Users size={18} />
-                </span>
-              )}
+              <span className="contact-avatar">
+                {c.avatar ? (
+                  <img src={c.avatar} alt="" />
+                ) : (
+                  <span className="avatar">
+                    <Users size={18} />
+                  </span>
+                )}
+                {c.online === true && <i className="contact-online" aria-label="在线" />}
+              </span>
               <span className="conversation-copy">
                 <strong>{c.nickname}</strong>
                 <small>{c.preview || '开始私信'}</small>
@@ -263,15 +320,7 @@ export function PrivateMessages({
               加载中…
             </p>
           )}
-          {inbox.conversationMore && (
-            <button
-              className="text-btn load-more"
-              disabled={inbox.conversationBusy}
-              onClick={inbox.loadConversations}
-            >
-              更多会话
-            </button>
-          )}
+          <div ref={conversationPages} className="pagination-sentinel" aria-hidden="true" />
         </div>
       </aside>
       <div className="private-thread">
@@ -293,7 +342,7 @@ export function PrivateMessages({
               </span>
               <div>
                 <strong>{inbox.selected.nickname}</strong>
-                <small>网易云私信</small>
+                <small>{inbox.selected.online === true ? '在线' : '网易云私信'}</small>
               </div>
               <button
                 className="text-btn"
@@ -340,18 +389,14 @@ export function PrivateMessages({
               aria-live="polite"
               onScroll={() => {
                 const box = log.current
-                if (box) stick.current = box.scrollHeight - box.scrollTop - box.clientHeight < 70
+                if (box) {
+                  stick.current = box.scrollHeight - box.scrollTop - box.clientHeight < 70
+                  if (inbox.messages.length)
+                    savePrivateView(readingKey, stick.current, captureHistoryAnchor(box))
+                }
               }}
             >
-              {inbox.historyMore && (
-                <button
-                  className="text-btn chat-older"
-                  disabled={inbox.historyBusy}
-                  onClick={older}
-                >
-                  加载更早私信
-                </button>
-              )}
+              <div ref={historyPages} className="pagination-sentinel" aria-hidden="true" />
               {inbox.historyBusy && !inbox.messages.length && (
                 <p className="loading">正在读取私信…</p>
               )}
@@ -359,28 +404,35 @@ export function PrivateMessages({
                 <p className="chat-empty">还没有聊天记录</p>
               )}
               {inbox.messages.map((message, index) => (
-                <div key={message.id} className="private-message-item">
+                <div key={message.id} data-message-id={message.id} className="private-message-item">
                   {(index === 0 ||
                     new Date(inbox.messages[index - 1].time).toDateString() !==
                       new Date(message.time).toDateString()) && (
                     <div className="message-date">{dateLabel(message.time)}</div>
                   )}
-                  <div className={`chat-message ${message.senderId === selfUid ? 'mine' : ''}`}>
-                    <div className="chat-author">
-                      <span>{message.senderId === selfUid ? '我' : inbox.selected?.nickname}</span>
-                      <time>
-                        {new Date(message.time).toLocaleTimeString('zh-CN', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </time>
-                    </div>
+                  <ChatMessageCard
+                    mine={message.senderId === selfUid}
+                    author={
+                      message.senderId === selfUid
+                        ? account.nickname || '我'
+                        : inbox.selected?.nickname || '听友'
+                    }
+                    avatar={
+                      message.senderId === selfUid ? account.avatarUrl : inbox.selected?.avatar
+                    }
+                    time={message.time}
+                  >
                     <MessageContent
+                      api={api}
+                      accountKey={selfUid}
                       text={message.text}
                       attachments={message.attachments}
                       richText={message.richText}
                       room={!!room}
+                      roomKey={room?.roomId}
                       onSong={onSong}
+                      onAlbum={onAlbum}
+                      onAudition={onAudition}
                       onMediaPlay={onMediaPlay}
                     />
                     {message.invitations.map((invite) => (
@@ -404,70 +456,48 @@ export function PrivateMessages({
                           }[message.delivery]}
                       </small>
                     )}
-                  </div>
+                  </ChatMessageCard>
                 </div>
               ))}
             </div>
-            <form
+            <ChatComposer
+              key={`${selfUid}:${inbox.selected.uid}`}
               className="private-compose"
-              onSubmit={(e) => {
-                e.preventDefault()
+              value={inbox.draft}
+              onChange={inbox.setDraft}
+              label="私信内容"
+              placeholder="发送私信…"
+              maxLength={PRIVATE_TEXT_LIMIT}
+              busy={inbox.sending}
+              submitLabel="发送私信"
+              onSubmit={() => {
                 stick.current = true
-                inbox.send()
+                return inbox.send()
               }}
-            >
-              <div className="compose-tools">
-                <MediaComposer
-                  target={{ kind: 'private', uid: inbox.selected.uid }}
-                  label={inbox.selected.nickname}
-                  disabled={inbox.sending}
-                  onSent={inbox.acceptMedia}
-                  onMediaPlay={onMediaPlay}
-                />
-                <EmojiPicker
-                  key={`${selfUid}:${inbox.selected.uid}`}
-                  api={api}
-                  accountKey={selfUid}
-                  scope="private"
-                  recipient={inbox.selected.nickname}
-                  disabled={inbox.sending}
-                  onSticker={inbox.sendSticker}
-                  onInsert={(value) =>
-                    inbox.setDraft((draft) =>
-                      draft.length + value.length <= PRIVATE_TEXT_LIMIT ? draft + value : draft,
-                    )
-                  }
-                />
-              </div>
-              <textarea
-                aria-label="私信内容"
-                placeholder={`发送给 ${inbox.selected.nickname}`}
-                value={inbox.draft}
-                maxLength={PRIVATE_TEXT_LIMIT}
-                onChange={(e) => inbox.setDraft(e.target.value)}
-                onKeyDown={(e) => {
-                  if (
-                    e.key === 'Enter' &&
-                    !e.shiftKey &&
-                    !e.nativeEvent.isComposing &&
-                    e.keyCode !== 229
-                  ) {
-                    e.preventDefault()
-                    stick.current = true
-                    inbox.send()
-                  }
-                }}
-              />
-              <div>
-                <small>
-                  {inbox.draft.length}/{PRIVATE_TEXT_LIMIT} · Shift+Enter 换行
-                </small>
-                <button className="primary" disabled={inbox.sending || !inbox.draft.trim()}>
-                  <Send size={15} />
-                  {inbox.sending ? '发送中…' : '发送私信'}
-                </button>
-              </div>
-            </form>
+              renderTools={(insertText) => (
+                <>
+                  <EmojiPicker
+                    api={api}
+                    accountKey={selfUid}
+                    scope="private"
+                    recipient={inbox.selected!.nickname}
+                    triggerLabel="表情包"
+                    triggerIcon={<Sticker size={16} />}
+                    disabled={inbox.sending}
+                    onSticker={inbox.sendSticker}
+                    onInsert={insertText}
+                  />
+                  <MediaComposer
+                    accountKey={selfUid}
+                    target={{ kind: 'private', uid: inbox.selected!.uid }}
+                    label={inbox.selected!.nickname}
+                    disabled={inbox.sending}
+                    onSent={inbox.acceptMedia}
+                    onMediaPlay={onMediaPlay}
+                  />
+                </>
+              )}
+            />
           </>
         )}
       </div>
@@ -522,17 +552,9 @@ export function PrivateMessages({
                 <small>{c.uid}</small>
               </button>
             ))}
+            <div ref={contactPages} className="pagination-sentinel" aria-hidden="true" />
           </div>
           {inbox.contactsBusy && <p className="loading">正在读取联系人…</p>}
-          {inbox.contactsMore && (
-            <button
-              className="text-btn load-more"
-              disabled={inbox.contactsBusy}
-              onClick={() => inbox.loadContacts(true)}
-            >
-              更多联系人
-            </button>
-          )}
         </Overlay>
       )}
       {confirmInvite && (

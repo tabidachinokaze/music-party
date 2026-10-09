@@ -1,4 +1,7 @@
 import { expect, it, vi } from 'vitest'
+import { createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { MessageTime } from '../src/renderer/src/ChatMessageCard'
 import { ApiService, validate } from '../src/main/service'
 import { multiPayload } from '../src/main/multi-api'
 import { parseSnapshot } from '../src/shared/multiplayer'
@@ -15,6 +18,11 @@ const nativeSnapshot = () => ({
       { uid: 3, nickname: 'three' },
     ],
   },
+})
+it('keeps a safe integer timestamp outside the Date range from crashing the chat list', () => {
+  expect(renderToStaticMarkup(createElement(MessageTime, { time: 8640000000000001 }))).toContain(
+    '时间未知',
+  )
 })
 const request = {
   method: 'multiChatSend' as const,

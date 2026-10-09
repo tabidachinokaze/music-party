@@ -1,5 +1,13 @@
 import { expect, it, vi } from 'vitest'
-import { allAlbums, allPlaylists, songsByIds, parseLyrics } from '../src/renderer/src/music-data'
+import {
+  allAlbums,
+  allPlaylists,
+  songsByIds,
+  parseLyrics,
+  likedPlaylist,
+  writablePlaylists,
+  playlistFrom,
+} from '../src/renderer/src/music-data'
 import { nextQueueIndex } from '../src/shared/personal-queue'
 import { ApiService, validate } from '../src/main/service'
 it('loads all subscribed album pages without duplicates and preserves artist metadata', async () => {
@@ -93,6 +101,166 @@ it('keeps original playlist order when song-detail results arrive reordered or m
     ['1', '2', '3'],
   )
   expect(songs.map((s) => s.id)).toEqual(['1', '3'])
+})
+it('uses the current account’s ordered favorite playlist rather than unordered like IDs', async () => {
+  const playlists = [
+    { id: 1, specialType: 5, creator: { userId: 456 } },
+    { id: 2, specialType: 0, creator: { userId: 123 } },
+    { id: 3, specialType: 5, creator: { userId: 123 } },
+  ].map(playlistFrom)
+  expect(likedPlaylist(playlists, '123')?.id).toBe('3')
+  expect(likedPlaylist(playlists, null)).toBeUndefined()
+  expect(writablePlaylists(playlists, '123').map((playlist) => playlist.id)).toEqual(['2'])
+  // The list endpoint is explicitly unordered; the same playlist trackIds drive both views.
+  const ordered = ['9', '2', '7']
+  const items = await songsByIds(
+    async () => ({ songs: [{ id: 2 }, { id: 7 }, { id: 9 }] }),
+    ordered,
+  )
+  expect(items.map((song) => song.id)).toEqual(ordered)
+})
+it('adds one song only after rechecking the current account and owned target playlist', async () => {
+  const invoke = vi.fn(async (endpoint: string) => ({
+    body:
+      endpoint === 'login_status'
+        ? { data: { code: 200, profile: { userId: 123 } } }
+        : endpoint === 'playlist_detail'
+          ? { code: 200, playlist: { id: 9, creator: { userId: 123 }, trackIds: [] } }
+          : { code: 200 },
+  }))
+  const service = new ApiService(invoke)
+  service.restore('MUSIC_U=playlist-fixture')
+  expect(
+    (
+      await service.call({
+        method: 'playlistAdd',
+        args: { uid: '123', playlistId: '9', songId: '7' },
+      })
+    ).ok,
+  ).toBe(true)
+  expect(invoke.mock.calls.map(([endpoint]) => endpoint)).toEqual([
+    'login_status',
+    'playlist_detail',
+    'api',
+  ])
+  expect(invoke.mock.calls[2]).toEqual([
+    'api',
+    {
+      uri: '/api/playlist/manipulate/tracks',
+      crypto: 'weapi',
+      data: { op: 'add', pid: '9', trackIds: '["7"]', imme: 'true' },
+      cookie: 'MUSIC_U=playlist-fixture',
+      timeout: 12000,
+    },
+  ])
+})
+it.each([
+  { name: 'collected playlist', playlist: { creator: { userId: 456 }, trackIds: [] } },
+  {
+    name: 'favorite playlist',
+    playlist: { creator: { userId: 123 }, specialType: 5, trackIds: [] },
+  },
+  { name: 'unconfirmed contents', playlist: { creator: { userId: 123 } } },
+])('blocks adding to $name before any mutation', async ({ playlist }) => {
+  const invoke = vi.fn(async (endpoint: string) => ({
+    body:
+      endpoint === 'login_status'
+        ? { data: { profile: { userId: 123 } } }
+        : { code: 200, playlist: { id: 9, ...playlist } },
+  }))
+  const service = new ApiService(invoke)
+  service.restore('MUSIC_U=playlist-fixture')
+  expect(
+    (
+      await service.call({
+        method: 'playlistAdd',
+        args: { uid: '123', playlistId: '9', songId: '7' },
+      })
+    ).ok,
+  ).toBe(false)
+  expect(invoke.mock.calls).toHaveLength(2)
+  expect(invoke.mock.calls.some(([endpoint]) => endpoint === 'api')).toBe(false)
+})
+it('confirms an existing track without writing it again', async () => {
+  const invoke = vi.fn(async (endpoint: string) => ({
+    body:
+      endpoint === 'login_status'
+        ? { data: { profile: { userId: 123 } } }
+        : { code: 200, playlist: { id: 9, creator: { userId: 123 }, trackIds: [{ id: 7 }] } },
+  }))
+  const service = new ApiService(invoke)
+  service.restore('MUSIC_U=playlist-fixture')
+  expect(
+    await service.call({
+      method: 'playlistAdd',
+      args: { uid: '123', playlistId: '9', songId: '7' },
+    }),
+  ).toMatchObject({ ok: true, data: { alreadyExists: true } })
+  expect(invoke).toHaveBeenCalledTimes(2)
+})
+it.each([{ code: 500 }, { code: 200, data: false }, { code: 200, data: { result: false } }, {}])(
+  'requires business confirmation for playlist changes: %j',
+  async (body) => {
+    const invoke = vi.fn(async (endpoint: string) => ({
+      body:
+        endpoint === 'login_status'
+          ? { data: { profile: { userId: 123 } } }
+          : endpoint === 'playlist_detail'
+            ? { code: 200, playlist: { id: 9, creator: { userId: 123 }, trackIds: [] } }
+            : body,
+    }))
+    const service = new ApiService(invoke)
+    service.restore('MUSIC_U=playlist-fixture')
+    expect(
+      (
+        await service.call({
+          method: 'playlistAdd',
+          args: { uid: '123', playlistId: '9', songId: '7' },
+        })
+      ).ok,
+    ).toBe(false)
+    expect(invoke).toHaveBeenCalledTimes(3)
+  },
+)
+it('invalidates playlist preflight after account changes and blocks stale rendered UIDs', async () => {
+  let resolve!: (value: any) => void
+  const pending = new Promise<any>((done) => {
+    resolve = done
+  })
+  const invoke = vi.fn(() => pending)
+  const service = new ApiService(invoke)
+  service.restore('MUSIC_U=first-fixture')
+  const reply = service.call({
+    method: 'playlistAdd',
+    args: { uid: '123', playlistId: '9', songId: '7' },
+  })
+  await Promise.resolve()
+  service.restore('MUSIC_U=second-fixture')
+  resolve({ body: { data: { profile: { userId: 123 } } } })
+  expect(await reply).toMatchObject({ ok: false, code: 409 })
+  expect(invoke).toHaveBeenCalledTimes(1)
+  const other = vi.fn(async () => ({ body: { data: { profile: { userId: 456 } } } }))
+  const current = new ApiService(other)
+  current.restore('MUSIC_U=second-fixture')
+  expect(
+    await current.call({
+      method: 'playlistAdd',
+      args: { uid: '123', playlistId: '9', songId: '7' },
+    }),
+  ).toMatchObject({ ok: false, error: '账号已变化，请重新选择歌单' })
+  expect(other).toHaveBeenCalledTimes(1)
+})
+it('restricts playlist addition to one positive song, playlist and expected account', () => {
+  expect(() =>
+    validate({ method: 'playlistAdd', args: { uid: '123', playlistId: '9', songId: '7' } }),
+  ).not.toThrow()
+  for (const args of [
+    { uid: '123', playlistId: '9', songId: '7,8' },
+    { uid: '123', playlistId: '0', songId: '7' },
+    { uid: '123', playlistId: '9', songId: '7', uri: '/arbitrary' },
+    { uid: '123', playlistId: '9', songId: '7', op: 'del' },
+  ])
+    expect(() => validate({ method: 'playlistAdd', args })).toThrow()
 })
 it('supports multiple LRC timestamps, fractional milliseconds, metadata and offset', () => {
   expect(parseLyrics('[ar:Artist]\n[offset:100]\n[01:02.50][02:03.005]hello')).toEqual([

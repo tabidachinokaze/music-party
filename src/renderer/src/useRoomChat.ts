@@ -4,7 +4,7 @@ import { CHAT_MAX_LENGTH, mergeChat, parseChatPage } from '../../shared/chat'
 import type { ApiCall } from './music-data'
 import type { MediaReceipt, MediaTarget } from '../../shared/media'
 
-export function useRoomChat(api: ApiCall, room: Room | null, account: any) {
+export function useRoomChat(api: ApiCall, room: Room | null, account: any, displayed = false) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const messagesRef = useRef<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
@@ -16,6 +16,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any) {
   const [lastUpdate, setLastUpdate] = useState('')
   const [visible, setVisibleState] = useState(false)
   const visibleRef = useRef(false)
+  visibleRef.current = visible || displayed
   const epoch = useRef(0)
   const olderCursor = useRef<string | null>(null)
   const hasLoaded = useRef(false)
@@ -26,7 +27,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any) {
     setMessages(next)
   }
   function setVisible(value: boolean) {
-    visibleRef.current = value
+    visibleRef.current = value || displayed
     setVisibleState(value)
     if (value) setUnread(0)
   }
@@ -107,8 +108,11 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any) {
     }
   }, [room?.roomId, account?.userId])
   useEffect(() => {
-    if (visible && room) fetchMessages()
-  }, [visible])
+    if ((visible || displayed) && room) {
+      setUnread(0)
+      fetchMessages()
+    }
+  }, [visible, displayed])
   async function send(emoji?: ChatEmoji) {
     if (!room || !account || !room.chatRoomId || sendLock.current) return
     const text = emoji ? `[${emoji.emojiName}]` : draft.trim()

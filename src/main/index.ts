@@ -4,6 +4,7 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  nativeImage,
   powerMonitor,
   safeStorage,
   screen,
@@ -15,6 +16,7 @@ import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Reply, Request, Trace } from '../shared/types'
 import { SEND_METHODS } from '../shared/private-messages'
+import { messageStickerSource } from '../shared/sticker-source'
 import { FullScreenController } from './fullscreen'
 import { musicMessageLink } from '../shared/message-content'
 import {
@@ -26,7 +28,8 @@ import {
 import { validate } from './service'
 import { SettingsStore } from './settings'
 import { DesktopController } from './desktop'
-import { restoreWindow } from '../shared/desktop'
+import { restoreWindow, validatePreferences } from '../shared/desktop'
+import { normalizeStoredPlayerBackground, preparePlayerBackground } from './player-background-image'
 import { autoUpdater } from 'electron-updater'
 import { UpdateController } from './updates'
 import { PROJECT_LINKS, updateSupport, type ProjectLink } from '../shared/updates'
@@ -105,6 +108,8 @@ function startWorker() {
   }
   child.postMessage({ type: 'restore', cookie })
   child.on('message', (message) => {
+    if (message.type === 'private-notifications')
+      win?.webContents.send('private-notifications', message.batch)
     if (message.type === 'media-progress') {
       for (const task of mediaPending.values())
         if (task.requestId === message.progress.requestId) task.phase = message.progress.phase
@@ -176,6 +181,9 @@ function startWorker() {
 }
 
 function callApi(request: Request): Promise<Reply> {
+  return callWorker({ type: 'call', request }, SEND_METHODS.has(request.method))
+}
+function callWorker(message: Record<string, unknown>, deliveryUnknown = false): Promise<Reply> {
   if (!child) return Promise.resolve({ ok: false, error: 'API 进程不可用，请重启应用' })
   return new Promise<Reply>((resolve) => {
     const id = ++nextId
@@ -184,12 +192,17 @@ function callApi(request: Request): Promise<Reply> {
       resolve({
         ok: false,
         error: '请求超时，结果未知。请刷新房间状态后再操作',
-        deliveryUnknown: SEND_METHODS.has(request.method),
+        deliveryUnknown,
       })
     }, 45000)
     pending.set(id, { resolve, timer })
-    child!.postMessage({ type: 'call', id, request })
+    child!.postMessage({ ...message, id })
   })
+}
+async function workerResult(message: Record<string, unknown>) {
+  const reply = await callWorker(message)
+  if (!reply.ok) throw new Error(reply.error || '通知连接暂不可用')
+  return reply.data
 }
 
 async function prepareExit() {
@@ -329,6 +342,64 @@ app.whenReady().then(() => {
       child!.postMessage({ type: 'media-send', id, request })
     })
   })
+  ipcMain.handle('sticker-image', (event, value: any) => {
+    assertSender(event)
+    const image = value?.image
+    if (
+      typeof value?.requestId !== 'string' ||
+      !/^[0-9a-f-]{36}$/i.test(value.requestId) ||
+      image?.kind !== 'image' ||
+      !messageStickerSource(image)
+    )
+      return { ok: false, error: '图片信息无效' }
+    if (!child) return { ok: false, error: 'API 进程不可用，请重启应用' }
+    if (mediaPending.size) return { ok: false, error: '请等待当前附件完成' }
+    return new Promise<MediaReply>((resolve) => {
+      const id = ++nextId
+      const requestId = value.requestId
+      const timer = setTimeout(() => {
+        mediaPending.delete(id)
+        child?.postMessage({ type: 'media-cancel', requestId })
+        resolve({ ok: false, error: '添加图片结果未确认，请刷新表情库', deliveryUnknown: true })
+      }, 120000)
+      mediaPending.set(id, {
+        resolve,
+        timer,
+        requestId,
+        phase: 'uploading',
+        started: Date.now(),
+        meta: { kind: 'image', destination: 'sticker', size: 0, mime: 'unknown' },
+      })
+      child!.postMessage({
+        type: 'sticker-image',
+        id,
+        request: {
+          requestId,
+          image: { kind: 'image', url: image.url, width: image.width, height: image.height },
+        },
+      })
+    })
+  })
+  ipcMain.handle('private-notifications', (event, cursor: unknown = 0, session?: unknown) => {
+    assertSender(event)
+    if (
+      !Number.isSafeInteger(cursor) ||
+      Number(cursor) < 0 ||
+      (session !== undefined && (typeof session !== 'string' || session.length > 128))
+    )
+      throw new Error('通知游标无效')
+    return workerResult({ type: 'notifications', cursor, session })
+  })
+  for (const type of ['match-open', 'match-poll', 'match-close'])
+    ipcMain.handle(type, (event, attemptId?: unknown) => {
+      assertSender(event)
+      if (
+        !(type === 'match-close' && attemptId === undefined) &&
+        (typeof attemptId !== 'string' || !/^[0-9a-f-]{36}$/i.test(attemptId))
+      )
+        throw new Error('匹配标识无效')
+      return workerResult({ type, attemptId })
+    })
   ipcMain.handle('update-state', (event) => {
     assertSender(event)
     return updates!.state
@@ -364,7 +435,17 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('desktop-settings', (event, value: unknown) => {
     assertSender(event)
-    return desktop!.updatePreferences(value)
+    const preferences = validatePreferences(value),
+      background = preferences.playerBackground
+    if (background?.image && background.image !== store.preferences.playerBackground.image)
+      background.image = normalizeStoredPlayerBackground(background.image, (bytes) =>
+        nativeImage.createFromBuffer(bytes),
+      )
+    return desktop!.updatePreferences(preferences)
+  })
+  ipcMain.handle('player-background-image', (event, bytes: unknown) => {
+    assertSender(event)
+    return preparePlayerBackground(bytes, (value) => nativeImage.createFromBuffer(value))
   })
   ipcMain.handle('desktop-media', (event, value: unknown) => {
     assertSender(event)

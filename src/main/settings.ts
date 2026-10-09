@@ -2,19 +2,23 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import {
   DEFAULT_PREFERENCES,
+  DEFAULT_PLAYER_BACKGROUND,
   validatePreferences,
   type Preferences,
   type WindowGeometry,
 } from '../shared/desktop'
 
 export class SettingsStore {
-  preferences: Preferences = { ...DEFAULT_PREFERENCES }
+  preferences: Preferences = {
+    ...DEFAULT_PREFERENCES,
+    playerBackground: { ...DEFAULT_PLAYER_BACKGROUND },
+  }
   window: WindowGeometry | undefined
   error = ''
   constructor(private file: string) {
     try {
       const saved = JSON.parse(readFileSync(file, 'utf8'))
-      this.preferences = { ...DEFAULT_PREFERENCES, ...validatePreferences(saved.preferences || {}) }
+      this.preferences = { ...this.preferences, ...validatePreferences(saved.preferences || {}) }
       const window = saved.window
       if (window && Number.isFinite(window.width) && Number.isFinite(window.height))
         this.window = {

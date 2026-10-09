@@ -43,6 +43,19 @@ it('shows pending entries in server order and excludes only the current business
     ),
   ).toEqual([entry('20', 'b'), entry('10', 'c')])
 })
+it('reads promotion state inside songInfo and distinguishes missing counts from zero', () => {
+  const page = parseRoomQueue({
+    data: {
+      songLists: [
+        { rcmdUid: 1, uped: false, songInfo: { resourceId: 10, bizId: 1, uped: true } },
+        { rcmdUid: 1, uped: true, songInfo: { resourceId: 10, bizId: 2, uped: false, upCnt: 0 } },
+      ],
+      page: { more: false },
+    },
+  })
+  expect(page.entries[0]).toMatchObject({ uped: true, upCount: 0, upCountKnown: false })
+  expect(page.entries[1]).toMatchObject({ uped: false, upCount: 0, upCountKnown: true })
+})
 it('distinguishes an unknown queue from an empty one and never understates visible pending tracks', () => {
   expect(waitingCount(null)).toBeUndefined()
   const state: RoomPlayback = {

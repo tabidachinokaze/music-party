@@ -11,6 +11,9 @@ import {
 import { multiEndpoints, multiMutations } from './multi-api'
 import { parseEmoji } from '../shared/message-content'
 import { normalizeStickerPage } from './stickers'
+import { stickerMutationResult, stickerDeletePayload } from '../shared/stickers'
+import { PrivatePresence } from './private-presence'
+import { assertRoomCurrentSong } from './room-validation'
 
 type Invoke = (
   endpoint: string,
@@ -26,6 +29,7 @@ const endpoints: Record<Method, string> = {
   stream: 'song_url_v1',
   playlists: 'user_playlist',
   playlist: 'playlist_detail',
+  playlistAdd: 'api',
   albums: 'album_sublist',
   album: 'album',
   likes: 'likelist',
@@ -38,8 +42,11 @@ const endpoints: Record<Method, string> = {
   privateSend: 'send_text',
   privateInvite: 'send_text',
   privateSticker: 'api',
+  privatePresence: 'api',
   stickerGroups: 'api',
   stickerPage: 'api',
+  stickerCollect: 'api',
+  stickerRemove: 'api',
   follows: 'user_follows',
   ...(Object.fromEntries(Object.keys(multiEndpoints).map((key) => [key, key])) as Record<
     keyof typeof multiEndpoints,
@@ -53,8 +60,11 @@ const fields: Partial<Record<Method, string[]>> = {
   privateSend: ['uid', 'text', 'requestId'],
   privateInvite: ['uid', 'roomId', 'requestId'],
   privateSticker: ['uid', 'emoji', 'requestId'],
+  privatePresence: ['uid'],
   stickerGroups: ['scope'],
   stickerPage: ['groupId', 'cursor'],
+  stickerCollect: ['emojiId', 'emojiGroupId'],
+  stickerRemove: ['emojiIds'],
   follows: ['uid', 'offset'],
   qrCheck: ['key'],
   search: ['keywords', 'kind', 'offset'],
@@ -62,6 +72,7 @@ const fields: Partial<Record<Method, string[]>> = {
   stream: ['id'],
   playlists: ['uid', 'offset'],
   playlist: ['id'],
+  playlistAdd: ['playlistId', 'songId', 'uid'],
   albums: ['offset'],
   album: ['id'],
   likes: ['uid'],
@@ -70,11 +81,16 @@ const fields: Partial<Record<Method, string[]>> = {
   artistSongs: ['id', 'offset'],
   multiPreview: ['roomId', 'inviterUid'],
   multiJoin: ['roomId', 'inviterUid'],
-  multiCreate: ['songId'],
+  multiCreate: ['songId', 'allowStrangerMatch'],
+  multiMatch: ['songId'],
+  multiMatchCancel: [],
+  multiRematchLeave: ['roomId'],
+  multiRedHeart: ['roomId', 'songId', 'bizId'],
   multiStatus: [],
   multiChatHistory: ['roomId', 'cursor'],
   multiChatSend: ['roomId', 'text', 'emoji', 'requestId'],
   multiHeartbeat: ['roomId'],
+  multiPlayed: ['roomId', 'cursor'],
   multiQueue: ['roomId', 'cursor'],
   multiSongInfo: ['roomId', 'bizId'],
   multiRemove: ['roomId', 'songId', 'bizId'],
@@ -94,6 +110,28 @@ export function validate(request: Request): Record<string, unknown> {
     throw new Error('请求包含不允许的参数')
   for (const key of allowed) {
     const value = args[key]
+    if (key === 'allowStrangerMatch') {
+      if (value !== undefined && typeof value !== 'boolean') throw new Error('房间公开状态无效')
+      continue
+    }
+    if (key === 'emojiIds') {
+      if (
+        !Array.isArray(value) ||
+        !value.length ||
+        value.length > 100 ||
+        !value.every((id) => typeof id === 'string' && /^[1-9]\d{0,23}$/.test(id))
+      )
+        throw new Error('请选择要删除的表情')
+      continue
+    }
+    if (key === 'emojiId' || key === 'emojiGroupId') {
+      if (
+        typeof value !== 'string' ||
+        !(key === 'emojiGroupId' ? /^-?\d{1,24}$/ : /^[1-9]\d{0,23}$/).test(value)
+      )
+        throw new Error('表情标识无效')
+      continue
+    }
     if (key === 'scope') {
       if (value !== 'room' && value !== 'private') throw new Error('表情使用场景无效')
       continue
@@ -155,7 +193,10 @@ export function validate(request: Request): Record<string, unknown> {
     }
     if (typeof value !== 'string' || !value || value.length > (key === 'ids' ? 16000 : 300))
       throw new Error(`缺少或无效参数：${key}`)
-    if (['id', 'songId', 'inviterUid', 'bizId', 'uid'].includes(key) && !/^\d{1,24}$/.test(value))
+    if (
+      ['id', 'songId', 'inviterUid', 'bizId', 'uid', 'playlistId'].includes(key) &&
+      !/^\d{1,24}$/.test(value)
+    )
       throw new Error('歌曲或用户 ID 无效')
     if (key === 'ids' && !/^\d{1,24}(,\d{1,24}){0,499}$/.test(value))
       throw new Error('请输入最多 500 个歌曲 ID，以逗号分隔')
@@ -167,8 +208,16 @@ export function validate(request: Request): Record<string, unknown> {
     !/^[1-9]\d{0,23}$/.test(String(args.uid))
   )
     throw new Error('收件人或用户 ID 无效')
-  if (request.method === 'multiCreate' && !/^[1-9]\d{0,23}$/.test(String(args.songId)))
-    throw new Error('请先播放一首可完整收听的歌曲，再创建多人房间')
+  if (
+    ['multiCreate', 'multiMatch'].includes(request.method) &&
+    !/^[1-9]\d{0,23}$/.test(String(args.songId))
+  )
+    throw new Error('请先选择一首可完整收听的匹配用歌曲')
+  if (
+    request.method === 'playlistAdd' &&
+    !['uid', 'playlistId', 'songId'].every((key) => /^[1-9]\d{0,23}$/.test(String(args[key])))
+  )
+    throw new Error('歌单、歌曲或账号 ID 无效')
   return { ...args }
 }
 
@@ -184,7 +233,10 @@ function stripCredentials(value: any): any {
 }
 
 export class ApiService {
+  private presence: PrivatePresence
   private cookie = ''
+  private epoch = 0
+  private uid = ''
   private id = 0
   private mutations = new SerialCommands()
   private activeKey = ''
@@ -192,10 +244,20 @@ export class ApiService {
   constructor(
     private invoke: Invoke,
     private onCookie: (value: string) => void = () => {},
-  ) {}
+    private onAccount: (uid: string) => void = () => {},
+  ) {
+    this.presence = new PrivatePresence(invoke, () => this.session())
+  }
   restore(cookie: string) {
+    this.epoch++
     this.cookie = cookie
+    this.uid = ''
+    this.activeKey = ''
     this.sends.clear()
+    this.presence.clear()
+  }
+  session() {
+    return { cookie: this.cookie, epoch: this.epoch, uid: this.uid }
   }
   async call(request: Request): Promise<Reply> {
     if (!SEND_METHODS.has(request?.method)) return this.execute(request)
@@ -230,6 +292,18 @@ export class ApiService {
     return entry.reply
   }
   private async execute(request: Request): Promise<Reply> {
+    const epoch = this.epoch
+    const cookie = this.cookie
+    const assertSession = () => {
+      if (epoch !== this.epoch)
+        throw Object.assign(new Error('账号已变化，请重新操作'), { code: 409 })
+    }
+    const invoke: Invoke = async (endpoint, args) => {
+      assertSession()
+      const result = await this.invoke(endpoint, { ...args, cookie })
+      assertSession()
+      return result
+    }
     const isPrivate = PRIVATE_METHODS.has(request?.method)
     const isChat = request?.method === 'multiChatHistory' || request?.method === 'multiChatSend'
     const traceBody = (body: any) =>
@@ -248,37 +322,75 @@ export class ApiService {
     try {
       const args = validate(request)
       const run = async (_sequence: number) => {
+        assertSession()
         const method = request.method
         if (method === 'logout') {
+          this.epoch++
           this.cookie = ''
+          this.uid = ''
           this.activeKey = ''
           this.sends.clear()
+          this.presence.clear()
           this.onCookie('')
+          this.onAccount('')
           return { code: 200 }
         }
         if (
           ((method.startsWith('multi') && method !== 'multiPreview') ||
-            ['playlists', 'albums', 'likes', 'like'].includes(method) ||
+            ['playlists', 'playlistAdd', 'albums', 'likes', 'like'].includes(method) ||
             PRIVATE_METHODS.has(method)) &&
           !this.cookie
         )
           throw new Error('请先扫码登录')
         if (method === 'qrCheck' && args.key !== this.activeKey)
           throw new Error('二维码已更新，请扫描新的二维码')
-        if (['multiRemove', 'multiUp', 'multiLike'].includes(method)) {
-          const status = await this.invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
+        if (method === 'playlistAdd') {
+          const account = await invoke('login_status', { timeout: 12000 })
+          const selfUid = String(account.body?.data?.profile?.userId || '')
+          if (account.body?.data?.code === 302 || !/^[1-9]\d{0,23}$/.test(selfUid))
+            throw new Error('登录已失效，请重新登录')
+          if (selfUid !== args.uid) throw new Error('账号已变化，请重新选择歌单')
+          const detail = (await invoke('playlist_detail', { id: args.playlistId, timeout: 12000 }))
+            .body
+          const playlist = detail?.playlist
+          if (
+            Number(detail?.code) !== 200 ||
+            String(playlist?.id) !== args.playlistId ||
+            String(playlist?.creator?.userId) !== selfUid
+          )
+            throw new Error('只能添加到当前账号创建的歌单，请刷新歌单后重试')
+          if (Number(playlist.specialType) === 5) throw new Error('请使用红心按钮添加到喜欢的音乐')
+          if (!Array.isArray(playlist.trackIds)) throw new Error('未能确认歌单内容，请刷新后重试')
+          if (playlist.trackIds.some((track: any) => String(track.id) === args.songId))
+            return { code: 200, alreadyExists: true }
+          args.data = {
+            op: 'add',
+            pid: args.playlistId,
+            trackIds: JSON.stringify([args.songId]),
+            imme: 'true',
+          }
+          args.uri = '/api/playlist/manipulate/tracks'
+          args.crypto = 'weapi'
+          delete args.playlistId
+          delete args.songId
+          delete args.uid
+        }
+        if (['multiRemove', 'multiUp', 'multiLike', 'multiRedHeart'].includes(method)) {
+          const status = await invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
           if (status.body?.data?.multiLtRoomSnapshot?.roomId !== args.roomId)
             throw new Error('账号已不在此房间，请重新同步')
-          if (method === 'multiLike') {
-            const current = status.body.data.multiLtRoomSnapshot.roomPlaySongInfo?.playSong
-            if (
-              String(current?.songBizId) !== args.bizId ||
-              String(current?.songId) !== args.songId
+          if (method === 'multiLike' || method === 'multiRedHeart')
+            assertRoomCurrentSong(
+              status.body,
+              {
+                roomId: String(args.roomId),
+                songId: String(args.songId),
+                bizId: String(args.bizId),
+              },
+              method === 'multiRedHeart',
             )
-              throw new Error('房间已切换歌曲，请给当前歌曲点赞')
-          }
           if (method === 'multiRemove') {
-            const account = await this.invoke('login_status', {
+            const account = await invoke('login_status', {
               cookie: this.cookie,
               timeout: 12000,
             })
@@ -288,7 +400,7 @@ export class ApiService {
               found = false
             const seen = new Set<string>()
             do {
-              const response = await this.invoke('multiQueue', {
+              const response = await invoke('multiQueue', {
                 roomId: args.roomId,
                 ...(cursor ? { cursor } : {}),
                 cookie: this.cookie,
@@ -327,7 +439,7 @@ export class ApiService {
           }
         }
         if (method === 'privateSend' || method === 'privateInvite') {
-          const account = await this.invoke('login_status', { cookie: this.cookie, timeout: 12000 })
+          const account = await invoke('login_status', { cookie: this.cookie, timeout: 12000 })
           const selfUid = String(account.body?.data?.profile?.userId || '')
           if (!/^[1-9]\d*$/.test(selfUid))
             throw Object.assign(new Error('登录已失效，请重新扫码登录'), { code: 302 })
@@ -335,7 +447,7 @@ export class ApiService {
             throw Object.assign(new Error('不能给自己发送私信'), { code: 400 })
           let text = args.text
           if (method === 'privateInvite') {
-            const status = await this.invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
+            const status = await invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
             if (
               status.body?.code !== 200 ||
               status.body?.data?.multiLtRoomSnapshot?.roomId !== args.roomId
@@ -354,6 +466,11 @@ export class ApiService {
           delete args.roomId
         }
         if (['privateConversations', 'privateHistory', 'follows'].includes(method)) args.limit = 30
+        if (method === 'privatePresence') {
+          const peer = await this.presence.get(String(args.uid))
+          assertSession()
+          return { code: 200, data: peer }
+        }
         if (method === 'privateRead') {
           // Official message-center API; always acknowledge one opened conversation, never all.
           args.data = { userId: args.uid }
@@ -374,16 +491,27 @@ export class ApiService {
           delete args.groupId
           delete args.cursor
         }
+        if (method === 'stickerCollect') {
+          args.data = { emojiId: args.emojiId, emojiGroupId: args.emojiGroupId }
+          args.uri = '/api/social/emoji/collect'
+          args.crypto = 'eapi'
+          delete args.emojiId
+          delete args.emojiGroupId
+        }
+        if (method === 'stickerRemove') {
+          args.data = stickerDeletePayload(args.emojiIds)
+          args.uri = '/api/social/emoji/cancel'
+          args.crypto = 'eapi'
+          delete args.emojiIds
+        }
         if (method === 'privateSticker') {
-          const account = (
-            await this.invoke('login_status', { cookie: this.cookie, timeout: 12000 })
-          ).body?.data?.profile
+          const account = (await invoke('login_status', { cookie: this.cookie, timeout: 12000 }))
+            .body?.data?.profile
           if (!account?.userId) throw Object.assign(new Error('请先重新登录'), { code: 302 })
           if (String(account.userId) === args.uid)
             throw Object.assign(new Error('不能给自己发送私信'), { code: 400 })
           const emoji = parseEmoji(args.emoji)!
-          const token = (await this.invoke('register_checktoken_v3', { timeout: 12000 })).body
-            ?.token
+          const token = (await invoke('register_checktoken_v3', { timeout: 12000 })).body?.token
           if (!token) throw new Error('未取得消息校验令牌，请重试')
           args.data = {
             checkToken: token,
@@ -422,7 +550,7 @@ export class ApiService {
         if (method === 'multiChatSend') {
           if (args.emoji) args.emoji = parseEmoji(args.emoji)
           // Resolve the IM room from the authenticated server snapshot, never from renderer input.
-          const status = await this.invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
+          const status = await invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
           const snapshot = status.body?.data?.multiLtRoomSnapshot
           if (status.body?.code !== 200 || snapshot?.roomId !== args.roomId)
             throw Object.assign(new Error('账号已不在此房间，请先恢复或重新加入'), {
@@ -457,7 +585,7 @@ export class ApiService {
         let result
         try {
           if (SEND_METHODS.has(method)) sendAttempted = true
-          result = await this.invoke(endpoints[method], {
+          result = await invoke(endpoints[method], {
             ...args,
             cookie: this.cookie,
             timeout: 12000,
@@ -465,7 +593,7 @@ export class ApiService {
         } catch (primaryError: any) {
           if (method !== 'stream') throw primaryError
           // Same account, ordinary Netease endpoint: no external source or entitlement bypass.
-          result = await this.invoke('song_url', {
+          result = await invoke('song_url', {
             id: args.id,
             br: 320000,
             cookie: this.cookie,
@@ -482,6 +610,11 @@ export class ApiService {
         const body = result.body
         trace.response = traceBody(body)
         const code = body?.code ?? body?.data?.code
+        if (
+          method === 'playlistAdd' &&
+          (Number(code) !== 200 || body?.data === false || body?.data?.result === false)
+        )
+          throw new Error(body?.message || body?.msg || '添加结果未确认，请刷新歌单后重试')
         const validQr = method === 'qrCheck' && [800, 801, 802, 803].includes(Number(code))
         if (method === 'privateRead' && (Number(code) !== 200 || body?.data === false))
           throw new Error(body?.message || '私信已读状态未确认，请重试')
@@ -505,7 +638,9 @@ export class ApiService {
           throw error
         }
         if (
-          ['multiCreate', 'multiJoin', 'multiLeave'].includes(method) &&
+          ['multiCreate', 'multiJoin', 'multiLeave', 'multiMatch', 'multiRematchLeave'].includes(
+            method,
+          ) &&
           body.data?.success !== true
         )
           throw new Error('多人操作缺少成功确认，请查看观测记录并刷新房间状态')
@@ -513,6 +648,11 @@ export class ApiService {
           throw new Error(
             body.data?.failedMsg || `房间未接受操作（${body.data?.failedCode ?? '缺少确认'}）`,
           )
+        if (
+          method === 'multiRedHeart' &&
+          (body.data?.failedCode !== 0 || body.data?.result === false)
+        )
+          throw new Error(body.data?.failedMsg || '房间红心未确认，请刷新房间')
         if (
           ['multiRemove', 'multiUp', 'multiLike'].includes(method) &&
           (body.data?.result === false ||
@@ -524,7 +664,7 @@ export class ApiService {
         if (method === 'qrCreate') {
           this.activeKey = body.data?.unikey
           if (!this.activeKey) throw new Error('未取得登录二维码，请重试')
-          const qr = await this.invoke('login_qr_create', { key: this.activeKey, qrimg: true })
+          const qr = await invoke('login_qr_create', { key: this.activeKey, qrimg: true })
           return { key: this.activeKey, ...qr.body.data }
         }
         if (method === 'qrCheck' && code === 803) {
@@ -533,10 +673,25 @@ export class ApiService {
           if (!/(?:^|;\s*)MUSIC_U=/.test(cookie))
             throw new Error('登录成功但未取得凭据，请重新扫码')
           this.cookie = cookie
+          this.epoch++
+          this.uid = ''
           this.sends.clear()
+          this.presence.clear()
           this.activeKey = ''
           this.onCookie(cookie)
         }
+        if (method === 'account') {
+          const uid = String(body.data?.profile?.userId || '')
+          const nextUid = /^[1-9]\d{0,23}$/.test(uid) ? uid : ''
+          if (this.uid && this.uid !== nextUid) {
+            this.epoch++
+            this.sends.clear()
+            this.presence.clear()
+          }
+          this.uid = nextUid
+          this.onAccount(this.uid)
+        }
+        if (method === 'stickerCollect' || method === 'stickerRemove') stickerMutationResult(body)
         if (
           method === 'privateSticker' &&
           (!body.data?.msgBody?.msgId || [-2, -1].includes(body.data.msgBody.status))
@@ -551,13 +706,27 @@ export class ApiService {
       const data =
         multiMutations.has(request.method) ||
         SEND_METHODS.has(request.method) ||
-        /^(qrCreate|qrCheck|logout|like)$/.test(request.method)
+        ['stickerCollect', 'stickerRemove'].includes(request.method) ||
+        /^(qrCreate|qrCheck|logout|like|playlistAdd)$/.test(request.method)
           ? await this.mutations.run(run)
           : await run(0)
       trace.ok = true
       trace.response = traceBody(data)
       return { ok: true, data, trace }
     } catch (error: any) {
+      if (
+        request.method === 'account' &&
+        epoch === this.epoch &&
+        Number(error?.code || error?.body?.code) === 302
+      ) {
+        if (this.uid) {
+          this.epoch++
+          this.sends.clear()
+          this.presence.clear()
+        }
+        this.uid = ''
+        this.onAccount('')
+      }
       const message = String(
         redact(
           error?.body?.message || error?.body?.msg || error?.message || '网易云服务暂时无法访问',

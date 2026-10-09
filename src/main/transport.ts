@@ -30,9 +30,10 @@ export function createHttpInvoker(base: string, fetcher: typeof fetch = fetch) {
     }
     let body: any
     try {
-      body = preciseMediaEndpoint(args.uri)
-        ? parsePreciseJson(await response.text())
-        : await response.json()
+      body =
+        preciseMediaEndpoint(args.uri) || ['msg_private', 'msg_private_history'].includes(endpoint)
+          ? parsePreciseJson(await response.text())
+          : await response.json()
     } catch {
       throw new Error(`ncm-api 返回非 JSON 内容（HTTP ${response.status}）`)
     }

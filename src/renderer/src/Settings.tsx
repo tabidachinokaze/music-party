@@ -1,7 +1,10 @@
-import { Monitor, Moon, Sun, Power, Music2, GitBranch, ExternalLink } from 'lucide-react'
+import { Monitor, Moon, Sun, Power, Music2, GitBranch, ExternalLink, Image } from 'lucide-react'
+import { useState } from 'react'
 import { Updates } from './Updates'
 import type { useDesktop } from './useDesktop'
 import type { useParty } from './useParty'
+import { useVolumeWheel } from './useVolumeWheel'
+import { PlayerBackgroundSettings } from './PlayerBackgroundSettings'
 export function Settings({
   desktop,
   party,
@@ -12,6 +15,8 @@ export function Settings({
   onDiagnostics?(): void
 }) {
   const info = desktop.info
+  const [backgroundOpen, setBackgroundOpen] = useState(false)
+  const volumeWheelRef = useVolumeWheel<HTMLInputElement>(party.volume, party.setVolume)
   return (
     <section className="settings-page">
       {(desktop.error || info?.persistenceError) && (
@@ -41,6 +46,86 @@ export function Settings({
               <span>{label}</span>
             </button>
           ))}
+        </div>
+        <label className="settings-row appearance-font-row">
+          <span>
+            <strong>字体大小</strong>
+            <small>调整列表、控件、聊天和歌词的文字大小。</small>
+          </span>
+          <input
+            aria-label="界面字体大小"
+            type="range"
+            min="80"
+            max="150"
+            step="1"
+            value={info?.preferences.fontScale ?? 100}
+            aria-valuetext={`${info?.preferences.fontScale ?? 100}%`}
+            disabled={!desktop.ready}
+            onChange={(event) => desktop.update({ fontScale: Number(event.target.value) })}
+          />
+          <output aria-label="界面字号比例">{info?.preferences.fontScale ?? 100}%</output>
+          <button
+            className="text-btn"
+            disabled={!desktop.ready || info?.preferences.fontScale === 100}
+            onClick={() => desktop.update({ fontScale: 100 })}
+          >
+            默认字号
+          </button>
+        </label>
+        <div className="settings-row appearance-color-row">
+          <span>
+            <strong>主题颜色</strong>
+            <small>应用于按钮、选中状态和聊天用户名，自动适配深浅色文字对比。</small>
+          </span>
+          <input
+            aria-label="主题颜色"
+            type="color"
+            value={info?.preferences.accentColor ?? '#ef8da5'}
+            disabled={!desktop.ready}
+            onChange={(event) => desktop.update({ accentColor: event.target.value })}
+          />
+          <output aria-label="当前主题色">{info?.preferences.accentColor ?? '跟随主题'}</output>
+          <button
+            className="text-btn"
+            disabled={!desktop.ready || !info?.preferences.accentColor}
+            onClick={() => desktop.update({ accentColor: null })}
+          >
+            默认主题色
+          </button>
+        </div>
+        <div className="accent-presets" aria-label="主题色预设">
+          {[
+            ['玫瑰', '#ef8da5'],
+            ['海蓝', '#448aff'],
+            ['苔绿', '#3c9d78'],
+            ['薰衣草', '#a57bff'],
+            ['橘色', '#f69d50'],
+          ].map(([name, value]) => (
+            <button
+              key={value}
+              aria-label={`主题色：${name}`}
+              aria-pressed={info?.preferences.accentColor === value}
+              disabled={!desktop.ready}
+              onClick={() => desktop.update({ accentColor: value })}
+            >
+              <span style={{ backgroundColor: value }} />
+              {name}
+            </button>
+          ))}
+        </div>
+        <div className="settings-row">
+          <span>
+            <strong>播放器背景</strong>
+            <small>为整个播放器设置图片，调整位置、缩放、透明度与模糊。</small>
+          </span>
+          <button
+            className="secondary"
+            disabled={!desktop.ready}
+            onClick={() => setBackgroundOpen(true)}
+          >
+            <Image size={16} />
+            自定义播放器背景
+          </button>
         </div>
       </div>
       <div className="settings-group">
@@ -74,6 +159,8 @@ export function Settings({
           </span>
           <input
             aria-label="默认音量"
+            ref={volumeWheelRef}
+            aria-valuetext={`${Math.round(party.volume * 100)}%`}
             type="range"
             min="0"
             max="1"
@@ -150,6 +237,13 @@ export function Settings({
           退出 Music Party
         </button>
       </div>
+      {backgroundOpen && info && (
+        <PlayerBackgroundSettings
+          desktop={desktop}
+          song={party.current}
+          onClose={() => setBackgroundOpen(false)}
+        />
+      )}
     </section>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ImagePlus, Mic, Paperclip, Square, Video } from 'lucide-react'
 import {
   MEDIA_LIMITS,
@@ -9,8 +9,12 @@ import {
   type MediaTarget,
 } from '../../shared/media'
 import { Overlay } from './player/Overlay'
+import { clipboardImage } from './clipboard-image'
+import { imageFormat } from '../../shared/image-format'
 import { startRecording } from './recording'
-type Draft = { file: MediaFile; url: string; target: MediaTarget; label: string }
+import { mediaDrafts, type MediaDraftEntry } from './media-drafts'
+import { rememberSticker, stickersChanged } from './sticker-cache'
+type Draft = MediaDraftEntry & { url: string }
 async function inspect(file: File, kind: MediaKind): Promise<MediaFile> {
   if (file.size > MEDIA_LIMITS[kind])
     throw new Error(`文件不能超过 ${MEDIA_LIMITS[kind] / 1024 / 1024} MB`)
@@ -21,7 +25,13 @@ async function inspect(file: File, kind: MediaKind): Promise<MediaFile> {
       name: file.name,
       mime: file.type || 'application/octet-stream',
     }
-  const url = URL.createObjectURL(file)
+  if (kind === 'image') {
+    const format = imageFormat(data)
+    if (!format) throw new Error('请选择 PNG、JPEG、GIF 或 WebP 图片')
+    value.mime = format.mime
+    if (!file.name || !/\.[a-z0-9]+$/i.test(file.name)) value.name = `clipboard.${format.extension}`
+  }
+  const url = URL.createObjectURL(new Blob([data], { type: value.mime }))
   try {
     if (kind === 'image') {
       const img = new Image()
@@ -85,15 +95,18 @@ export function MediaComposer({
   disabled,
   onSent,
   onMediaPlay,
+  accountKey,
 }: {
   target: MediaTarget
   label: string
   disabled?: boolean
   onSent(receipt: MediaReceipt, target: MediaTarget): void
   onMediaPlay(): void
+  accountKey?: string
 }) {
   const input = useRef<HTMLInputElement>(null),
     kind = useRef<MediaKind>('image')
+  const trigger = useRef<HTMLButtonElement>(null)
   const previewElement = useRef<HTMLDivElement>(null)
   const [draft, setDraft] = useState<Draft | null>(null),
     [open, setOpen] = useState(false),
@@ -110,7 +123,12 @@ export function MediaComposer({
     selection = useRef(0)
   const selected = useRef({ target, label, onSent })
   selected.current = { target, label, onSent }
-  const scope = JSON.stringify(target)
+  const scope = JSON.stringify([accountKey, target])
+  const persisted = useSyncExternalStore(
+    mediaDrafts.subscribe,
+    () => mediaDrafts.get(accountKey, target),
+    () => null,
+  )
   const savingSticker = target.kind === 'sticker'
   useEffect(() => {
     const players = [
@@ -121,9 +139,11 @@ export function MediaComposer({
   useEffect(
     () =>
       window.together.onMediaProgress((event) => {
-        if (event.requestId === request.current) setProgress(event)
+        const current = mediaDrafts.get(accountKey, target)
+        if (current?.requestId === event.requestId)
+          mediaDrafts.update(accountKey, target, current.id, { progress: event }, event.requestId)
       }),
-    [],
+    [scope],
   )
   useEffect(() => {
     epoch.current++
@@ -139,16 +159,42 @@ export function MediaComposer({
       selection.current++
       recorder.current?.cancel()
       recorder.current = null
-      if (request.current) window.together.cancelMedia(request.current).catch(() => {})
+      preparingRecord.current = false
+      if (request.current) {
+        const pending = mediaDrafts.get(accountKey, target)
+        if (pending?.requestId === request.current)
+          mediaDrafts.update(
+            accountKey,
+            target,
+            pending.id,
+            {
+              uncertain: true,
+              error: '附件操作尚未确认，正在等待结果',
+            },
+            request.current,
+          )
+        window.together.cancelMedia(request.current).catch(() => {})
+      }
       request.current = ''
     }
   }, [scope])
-  useEffect(
-    () => () => {
-      if (draft) URL.revokeObjectURL(draft.url)
-    },
-    [draft],
-  )
+  useEffect(() => {
+    if (!persisted) {
+      setDraft(null)
+      return
+    }
+    const url = URL.createObjectURL(
+      new Blob([new Uint8Array(persisted.file.data)], { type: persisted.file.mime }),
+    )
+    setDraft({ ...persisted, url })
+    return () => URL.revokeObjectURL(url)
+  }, [scope, persisted?.id])
+  useEffect(() => {
+    setError(persisted?.error || '')
+    setUncertain(persisted?.uncertain || false)
+    setBusy(!!persisted?.requestId)
+    setProgress(persisted?.progress || null)
+  }, [persisted])
   useEffect(() => {
     if (!recording) return
     const timer = setInterval(() => setSeconds((value) => value + 1), 1000)
@@ -181,17 +227,69 @@ export function MediaComposer({
     if (recording && seconds >= 60) finishRecording()
   }, [seconds, recording])
   function stage(file: MediaFile, captured = selected.current) {
-    setDraft({
-      file,
-      url: URL.createObjectURL(new Blob([new Uint8Array(file.data)], { type: file.mime })),
-      target: captured.target,
-      label: captured.label,
-    })
+    if (
+      !mediaDrafts.remember(accountKey, {
+        id: crypto.randomUUID(),
+        file,
+        target: captured.target,
+        label: captured.label,
+        error: '',
+        uncertain: false,
+        requestId: '',
+        progress: null,
+      })
+    ) {
+      setError('附件草稿暂时无法保留，请稍后重试或更换附件')
+      setOpen(true)
+      return
+    }
     setProgress(null)
     setError('')
     setUncertain(false)
     setOpen(true)
   }
+  async function prepare(file: File, mediaKind: MediaKind) {
+    if (request.current || disabled || recording || preparingRecord.current) return
+    const run = ++selection.current,
+      captured = selected.current
+    setError('')
+    setProgress(null)
+    setBusy(true)
+    try {
+      const result = await inspect(file, mediaKind)
+      if (run === selection.current) stage(result, captured)
+    } catch (error: any) {
+      if (run === selection.current) {
+        setError(error.message)
+        setOpen(true)
+      }
+    } finally {
+      if (run === selection.current) setBusy(false)
+    }
+  }
+  useEffect(() => {
+    const paste = (event: ClipboardEvent) => {
+      const form = input.current?.closest('form')
+      if (
+        savingSticker ||
+        disabled ||
+        busy ||
+        recording ||
+        !form ||
+        !form.getClientRects().length ||
+        !(event.target instanceof Node) ||
+        !form.contains(event.target) ||
+        document.querySelector('[aria-modal="true"]')
+      )
+        return
+      const file = clipboardImage(event.clipboardData)
+      if (!file) return
+      event.preventDefault()
+      void prepare(file, 'image')
+    }
+    document.addEventListener('paste', paste)
+    return () => document.removeEventListener('paste', paste)
+  }, [scope, disabled, busy, recording, savingSticker])
   function pick(value: MediaKind) {
     kind.current = value
     if (input.current) {
@@ -212,7 +310,6 @@ export function MediaComposer({
     const run = ++selection.current,
       captured = selected.current
     setOpen(true)
-    setDraft(null)
     setBusy(true)
     try {
       const rec = await startRecording()
@@ -257,7 +354,7 @@ export function MediaComposer({
   }
   function close() {
     preparingRecord.current = false
-    if (!request.current) setBusy(false)
+    if (!request.current && !mediaDrafts.get(accountKey, target)?.requestId) setBusy(false)
     selection.current++
     recorder.current?.cancel()
     recorder.current = null
@@ -267,8 +364,10 @@ export function MediaComposer({
   async function send() {
     if (!draft || busy || request.current) return
     const run = epoch.current,
-      chosen = draft
+      chosen = draft,
+      account = accountKey
     const requestId = crypto.randomUUID()
+    if (!mediaDrafts.begin(account, chosen.target, chosen.id, requestId)) return
     request.current = requestId
     setBusy(true)
     setError('')
@@ -280,22 +379,55 @@ export function MediaComposer({
         target: chosen.target,
         file: chosen.file,
       })
-      if (run !== epoch.current) return
       if (!reply.ok || !reply.receipt) {
-        setUncertain(reply.deliveryUnknown === true)
-        throw new Error(reply.error || '附件发送失败')
+        mediaDrafts.update(
+          account,
+          chosen.target,
+          chosen.id,
+          {
+            requestId: '',
+            error: reply.error || '附件发送失败',
+            uncertain: reply.deliveryUnknown === true,
+            progress: null,
+          },
+          requestId,
+        )
+        return
       }
+      const accepted = mediaDrafts.remove(account, chosen.target, chosen.id, requestId)
+      if (
+        accepted &&
+        chosen.target.kind === 'sticker' &&
+        reply.receipt.emoji &&
+        reply.receipt.senderUid === account
+      ) {
+        rememberSticker(account, reply.receipt.emoji)
+        stickersChanged(account)
+      }
+      if (!accepted || run !== epoch.current) return
       selected.current.onSent(reply.receipt, chosen.target)
-      setDraft(null)
       setOpen(false)
       setProgress(null)
     } catch (error: any) {
-      if (run === epoch.current) setError(error.message)
+      const message = error.message || '附件操作未确认'
+      mediaDrafts.update(
+        account,
+        chosen.target,
+        chosen.id,
+        {
+          requestId: '',
+          error: message,
+          uncertain: true,
+          progress: null,
+        },
+        requestId,
+      )
+      if (run === epoch.current) setError(message)
     } finally {
       if (run === epoch.current) {
         setBusy(false)
-        request.current = ''
       }
+      if (request.current === requestId) request.current = ''
     }
   }
   return (
@@ -305,32 +437,14 @@ export function MediaComposer({
         type="file"
         className="attachment-input"
         aria-label="选择聊天附件"
-        onChange={async (event) => {
+        onChange={(event) => {
           const file = event.target.files?.[0]
           event.target.value = ''
-          if (!file) return
-          if (request.current) return
-          const run = ++selection.current,
-            captured = selected.current
-          setError('')
-          setDraft(null)
-          setProgress(null)
-          setUncertain(false)
-          setBusy(true)
-          try {
-            const result = await inspect(file, kind.current)
-            if (run === selection.current) stage(result, captured)
-          } catch (error: any) {
-            if (run === selection.current) {
-              setError(error.message)
-              setOpen(true)
-            }
-          } finally {
-            if (run === selection.current) setBusy(false)
-          }
+          if (file) void prepare(file, kind.current)
         }}
       />
       <button
+        ref={trigger}
         type="button"
         className="icon-btn"
         aria-label={savingSticker ? '上传自定义表情' : '发送图片或表情包'}
@@ -387,6 +501,7 @@ export function MediaComposer({
         <Overlay
           title={recording ? '录制语音' : savingSticker ? '上传自定义表情' : '发送附件'}
           onClose={close}
+          sideAnchor={trigger.current}
         >
           <p className="overlay-intro">
             {savingSticker
@@ -445,13 +560,28 @@ export function MediaComposer({
                 {busy && progress?.phase === 'uploading' ? (
                   <button
                     className="secondary"
-                    onClick={() => window.together.cancelMedia(request.current)}
+                    onClick={() => {
+                      const current = mediaDrafts.get(accountKey, target)
+                      if (current?.requestId)
+                        window.together.cancelMedia(current.requestId).catch(() => {})
+                    }}
                   >
                     取消上传
                   </button>
                 ) : (
                   <button className="secondary" onClick={close}>
                     {savingSticker ? '稍后上传' : '稍后发送'}
+                  </button>
+                )}
+                {!busy && (
+                  <button
+                    className="text-btn"
+                    onClick={() => {
+                      mediaDrafts.remove(accountKey, target, draft.id)
+                      setOpen(false)
+                    }}
+                  >
+                    移除附件
                   </button>
                 )}
                 <button className="primary" disabled={busy} onClick={send}>

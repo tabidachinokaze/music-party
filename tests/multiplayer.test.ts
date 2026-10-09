@@ -6,6 +6,7 @@ import {
   targetPosition,
   shouldAccept,
   heartbeatInterval,
+  roomTypeLabel,
 } from '../src/shared/multiplayer'
 import { multiPayload } from '../src/main/multi-api'
 import { ApiService } from '../src/main/service'
@@ -20,6 +21,45 @@ const info = (overrides = {}) => ({
   ...overrides,
 })
 const state = (overrides = {}): RoomPlayback => parseRoomPlayback(info(overrides), 1000)!
+
+it.each([
+  [1, 1, '私密好友房'],
+  ['2', 2, '公开好友房'],
+  [3, 3, '公开匹配房'],
+  [99, 99, '房间类型未知'],
+  ['future', 'future', '房间类型未知'],
+  [undefined, null, '房间类型未知'],
+])(
+  'reads real room business type %s without inferring it from other fields',
+  (raw, expected, label) => {
+    const snapshot = parseSnapshot(
+      { roomId: 'r', multiRoomInfoDTO: { roomBizType: raw, roomType: 2 } },
+      1000,
+    )
+    expect(snapshot.roomBizType).toBe(expected)
+    expect(roomTypeLabel(snapshot.roomBizType)).toBe(label)
+  },
+)
+it('creates a public friend room and rematches without inviting any contacts', () => {
+  expect(multiPayload('multiCreate', { songId: '123', allowStrangerMatch: true }, 'token')).toEqual(
+    {
+      type: 2,
+      songId: '123',
+      groupIds: '[]',
+      inviteUids: '[]',
+      checkToken: 'token',
+    },
+  )
+  expect(multiPayload('multiMatch', { songId: '123' }, 'token')).toEqual({
+    songId: '123',
+    checkToken: 'token',
+  })
+  expect(multiPayload('multiMatchCancel', {})).toEqual({})
+  expect(multiPayload('multiRematchLeave', { roomId: 'r' })).toEqual({
+    roomId: 'r',
+    exitType: 'CHANGE_ROOM',
+  })
+})
 
 it('parses markdown official multi invitations and preserves large inviter IDs', () => {
   const room = { roomId: 'test-room_123', inviterUid: '99999999999999999', role: 'host' as const }
@@ -229,7 +269,7 @@ it('rejects creation without a real initial song before contacting upstream', as
   service.restore('MUSIC_U=test')
   const result = await service.call({ method: 'multiCreate', args: { songId: '0' } })
   expect(result.ok).toBe(false)
-  expect(result.error).toContain('先播放')
+  expect(result.error).toContain('匹配用歌曲')
   expect(invoke).not.toHaveBeenCalled()
 })
 it('explains the official initial-song rejection and preserves protocol evidence', async () => {
@@ -262,4 +302,132 @@ it('preserves local pause across reconnect while allowing a fresh server snapsho
   await player.setListening(true)
   expect(audio.paused).toBe(false)
   expect(audio.currentTime).toBe(6)
+})
+
+it('keeps local audition through remote track changes and returns to the latest room timeline', async () => {
+  const audio = new FakeAudio()
+  const changed = vi.fn()
+  const auditionChanged = vi.fn()
+  const player = new RoomPlayer(
+    audio,
+    async (id) => track(id),
+    changed,
+    () => 2000,
+    auditionChanged,
+  )
+  await player.apply(state())
+  await player.audition('777')
+  expect(audio.src).toBe('https://audio.test/777')
+  expect(audio.currentTime).toBe(0)
+  expect(player.auditioning).toBe(true)
+  player.seekAudition(32000)
+  await player.apply(state({ version: 3, playSong: { songId: '456', songBizId: '1000' } }))
+  expect(audio.src).toBe('https://audio.test/777')
+  expect(audio.currentTime).toBe(32)
+  expect(changed.mock.calls.at(-1)?.[0].id).toBe('777')
+  await player.returnToRoom()
+  expect(audio.src).toBe('https://audio.test/456')
+  expect(audio.currentTime).toBe(6)
+  expect(audio.paused).toBe(false)
+  expect(auditionChanged.mock.calls).toEqual([[true], [false]])
+})
+
+it('preserves the room listening preference independently of audition pause', async () => {
+  const audio = new FakeAudio()
+  const player = new RoomPlayer(
+    audio,
+    async (id) => track(id),
+    vi.fn(),
+    () => 2000,
+  )
+  await player.apply(state())
+  await player.setListening(false)
+  await player.audition('777')
+  expect(audio.paused).toBe(false)
+  await player.returnToRoom()
+  expect(audio.paused).toBe(true)
+  await player.setListening(true)
+  await player.audition('777')
+  await player.setListening(false)
+  expect(audio.paused).toBe(true)
+  await player.returnToRoom()
+  expect(audio.paused).toBe(false)
+})
+
+it('returns automatically when local audition ends without ending the room item', async () => {
+  const audio = new FakeAudio()
+  const player = new RoomPlayer(
+    audio,
+    async (id) => track(id),
+    vi.fn(),
+    () => 2000,
+  )
+  await player.apply(state())
+  await player.audition('777')
+  audio.pause()
+  await player.ended()
+  expect(player.auditioning).toBe(false)
+  expect(audio.src).toBe('https://audio.test/123')
+  expect(audio.paused).toBe(false)
+})
+
+it('cancels an unfinished audition so a late source cannot replace room playback', async () => {
+  const audio = new FakeAudio()
+  let resolveAudition!: (value: ReturnType<typeof track>) => void
+  const player = new RoomPlayer(
+    audio,
+    (id) =>
+      id === '777'
+        ? new Promise((resolve) => {
+            resolveAudition = resolve
+          })
+        : Promise.resolve(track(id)),
+    vi.fn(),
+    () => 2000,
+  )
+  await player.apply(state())
+  const pending = player.audition('777')
+  await player.returnToRoom()
+  resolveAudition(track('777'))
+  await pending
+  expect(audio.src).toBe('https://audio.test/123')
+  expect(player.auditioning).toBe(false)
+})
+
+it('restores the room after audition failure and requests the audition source as a preview', async () => {
+  const audio = new FakeAudio()
+  const resolve = vi.fn(async (id: string, audition?: boolean) => {
+    if (id === '777') throw new Error('试听不可用')
+    return track(id)
+  })
+  const player = new RoomPlayer(audio, resolve, vi.fn(), () => 2000)
+  await player.apply(state())
+  await expect(player.audition('777')).rejects.toThrow('试听不可用')
+  expect(resolve).toHaveBeenCalledWith('777', true)
+  expect(audio.src).toBe('https://audio.test/123')
+  expect(audio.paused).toBe(false)
+  expect(player.auditioning).toBe(false)
+})
+
+it('leaving while an audition loads cannot restart audio or restore an obsolete room', async () => {
+  const audio = new FakeAudio()
+  let resolveAudition!: (value: ReturnType<typeof track>) => void
+  const player = new RoomPlayer(
+    audio,
+    (id) =>
+      id === '777'
+        ? new Promise((resolve) => {
+            resolveAudition = resolve
+          })
+        : Promise.resolve(track(id)),
+    vi.fn(),
+    () => 2000,
+  )
+  await player.apply(state())
+  const pending = player.audition('777')
+  player.reset()
+  resolveAudition(track('777'))
+  await pending
+  expect(audio.paused).toBe(true)
+  expect(player.auditioning).toBe(false)
 })

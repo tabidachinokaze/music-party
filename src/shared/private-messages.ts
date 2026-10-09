@@ -18,6 +18,9 @@ export const PRIVATE_METHODS = new Set([
   'privateSticker',
   'stickerGroups',
   'stickerPage',
+  'stickerCollect',
+  'stickerRemove',
+  'privatePresence',
   'follows',
 ])
 function uid(value: unknown): string | null {

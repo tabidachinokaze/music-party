@@ -2,15 +2,20 @@
 // This table is deliberately closed: the renderer cannot choose arbitrary upstream endpoints.
 export const multiEndpoints = {
   multiPreview: '/api/listen/together/multi/landing/info/get',
+  multiMatch: '/api/listen/together/multi/match',
+  multiMatchCancel: '/api/listen/together/multi/match/cancel',
+  multiRematchLeave: '/api/listen/together/multi/match/exit',
   multiCreate: '/api/listen/together/multi/room/create',
   multiJoin: '/api/listen/together/multi/match/ack',
   multiStatus: '/api/listen/together/multi/match/status/get',
   multiHeartbeat: '/api/listen/together/multi/match/heartbeat',
+  multiPlayed: '/api/listen/together/multi/match/played/song/list',
   multiQueue: '/api/listen/together/multi/match/wait/song/list',
   multiSongInfo: '/api/listen/together/multi/played/song/info',
   multiRemove: '/api/listen/together/multi/match/song/operate',
   multiUp: '/api/listen/together/multi/match/song/operate',
   multiLike: '/api/listen/together/multi/match/song/operate',
+  multiRedHeart: '/api/listen/together/multi/match/song/operate',
   multiAdd: '/api/listen/together/multi/match/song/operate',
   multiNext: '/api/listen/together/multi/match/song/operate',
   multiLeave: '/api/listen/together/multi/match/exit',
@@ -21,8 +26,20 @@ export type MultiMethod = keyof typeof multiEndpoints
 export function multiPayload(method: MultiMethod, args: Record<string, unknown>, checkToken = '') {
   const roomId = args.roomId
   switch (method) {
+    case 'multiMatch':
+      return { songId: args.songId, checkToken }
+    case 'multiMatchCancel':
+      return {}
+    case 'multiRematchLeave':
+      return { roomId, exitType: 'CHANGE_ROOM' }
     case 'multiCreate':
-      return { type: 1, songId: args.songId, groupIds: '[]', inviteUids: '[]', checkToken }
+      return {
+        type: args.allowStrangerMatch === true ? 2 : 1,
+        songId: args.songId,
+        groupIds: '[]',
+        inviteUids: '[]',
+        checkToken,
+      }
     case 'multiJoin':
       return { roomId, inviterUid: args.inviterUid, agree: true, checkToken }
     case 'multiPreview':
@@ -49,6 +66,8 @@ export function multiPayload(method: MultiMethod, args: Record<string, unknown>,
       }
     case 'multiHeartbeat':
       return { roomId }
+    case 'multiPlayed':
+      return { roomId, sort: 1, page: JSON.stringify({ size: 20, cursor: args.cursor || '' }) }
     case 'multiQueue':
       return { roomId, page: JSON.stringify({ size: 20, cursor: args.cursor || '' }) }
     case 'multiSongInfo':
@@ -56,11 +75,12 @@ export function multiPayload(method: MultiMethod, args: Record<string, unknown>,
     case 'multiRemove':
     case 'multiUp':
     case 'multiLike':
+    case 'multiRedHeart':
       return {
         roomId,
         songId: args.songId,
         bizId: args.bizId,
-        operate: { multiRemove: 7, multiUp: 2, multiLike: 3 }[method],
+        operate: { multiRemove: 7, multiUp: 2, multiLike: 3, multiRedHeart: 5 }[method],
         checkToken,
       }
     case 'multiLeave':
@@ -72,6 +92,9 @@ export function multiPayload(method: MultiMethod, args: Record<string, unknown>,
   }
 }
 export const multiMutations = new Set([
+  'multiMatch',
+  'multiMatchCancel',
+  'multiRematchLeave',
   'multiCreate',
   'multiJoin',
   'multiAdd',
@@ -81,4 +104,5 @@ export const multiMutations = new Set([
   'multiRemove',
   'multiUp',
   'multiLike',
+  'multiRedHeart',
 ])

@@ -7,15 +7,19 @@ import { inviteText } from '../../src/shared/private-messages'
 
 test('private inbox joins official invitations and shares only after recipient confirmation', async () => {
   const self = { userId: 123, nickname: '我' },
-    alice = { userId: 456, nickname: 'Alice' },
+    alice = { userId: 456, nickname: 'Alice · 喜欢在一起听房间分享音乐的超长完整昵称' },
     bob = { userId: 789, nickname: 'Bob' }
   const stamp = Date.now() - 10000
   let active: string | null = null,
     delayAlice = false,
+    delaySend = false,
     failSend = false,
     failRead = true,
     aliceLastTime = stamp
+  let currentRoomSong = '111',
+    roomVersion = 1
   const pendingResponse: { finish: (() => void) | null } = { finish: null }
+  const pendingSend: { finish: (() => void) | null } = { finish: null }
   const flushPending = () => {
     const callback = pendingResponse.finish
     pendingResponse.finish = null
@@ -31,6 +35,8 @@ test('private inbox joins official invitations and shares only after recipient c
     msg: JSON.stringify({ type: 1, msg: text }),
   })
   const nativeCaption = '我们一起听歌吧！分享你喜欢的歌给大家，一起玩转多人一起听～'
+  const sharedSongTitle = '私信分享歌曲 · 可以换行完整显示的很长歌曲名称与特别演出版本'
+  const sharedSongCaption = '分享一首耐听的歌曲，分享说明与歌曲卡片一起显示'
   const nativeLink = 'orpheus://nm/multiListenTogether/joinRoom?roomId=invited-room&inviterId=456'
   const nativeCard = {
     ...msg(2, alice, self, nativeCaption),
@@ -51,22 +57,53 @@ test('private inbox joins official invitations and shares only after recipient c
     },
     {
       ...msg(5, alice, self, ''),
-      msg: JSON.stringify({ song: { id: 777, name: '私信分享歌曲', artists: [{ name: '歌手' }] } }),
+      msg: JSON.stringify({
+        msg: sharedSongCaption,
+        song: { id: 777, name: sharedSongTitle, artists: [{ name: '歌手' }] },
+      }),
     },
     {
       ...msg(6, alice, self, ''),
       msg: JSON.stringify({ album: { id: 888, name: '私信分享专辑' } }),
     },
   ]
+  const songInfo = () => ({
+    playSong: { songId: currentRoomSong, songBizId: `1000${currentRoomSong}`, songRcmdUid: 123 },
+    nextSongs: [],
+    version: roomVersion,
+    playedTime: 3000,
+    songDuration: 30000,
+    waitSongCount: 0,
+  })
   const snapshot = () => ({
     roomId: active,
+    roomPlaySongInfo: songInfo(),
     multiRoomInfoDTO: { chatRoomId: '9988' },
     multiLtRoomUserAgg: {
       onlineNums: 3,
       onlineUserInfos: [123, 456, 789].map((uid) => ({ uid, nickname: `听友${uid}` })),
     },
   })
+  const pcm = Buffer.alloc(44 + 8000 * 2 * 30)
+  pcm.write('RIFF')
+  pcm.writeUInt32LE(pcm.length - 8, 4)
+  pcm.write('WAVEfmt ', 8)
+  pcm.writeUInt32LE(16, 16)
+  pcm.writeUInt16LE(1, 20)
+  pcm.writeUInt16LE(1, 22)
+  pcm.writeUInt32LE(8000, 24)
+  pcm.writeUInt32LE(16000, 28)
+  pcm.writeUInt16LE(2, 32)
+  pcm.writeUInt16LE(16, 34)
+  pcm.write('data', 36)
+  pcm.writeUInt32LE(pcm.length - 44, 40)
   const server = createServer(async (req, res) => {
+    if (new URL(req.url!, 'http://localhost').pathname === '/audio.wav') {
+      res.setHeader('Content-Type', 'audio/wav')
+      res.setHeader('Content-Length', pcm.length)
+      res.end(pcm)
+      return
+    }
     const chunks: Buffer[] = []
     for await (const chunk of req) chunks.push(chunk)
     const args = JSON.parse(Buffer.concat(chunks).toString() || '{}')
@@ -98,6 +135,29 @@ test('private inbox joins official invitations and shares only after recipient c
         break
       case '/album/sublist':
         body = { code: 200, data: [], hasMore: false }
+        break
+      case '/album':
+        body = {
+          code: 200,
+          album: { id: args.id },
+          songs: [{ id: 889, name: '专辑里的歌曲', ar: [{ name: '专辑歌手' }], dt: 30000 }],
+        }
+        break
+      case '/song/detail':
+        body = {
+          code: 200,
+          songs: String(args.ids)
+            .split(',')
+            .map((id) => ({
+              id,
+              name: id === '777' ? sharedSongTitle : `房间歌曲${id}`,
+              ar: [{ name: '歌手' }],
+              dt: 30000,
+            })),
+        }
+        break
+      case '/song/url/v1':
+        body = { code: 200, data: [{ id: args.id, url: `http://127.0.0.1:${port}/audio.wav` }] }
         break
       case '/api/communication/msg/unread/count/clean':
         body =
@@ -165,9 +225,21 @@ test('private inbox joins official invitations and shares only after recipient c
         }
         break
       case '/user/follows':
-        body = { code: 200, follow: [bob], more: false }
+        body = {
+          code: 200,
+          follow: args.offset ? [{ userId: 1001, nickname: '下一页联系人' }] : [bob],
+          more: !args.offset,
+        }
         break
       case '/send/text':
+        if (delaySend) {
+          pendingSend.finish = () => {
+            history.push(msg(300 + history.length, self, alice, args.msg, Date.now()))
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ code: 200, msgs: [], more: false }))
+          }
+          return
+        }
         if (failSend) {
           body = { code: 403, message: '当前不能发送私信' }
           break
@@ -203,7 +275,13 @@ test('private inbox joins official invitations and shares only after recipient c
         body = { code: 200, data: { success: true, multiLtRoomSnapshot: snapshot() } }
         break
       case '/api/listen/together/multi/match/heartbeat':
-        body = { code: 200, data: { heartBeatDuration: 20 } }
+        body = { code: 200, data: { heartBeatDuration: 20, roomPlaySongInfo: songInfo() } }
+        break
+      case '/api/listen/together/multi/played/song/info':
+        body = { code: 200, data: { liked: false, songInfo: { zanCnt: 0 } } }
+        break
+      case '/api/listen/together/multi/match/song/operate':
+        body = { code: 200, data: { success: true, roomSongInfo: songInfo() } }
         break
       case '/api/listen/together/multi/match/msg/history':
         body = { code: 200, data: { records: [], page: { more: false } } }
@@ -230,6 +308,15 @@ test('private inbox joins official invitations and shares only after recipient c
   })
   try {
     const page = await app.firstWindow()
+    await app.evaluate(({ shell }) => {
+      ;(globalThis as any).__openedMusicLinks = []
+      shell.openExternal = async (url) => {
+        ;(globalThis as any).__openedMusicLinks.push(url)
+      }
+    })
+    await page.locator('audio').evaluate((audio: HTMLAudioElement) => {
+      audio.muted = true
+    })
     await page.route('https://p1.music.126.net/chat-test.png', (route) =>
       route.fulfill({
         contentType: 'image/png',
@@ -252,25 +339,58 @@ test('private inbox joins official invitations and shares only after recipient c
       '手机私信 <b>原样显示</b>',
     )
     expect(await page.locator('.private-messages b').count()).toBe(0)
-    await expect(page.getByRole('button', { name: '播放 私信分享歌曲', exact: true })).toBeVisible()
+    const incomingCard = page.locator('article.chat-message').filter({
+      hasText: '手机私信 <b>原样显示</b>',
+    })
+    await expect(incomingCard.locator('.chat-author > span')).toHaveText(alice.nickname)
+    await expect(incomingCard.locator('.chat-author time')).toBeVisible()
+    expect(
+      await incomingCard.evaluate((card) => {
+        const avatar = card.querySelector('.chat-message-avatar')!
+        const body = card.querySelector('.chat-message-body')!
+        return (
+          !body.contains(avatar) &&
+          avatar.getBoundingClientRect().right <= body.getBoundingClientRect().left + 1
+        )
+      }),
+    ).toBe(true)
     await expect(
-      page.getByRole('button', { name: '打开资源 私信分享专辑', exact: true }),
+      page.getByRole('button', { name: `播放 ${sharedSongTitle}`, exact: true }),
     ).toBeVisible()
+    const songShare = page.locator('.message-share-card').filter({ hasText: sharedSongTitle })
+    await expect(songShare).toContainText(sharedSongCaption)
+    await expect(songShare.locator('.message-resource-kind')).toHaveText('单曲')
+    await expect(songShare.locator('.message-resource strong')).toHaveText(sharedSongTitle)
+    await expect(
+      page.getByRole('button', { name: '查看专辑 私信分享专辑', exact: true }),
+    ).toBeVisible()
+    await page.getByRole('button', { name: '查看专辑 私信分享专辑', exact: true }).click()
+    const albumView = page.getByRole('dialog', { name: '专辑：私信分享专辑', exact: true })
+    await expect(
+      albumView.getByRole('button', { name: '播放 专辑里的歌曲', exact: true }),
+    ).toBeVisible()
+    expect(calls.filter((call) => call.route === '/album').at(-1)?.args.id).toBe('888')
+    expect(await app.evaluate(() => (globalThis as any).__openedMusicLinks)).toEqual([])
+    await albumView.getByRole('button', { name: '关闭专辑：私信分享专辑', exact: true }).click()
+    await expect(albumView).toHaveCount(0)
     await page.getByRole('button', { name: '查看图片：图片' }).click()
     await expect(page.getByRole('dialog', { name: '图片预览' })).toBeVisible()
     await page.keyboard.press('Escape')
     await expect(page.getByRole('dialog', { name: '图片预览' })).toHaveCount(0)
-    await page.getByRole('button', { name: '选择表情', exact: true }).click()
-    await page.getByRole('button', { name: '常用表情', exact: true }).click()
-    await page.getByRole('button', { name: '插入表情 🎵', exact: true }).click()
+    await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+    await page
+      .getByRole('dialog', { name: 'Emoji', exact: true })
+      .getByRole('button', { name: '🎵', exact: true })
+      .click()
     await expect(page.getByLabel('私信内容')).toHaveValue('🎵')
     await page.getByLabel('私信内容').fill('')
     expect(
-      await page.locator('.private-layout').evaluate((element) => ({
-        radius: getComputedStyle(element).borderRadius,
-        border: getComputedStyle(element).borderWidth,
-      })),
-    ).toEqual({ radius: '0px', border: '0px' })
+      await page.locator('.private-layout').evaluate((element) => {
+        const panel = element.getBoundingClientRect()
+        const main = element.closest('main')!.getBoundingClientRect()
+        return panel.left > main.left && panel.right < main.right && panel.top > main.top
+      }),
+    ).toBe(true)
     await expect(
       page.evaluate(() => window.together.openMessageLink('file:///tmp/test')),
     ).rejects.toThrow('网易云链接')
@@ -312,9 +432,17 @@ test('private inbox joins official invitations and shares only after recipient c
       ),
     ).toHaveLength(2)
 
-    await page.getByRole('button', { name: '更多会话', exact: true }).click()
+    await expect(page.getByRole('button', { name: '更多会话', exact: true })).toHaveCount(0)
+    await page.locator('.conversation-list').evaluate((box) => {
+      box.scrollTop = box.scrollHeight
+    })
     await expect(page.locator('.conversation-list')).toContainText('Carol')
-    await page.getByRole('button', { name: '加载更早私信' }).click()
+    await expect(page.getByRole('button', { name: '加载更早私信' })).toHaveCount(0)
+    await page.getByRole('log', { name: '私信消息' }).evaluate((box) => {
+      box.scrollTop = 0
+    })
+    await page.getByRole('log', { name: '私信消息' }).hover()
+    await page.mouse.wheel(0, -500)
     await expect(page.getByRole('log', { name: '私信消息' })).toContainText('更早私信')
     expect(
       calls.find((c) => c.route === '/msg/private/history' && c.args.before)!.args.before,
@@ -334,6 +462,90 @@ test('private inbox joins official invitations and shares only after recipient c
       inviterUid: '456',
     })
     await page.getByRole('button', { name: '私信邀请', exact: true }).click()
+    await page.getByRole('button', { name: `试听或推歌 ${sharedSongTitle}`, exact: true }).click()
+    await expect(page.getByRole('dialog', { name: '歌曲操作', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '试听', exact: true }).click()
+    await expect(page.locator('.now-playing strong')).toHaveText(sharedSongTitle)
+    const stopAudition = page.getByRole('button', { name: '停止试听', exact: true })
+    await expect(stopAudition).toHaveCount(1)
+    await expect(stopAudition.locator('svg.lucide-square')).toBeVisible()
+    await expect(page.getByRole('button', { name: '暂停试听', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '继续试听', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '返回一起听', exact: true })).toBeVisible()
+    await expect(page.getByLabel('播放进度', { exact: true })).toBeEnabled()
+    await expect
+      .poll(() =>
+        app.evaluate(
+          ({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('desktop-previous')!.enabled,
+        ),
+      )
+      .toBe(true)
+    // Even auditioning the same song ID does not expose room attribution or reactions.
+    currentRoomSong = '777'
+    roomVersion++
+    await page.getByRole('button', { name: '打开播放界面', exact: true }).click()
+    await page.getByRole('button', { name: '立即同步', exact: true }).click()
+    await expect(page.getByRole('button', { name: '一起听点赞', exact: true })).toBeDisabled()
+    await page.getByRole('button', { name: '播放队列', exact: true }).click()
+    await expect(page.locator('.queue-playing .queue-track-overline')).toHaveCount(0)
+    await expect(page.locator('.queue-playing-like')).toHaveCount(0)
+    await page.getByRole('button', { name: '关闭播放队列', exact: true }).click()
+    currentRoomSong = '222'
+    roomVersion++
+    await page.getByRole('button', { name: '立即同步', exact: true }).click()
+    await expect(page.locator('.now-playing strong')).toHaveText(sharedSongTitle)
+    await stopAudition.click()
+    await expect(page.locator('.now-playing strong')).toHaveText('房间歌曲222')
+    await expect(stopAudition).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '本机暂停', exact: true })).toBeVisible()
+    await expect
+      .poll(() => page.locator('audio').evaluate((audio: HTMLAudioElement) => audio.currentTime))
+      .toBeGreaterThanOrEqual(2.8)
+    await expect(page.getByLabel('播放进度', { exact: true })).toBeDisabled()
+    await expect
+      .poll(() =>
+        app.evaluate(
+          ({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('desktop-previous')!.enabled,
+        ),
+      )
+      .toBe(false)
+    expect(calls.filter((call) => call.route.endsWith('/song/operate'))).toHaveLength(0)
+    // Stopping a second audition preserves an earlier local pause in the room.
+    await page.mouse.move(200, 150)
+    await page.getByRole('button', { name: '本机暂停', exact: true }).click()
+    await expect(page.getByRole('button', { name: '恢复同听', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '私信邀请', exact: true }).click()
+    await page.getByRole('button', { name: `试听或推歌 ${sharedSongTitle}`, exact: true }).click()
+    await page.getByRole('button', { name: '试听', exact: true }).click()
+    await expect(stopAudition).toHaveCount(1)
+    await expect
+      .poll(() => page.locator('audio').evaluate((audio: HTMLAudioElement) => audio.paused))
+      .toBe(false)
+    await app.evaluate(({ Menu }) => {
+      const item = Menu.getApplicationMenu()!.getMenuItemById('desktop-toggle')!
+      item.click(item, undefined, {} as any)
+    })
+    await expect(page.locator('.now-playing strong')).toHaveText('房间歌曲222')
+    await expect(stopAudition).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '恢复同听', exact: true })).toBeVisible()
+    expect(await page.locator('audio').evaluate((audio: HTMLAudioElement) => audio.paused)).toBe(
+      true,
+    )
+    expect(calls.filter((call) => call.route.endsWith('/song/operate'))).toHaveLength(0)
+    await page.mouse.move(200, 150)
+    await page.getByRole('button', { name: '恢复同听', exact: true }).click()
+    await expect(page.getByRole('button', { name: '本机暂停', exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '打开播放界面', exact: true }).click()
+    await page.getByRole('button', { name: '私信邀请', exact: true }).click()
+    await page.getByRole('button', { name: `试听或推歌 ${sharedSongTitle}`, exact: true }).click()
+    await page.getByRole('button', { name: '推歌', exact: true }).click()
+    await expect
+      .poll(() => calls.filter((call) => call.route.endsWith('/song/operate')).length)
+      .toBe(1)
+    expect(calls.find((call) => call.route.endsWith('/song/operate'))!.args.data).toMatchObject({
+      songId: '777',
+      operate: 1,
+    })
     await page.getByRole('button', { name: '邀请到当前房间' }).click()
     await expect(page.getByRole('dialog')).toContainText('Alice')
     expect(calls.filter((c) => c.route === '/send/text')).toHaveLength(0)
@@ -353,6 +565,33 @@ test('private inbox joins official invitations and shares only after recipient c
     await expect(
       page.locator('.private-messages .chat-bubble').filter({ hasText: '文字私信测试' }),
     ).toHaveCount(1)
+    const outgoingCard = page.locator('article.chat-message.mine').filter({
+      hasText: '文字私信测试',
+    })
+    expect(
+      await outgoingCard.evaluate((card) => {
+        const avatar = card.querySelector('.chat-message-avatar')!.getBoundingClientRect()
+        const body = card.querySelector('.chat-message-body')!.getBoundingClientRect()
+        return avatar.left >= body.right - 1
+      }),
+    ).toBe(true)
+    delaySend = true
+    await page.getByLabel('私信内容').fill('切换期间发送结果')
+    await page.getByRole('button', { name: '发送私信', exact: true }).click()
+    await expect.poll(() => !!pendingSend.finish).toBe(true)
+    await bobRow.click()
+    await aliceRow.click()
+    const settleSend = pendingSend.finish
+    pendingSend.finish = null
+    delaySend = false
+    settleSend?.()
+    await expect(page.getByLabel('私信内容')).toHaveValue('')
+    await expect(
+      page.locator('article.chat-message.mine').filter({ hasText: '切换期间发送结果' }),
+    ).toHaveCount(1)
+    await expect(
+      page.locator('article.chat-message.mine').filter({ hasText: '切换期间发送结果' }),
+    ).not.toContainText('发送中')
     failSend = true
     await page.getByLabel('私信内容').fill('保留失败草稿')
     await page.getByRole('button', { name: '发送私信', exact: true }).click()
@@ -371,6 +610,22 @@ test('private inbox joins official invitations and shares only after recipient c
     expect(await page.locator('main').evaluate((el) => el.scrollHeight <= el.clientHeight)).toBe(
       true,
     )
+    expect(
+      await page.getByRole('log', { name: '私信消息' }).evaluate((log) => {
+        const bounds = log.getBoundingClientRect()
+        return (
+          log.scrollWidth <= log.clientWidth + 1 &&
+          [
+            ...log.querySelectorAll(
+              '.chat-message, .chat-author, .message-share-card, .message-resource, .message-image, .private-invite-card',
+            ),
+          ].every((card) => {
+            const rect = card.getBoundingClientRect()
+            return rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1
+          })
+        )
+      }),
+    ).toBe(true)
     await page.screenshot({
       path: 'test-results/music-party-private-compact.png',
       animations: 'disabled',
@@ -382,6 +637,10 @@ test('private inbox joins official invitations and shares only after recipient c
     })
     await page.getByRole('button', { name: '选择好友发私信' }).click()
     await expect(page.getByRole('dialog', { name: '选择私信收件人' })).toBeVisible()
+    await expect(
+      page.getByRole('dialog').getByRole('button', { name: '下一页联系人 1001' }),
+    ).toBeVisible()
+    await expect(page.getByRole('button', { name: '更多联系人' })).toHaveCount(0)
     await page.mouse.click(5, 5)
     await expect(page.getByRole('dialog', { name: '选择私信收件人' })).toHaveCount(0)
     await expect(page.getByLabel('私信内容')).toHaveValue('保留失败草稿')
@@ -408,6 +667,7 @@ test('private inbox joins official invitations and shares only after recipient c
     expect(await page.locator('pre').innerText()).not.toContain('保留失败草稿')
     expect(errors).toEqual([])
   } finally {
+    pendingSend.finish?.()
     flushPending()
     await app.close()
     await new Promise<void>((resolve) => server.close(() => resolve()))

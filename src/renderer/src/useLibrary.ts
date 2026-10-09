@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Album, Playlist, Song } from '../../shared/types'
 import { toSong } from '../../shared/protocol'
-import { allAlbums, allPlaylists, songsByIds, type ApiCall } from './music-data'
+import { allAlbums, allPlaylists, likedPlaylist, songsByIds, type ApiCall } from './music-data'
 
 export function useLibrary(api: ApiCall, uid: string | null) {
   const [playlists, setPlaylists] = useState<Playlist[]>([])
@@ -73,7 +73,7 @@ export function useLibrary(api: ApiCall, uid: string | null) {
   async function toggleLike(song: Song, desired = !likes.has(song.id)) {
     if (!uid) throw new Error('请先登录网易云账号')
     if (!likesReady) throw new Error('喜欢列表尚未加载完成，请稍后重试')
-    if (likeLock.current.has(song.id)) return
+    if (likeLock.current.has(song.id)) return false
     const run = epoch.current
     likeLock.current.add(song.id)
     setLikeBusy(new Set(likeLock.current))
@@ -86,6 +86,7 @@ export function useLibrary(api: ApiCall, uid: string | null) {
           else next.delete(song.id)
           return next
         })
+      return run === epoch.current
     } finally {
       if (run === epoch.current) {
         likeLock.current.delete(song.id)
@@ -100,11 +101,18 @@ export function useLibrary(api: ApiCall, uid: string | null) {
     albumsComplete,
     likes,
     likesReady,
+    likedPlaylist: likedPlaylist(playlists, uid),
     loading,
     error,
     complete,
     likeBusy,
     toggleLike,
+    recordPlaylistAdded: (id: string) =>
+      setPlaylists((items) =>
+        items.map((playlist) =>
+          playlist.id === id ? { ...playlist, count: playlist.count + 1 } : playlist,
+        ),
+      ),
     refresh: () => setRevision((n) => n + 1),
   }
 }
@@ -141,20 +149,29 @@ export function useSongCollection(
       const offset = position.current
       const batch = source?.artistId ? [] : allIds.current.slice(offset, offset + 100)
       let items: Song[], hasMore: boolean, count: number
+      let consumed = batch.length
       if (source?.artistId) {
         const body = await api('artistSongs', { id: source.artistId, offset })
         if (!Array.isArray(body.songs)) throw new Error('歌手歌曲响应异常')
         items = body.songs.map(toSong)
+        consumed = items.length
         hasMore = body.more === true
         count = Number(body.total || offset + items.length)
         if (!items.length && hasMore) throw new Error('歌曲分页暂不可用，请重试')
+        const seen = new Set(reset ? [] : allIds.current)
+        items = items.filter((item) => {
+          if (seen.has(item.id)) return false
+          seen.add(item.id)
+          return true
+        })
+        if (consumed && !items.length) throw new Error('歌手歌曲分页未继续前进，请重试')
       } else {
         items = await songsByIds(api, batch)
         hasMore = offset + batch.length < allIds.current.length
         count = allIds.current.length
       }
       if (run !== epoch.current) return
-      position.current += source?.artistId ? items.length : batch.length
+      position.current += consumed
       setSongs((old) => (reset ? items : [...old, ...items]))
       setMore(hasMore)
       setTotal(count)

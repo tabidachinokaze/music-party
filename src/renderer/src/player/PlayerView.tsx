@@ -17,11 +17,16 @@ import {
   RefreshCw,
   Users,
   ThumbsUp,
+  ListPlus,
 } from 'lucide-react'
+import type { Song } from '../../../shared/types'
 import type { useParty } from '../useParty'
 import type { useLibrary } from '../useLibrary'
+import { AddToPlaylist } from '../AddToPlaylist'
 import { Lyrics } from '../Lyrics'
-import { Overlay } from './Overlay'
+import { MembersDrawer } from './MembersDrawer'
+import { roomTypeLabel } from '../../../shared/multiplayer'
+import './player-song-actions.css'
 
 export function PlayerView({
   party: p,
@@ -57,7 +62,11 @@ export function PlayerView({
   onFullScreen(): void
 }) {
   const [membersOpen, setMembersOpen] = useState(false)
+  const [memberUid, setMemberUid] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [addSong, setAddSong] = useState<{ uid: string; song: Song } | null>(null)
+  const uid = p.account?.userId ? String(p.account.userId) : ''
+  useEffect(() => setAddSong(null), [uid])
   useEffect(() => {
     setCopied(false)
     setMembersOpen(false)
@@ -140,7 +149,7 @@ export function PlayerView({
             </span>
             <div>
               <h2>{p.onlineCount === null ? '正在获取成员' : `${p.onlineCount} 人一起听`}</h2>
-              <span>同一首歌，此刻与你</span>
+              <span>{roomTypeLabel(p.room.roomBizType)}</span>
             </div>
           </div>
           <div className="room-avatars">
@@ -150,7 +159,10 @@ export function PlayerView({
                 key={member.uid}
                 title={member.nickname}
                 aria-label={`查看成员 ${member.nickname}`}
-                onClick={() => setMembersOpen(true)}
+                onClick={() => {
+                  setMemberUid(member.uid)
+                  setMembersOpen(true)
+                }}
               >
                 {member.avatar ? (
                   <img src={member.avatar} alt="" />
@@ -162,7 +174,10 @@ export function PlayerView({
             <button
               className="room-members-button"
               aria-label="查看房间成员"
-              onClick={() => setMembersOpen(true)}
+              onClick={() => {
+                setMemberUid(null)
+                setMembersOpen(true)
+              }}
             >
               <Users size={15} />
             </button>
@@ -174,8 +189,8 @@ export function PlayerView({
               title="为房间当前歌曲点赞"
               disabled={
                 !!p.busy ||
+                p.auditioning ||
                 p.roomReaction.loading ||
-                p.roomReaction.liked ||
                 !p.roomPlayback?.song ||
                 p.current?.id !== p.roomPlayback.song.songId
               }
@@ -184,6 +199,10 @@ export function PlayerView({
               <ThumbsUp size={16} />
               {p.roomReaction.liked ? '已点赞' : '点赞'}
               <span>{Math.max(p.roomReaction.count, p.roomPlayback?.likeCount || 0)}</span>
+            </button>
+            <button className="secondary" onClick={onTogether} disabled={!!p.busy}>
+              <RefreshCw size={15} />
+              重新匹配
             </button>
             <button className="secondary" onClick={onInvite}>
               <Mail size={15} />
@@ -199,110 +218,129 @@ export function PlayerView({
       )}
       <div className="listening-content">
         <div className="album-column">
-          <div className={`album-artwork ${p.current?.cover ? 'has-cover' : ''}`}>
-            {p.current?.cover ? (
-              <img src={p.current.cover} alt={`${p.current.name} 专辑封面`} />
-            ) : (
-              <div className="record-placeholder">
-                <div className="record-groove groove-one" />
-                <div className="record-groove groove-two" />
-                <div className="record-label">
-                  <Music2 size={36} />
+          <div className="album-artwork-slot">
+            <div className={`album-artwork ${p.current?.cover ? 'has-cover' : ''}`}>
+              {p.current?.cover ? (
+                <img src={p.current.cover} alt={`${p.current.name} 专辑封面`} />
+              ) : (
+                <div className="record-placeholder">
+                  <div className="record-groove groove-one" />
+                  <div className="record-groove groove-two" />
+                  <div className="record-label">
+                    <Music2 size={36} />
+                  </div>
                 </div>
+              )}
+            </div>
+          </div>
+          <div className="album-details">
+            <div className="album-caption">
+              <div>
+                <h1 title={title}>{title}</h1>
+                <p>
+                  {p.current?.artist ||
+                    (p.room ? '音乐会随房间自动开始' : '从喜欢的歌曲，遇见同频的人')}
+                </p>
+                {p.current?.album && <small>{p.current.album}</small>}
+              </div>
+              {p.current && (
+                <div className="album-song-actions">
+                  <button
+                    className={`album-like ${library.likes.has(p.current.id) ? 'liked' : ''}`}
+                    aria-label={
+                      library.likes.has(p.current.id) ? '取消喜欢封面歌曲' : '喜欢封面歌曲'
+                    }
+                    disabled={!library.likesReady || library.likeBusy.has(p.current.id)}
+                    onClick={onLike}
+                  >
+                    <Heart
+                      size={21}
+                      fill={library.likes.has(p.current.id) ? 'currentColor' : 'none'}
+                    />
+                  </button>
+                  <button
+                    className="album-like album-playlist-add"
+                    aria-label="添加当前歌曲到歌单"
+                    title={uid ? '添加当前歌曲到歌单' : '登录后添加当前歌曲到歌单'}
+                    disabled={!uid}
+                    onClick={() => {
+                      if (uid && p.current) setAddSong({ uid, song: { ...p.current } })
+                    }}
+                  >
+                    <ListPlus size={21} />
+                  </button>
+                </div>
+              )}
+            </div>
+            {!p.current && !p.room && (
+              <button className="primary discover-music" onClick={onBrowse}>
+                选一首喜欢的歌
+                <ArrowRight size={16} />
+              </button>
+            )}
+            {p.room && (
+              <div className="session-actions">
+                <button className="text-btn" onClick={copy} disabled={!!p.busy}>
+                  {copied ? <Check size={14} /> : <Copy size={14} />}复制邀请
+                </button>
+                <button
+                  className="text-btn"
+                  title={p.health}
+                  disabled={!!p.busy}
+                  onClick={() => p.act('同步房间', p.observe)}
+                >
+                  <RefreshCw size={14} />
+                  立即同步
+                </button>
+                <button className="text-btn" disabled={!!p.busy} onClick={onLeave}>
+                  <LogOut size={14} />
+                  离开房间
+                </button>
               </div>
             )}
           </div>
-          <div className="album-caption">
-            <div>
-              <h1 title={title}>{title}</h1>
-              <p>
-                {p.current?.artist ||
-                  (p.room ? '音乐会随房间自动开始' : '从喜欢的歌曲，遇见同频的人')}
-              </p>
-              {p.current?.album && <small>{p.current.album}</small>}
-            </div>
-            {p.current && (
-              <button
-                className={`album-like ${library.likes.has(p.current.id) ? 'liked' : ''}`}
-                aria-label={library.likes.has(p.current.id) ? '取消喜欢封面歌曲' : '喜欢封面歌曲'}
-                disabled={!library.likesReady || library.likeBusy.has(p.current.id)}
-                onClick={onLike}
-              >
-                <Heart size={21} fill={library.likes.has(p.current.id) ? 'currentColor' : 'none'} />
-              </button>
-            )}
-          </div>
-          {!p.current && !p.room && (
-            <button className="primary discover-music" onClick={onBrowse}>
-              选一首喜欢的歌
-              <ArrowRight size={16} />
-            </button>
-          )}
-          {p.room && (
-            <div className="session-actions">
-              <button className="text-btn" onClick={copy} disabled={!!p.busy}>
-                {copied ? <Check size={14} /> : <Copy size={14} />}复制邀请
-              </button>
-              <button
-                className="text-btn"
-                title={p.health}
-                disabled={!!p.busy}
-                onClick={() => p.act('同步房间', p.observe)}
-              >
-                <RefreshCw size={14} />
-                立即同步
-              </button>
-              <button className="text-btn" disabled={!!p.busy} onClick={onLeave}>
-                <LogOut size={14} />
-                离开房间
-              </button>
-            </div>
-          )}
         </div>
         <div className="lyric-column">
           <div className="lyric-heading">
             <span>歌词</span>
-            {p.room && <small>跟随房间播放</small>}
+            {p.room && <small>{p.auditioning ? '本机试听 · 房间继续播放' : '跟随房间播放'}</small>}
           </div>
           <Lyrics
             api={p.api}
             songId={p.current?.id}
             position={p.position}
-            seekable={!p.room}
+            seekable={!p.room || p.auditioning}
             onSeek={(position) => p.act('跳转歌词', () => p.seek(position))}
           />
         </div>
       </div>
       {membersOpen && p.room && (
-        <Overlay title="房间成员" onClose={() => setMembersOpen(false)}>
-          <p className="overlay-intro">
-            {p.onlineCount === null ? '正在读取成员' : `${p.onlineCount} 人正在一起听`}
-          </p>
-          <div className="member-directory">
-            {p.members.map((member) => (
-              <div key={member.uid}>
-                {member.avatar ? (
-                  <img src={member.avatar} alt="" />
-                ) : (
-                  <span className="avatar">{member.nickname.slice(0, 1)}</span>
-                )}
-                <strong>{member.nickname}</strong>
-                {String(p.account?.userId) === member.uid && <small>我</small>}
-              </div>
-            ))}
-          </div>
-          <div className="member-directory-footer">
-            <small>{p.membersStatus}</small>
-            <button
-              className="secondary"
-              disabled={!!p.busy}
-              onClick={() => p.act('刷新成员', p.refreshMembers)}
-            >
-              <RefreshCw size={14} />
-              刷新成员
-            </button>
-          </div>
-        </Overlay>
+        <MembersDrawer
+          key={p.room.roomId}
+          party={p}
+          initialUid={memberUid}
+          onClose={() => setMembersOpen(false)}
+        />
+      )}
+      {addSong && uid && addSong.uid === uid && (
+        <AddToPlaylist
+          key={`${addSong.uid}:${addSong.song.id}`}
+          api={p.api}
+          uid={addSong.uid}
+          song={addSong.song}
+          playlists={library.playlists}
+          loading={library.loading}
+          error={library.error}
+          onRefresh={library.refresh}
+          onClose={() => setAddSong(null)}
+          onAdded={(playlist, alreadyExists) => {
+            p.setNotice(
+              alreadyExists ? `歌曲已在“${playlist.name}”中` : `已添加到“${playlist.name}”`,
+            )
+            if (!alreadyExists) library.recordPlaylistAdded(playlist.id)
+            setAddSong(null)
+          }}
+        />
       )}
     </section>
   )

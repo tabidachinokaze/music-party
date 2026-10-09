@@ -50,7 +50,9 @@
     "files": [
       "out/**/*",
       "resources/*.png",
-      "package.json"
+      "package.json",
+      "THIRD_PARTY_NOTICES.md",
+      "licenses/*.txt"
     ],
     "asar": true,
     "npmRebuild": false,

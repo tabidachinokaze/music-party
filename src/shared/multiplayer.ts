@@ -10,6 +10,24 @@ function id(value: unknown): string {
 function finite(value: unknown, fallback = 0) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : fallback
 }
+export function parseRoomBizType(value: unknown): number | string | null {
+  if (value === '1' || value === '2' || value === '3') return Number(value)
+  return typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value))
+    ? value
+    : null
+}
+export function roomTypeLabel(value: unknown): string {
+  switch (parseRoomBizType(value)) {
+    case 1:
+      return '私密好友房'
+    case 2:
+      return '公开好友房'
+    case 3:
+      return '公开匹配房'
+    default:
+      return '房间类型未知'
+  }
+}
 function queueSong(value: any): QueueSong {
   return {
     songId: id(value.songId),
@@ -78,6 +96,7 @@ export function parseSnapshot(value: any, sampledAt: number): RoomSnapshot {
     membersKnown: Array.isArray(rawMembers),
     onlineCount,
     chatRoomId,
+    roomBizType: parseRoomBizType(info?.roomBizType),
   }
 }
 export function targetPosition(state: RoomPlayback, now: number): number {

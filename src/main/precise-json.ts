@@ -1,5 +1,10 @@
 export function preciseMediaEndpoint(value: unknown): boolean {
-  return typeof value === 'string' && /\/(?:eapi|api)\/(?:social\/emoji\/|nos\/token\/)/.test(value)
+  return (
+    typeof value === 'string' &&
+    /\/(?:weapi|eapi|api)\/(?:social\/emoji\/|nos\/token\/|communication\/|msg\/private(?:\/|\?|$)|listen\/together\/)/.test(
+      value,
+    )
+  )
 }
 // These resource IDs exceed JS's integer range. Preserve the original JSON token, not a rounded Number.
 export function parsePreciseJson(value: string): any {

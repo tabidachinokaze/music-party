@@ -37,10 +37,61 @@ it('uses distinct delete, UP and room-like operations without affecting red-hear
     ['multiRemove', 7],
     ['multiUp', 2],
     ['multiLike', 3],
+    ['multiRedHeart', 5],
   ] as const)
     expect(
       multiPayload(method, { roomId: 'room', songId: '222', bizId: '900' }, 'token'),
     ).toMatchObject({ operate, songId: '222', bizId: '900', checkToken: 'token' })
+})
+it('sends red-heart activity only for the authenticated room current business item', async () => {
+  const { service, invoke } = setup()
+  const current = { roomId: 'room', songId: '111', bizId: '800' }
+  expect((await service.call({ method: 'multiRedHeart', args: current })).ok).toBe(true)
+  expect(invoke.mock.calls.some(([method]) => method === 'multiRedHeart')).toBe(true)
+  invoke.mockClear()
+  for (const target of [
+    { ...current, roomId: 'other' },
+    { ...current, songId: '222' },
+    { ...current, bizId: '801' },
+  ])
+    expect((await service.call({ method: 'multiRedHeart', args: target })).ok).toBe(false)
+  expect(invoke.mock.calls.some(([method]) => method === 'multiRedHeart')).toBe(false)
+})
+it.each([
+  { failedCode: 0, result: false },
+  { result: true },
+  { failedCode: 11, failedMsg: '不允许红心' },
+])('requires the room red-heart business acknowledgement %j', async (data) => {
+  const { service, invoke } = setup()
+  const original = invoke.getMockImplementation()!
+  invoke.mockImplementation(async (method, args) =>
+    method === 'multiRedHeart' ? { body: { code: 200, data } } : original(method, args),
+  )
+  expect(
+    (
+      await service.call({
+        method: 'multiRedHeart',
+        args: { roomId: 'room', songId: '111', bizId: '800' },
+      })
+    ).ok,
+  ).toBe(false)
+})
+it('does not announce a red heart when status lookup failed even if a snapshot was included', async () => {
+  const { service, invoke } = setup()
+  const original = invoke.getMockImplementation()!
+  invoke.mockImplementation(async (method, args) => {
+    const reply = await original(method, args)
+    return method === 'multiStatus' ? { body: { ...reply.body, code: 301 } } : reply
+  })
+  expect(
+    (
+      await service.call({
+        method: 'multiRedHeart',
+        args: { roomId: 'room', songId: '111', bizId: '800' },
+      })
+    ).ok,
+  ).toBe(false)
+  expect(invoke.mock.calls.some(([method]) => method === 'multiRedHeart')).toBe(false)
 })
 it('checks exact business item ownership before removing a recommendation', async () => {
   for (const owner of ['123', '456']) {

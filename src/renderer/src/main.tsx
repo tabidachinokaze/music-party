@@ -4,4 +4,7 @@ import './palette.css'
 import './style.css'
 import './player/player.css'
 import './interactions.css'
+import './chat-messages.css'
+import './chat-composer.css'
+import './appearance.css'
 createRoot(document.getElementById('root')!).render(<App />)

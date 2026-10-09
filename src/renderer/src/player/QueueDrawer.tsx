@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUpToLine, ListMusic, Music2, Play, RefreshCw, Trash2, X } from 'lucide-react'
+import {
+  ArrowUpToLine,
+  ListMusic,
+  Music2,
+  Play,
+  RefreshCw,
+  ThumbsUp,
+  Trash2,
+  X,
+} from 'lucide-react'
 import type { Song, QueueSong, RoomQueueEntry } from '../../../shared/types'
 import type { useParty } from '../useParty'
 import { waitingCount } from '../../../shared/playback-queue'
@@ -7,6 +16,7 @@ import { toSong } from '../../../shared/protocol'
 import { useDismissable } from './useDismissable'
 import { useRoomQueue } from '../useRoomQueue'
 import { Overlay } from './Overlay'
+import { useScrollPagination } from '../useScrollPagination'
 
 export function QueueDrawer({
   party: p,
@@ -37,8 +47,37 @@ export function QueueDrawer({
   const currentIndex = roomQueue.entries.findIndex(
     (entry) => entry.songBizId === p.roomPlayback?.song?.songBizId,
   )
+  const officialSong = p.roomPlayback?.song
+  const roomSong =
+    officialSong && inRoom && !p.auditioning && p.current?.id === officialSong.songId
+      ? officialSong
+      : null
+  const recommenderName = (song: QueueSong, entry?: Partial<RoomQueueEntry>) => {
+    if (!song.songRcmdUid || song.songRcmdUid === '0') return '系统推荐'
+    const member = p.members.find((member) => member.uid === song.songRcmdUid)
+    const nickname = entry?.songRcmdUid === song.songRcmdUid ? entry.recommender?.trim() : ''
+    return nickname || member?.nickname || `用户 ${song.songRcmdUid}`
+  }
+  const currentRecommender = roomSong
+    ? recommenderName(roomSong, roomQueue.entries[currentIndex])
+    : ''
+  const currentReaction = roomSong?.songBizId === p.roomReaction.bizId
+  const currentLiked = currentReaction && p.roomReaction.liked
+  const currentLikeCount = Math.max(
+    currentReaction ? p.roomReaction.count : 0,
+    p.roomPlayback?.likeCount || 0,
+  )
   const queued = currentIndex < 0 ? roomQueue.entries : roomQueue.entries.slice(currentIndex + 1)
   const ids = p.room ? [] : p.personalQueue.slice(0, limit)
+  const queueSentinel = useScrollPagination({
+    enabled: !closing,
+    scope,
+    loading: loading || (inRoom && roomQueue.loading),
+    hasMore: (inRoom ? queued.length : p.personalQueue.length) > limit,
+    blocked: !!error || !!roomQueue.error,
+    contentKey: limit,
+    onLoad: () => setLimit((value) => value + 100),
+  })
   const idsKey = ids.join(',')
   useEffect(() => {
     cache.current = {}
@@ -151,7 +190,12 @@ export function QueueDrawer({
                 <Music2 size={20} />
               </span>
             )}
-            <span>
+            <span className="queue-playing-copy">
+              {currentRecommender && (
+                <span className="queue-track-overline" title={currentRecommender}>
+                  {currentRecommender}
+                </span>
+              )}
               <strong>{p.current.name}</strong>
               <small>{p.current.artist}</small>
             </span>
@@ -160,6 +204,19 @@ export function QueueDrawer({
               <i />
               <i />
             </span>
+            {roomSong && (
+              <button
+                className={`icon-btn queue-playing-like ${currentLiked ? 'liked' : ''}`}
+                aria-label={`点赞正在播放歌曲 ${p.current.name}`}
+                aria-pressed={currentLiked}
+                title={currentLiked ? '已为房间当前歌曲点赞' : '为房间当前歌曲点赞'}
+                disabled={!!p.busy || !currentReaction || p.roomReaction.loading}
+                onClick={() => p.act('一起听点赞', p.likeRoomSong)}
+              >
+                <ThumbsUp size={16} />
+                <small>{currentLikeCount}</small>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -193,7 +250,7 @@ export function QueueDrawer({
         )}
         {entries.map((entry, index) => {
           const track = entry.track || tracks[entry.songId]
-          const member = p.members.find((member) => member.uid === entry.songRcmdUid)
+          const recommender = recommenderName(entry, entry)
           const content = (
             <>
               <span className="queue-index">{String(index + 1).padStart(2, '0')}</span>
@@ -205,15 +262,15 @@ export function QueueDrawer({
                 </span>
               )}
               <span className="queue-track-copy">
+                {inRoom && (
+                  <span className="queue-track-overline" title={recommender}>
+                    {recommender}
+                  </span>
+                )}
                 <strong>
                   {track?.name || (track === null ? '歌曲信息暂不可用' : '正在读取歌曲…')}
                 </strong>
-                <small>
-                  {track?.artist || '—'}
-                  {inRoom && (('recommender' in entry && entry.recommender) || member?.nickname)
-                    ? ` · ${('recommender' in entry && entry.recommender) || member?.nickname} 推荐`
-                    : ''}
-                </small>
+                <small>{track?.artist || '—'}</small>
               </span>
               {!inRoom && <Play size={15} className="queue-track-play" />}
             </>
@@ -232,7 +289,7 @@ export function QueueDrawer({
                   }
                 >
                   <ArrowUpToLine size={15} />
-                  <small>{entry.upCount || ''}</small>
+                  <small>{entry.upCountKnown === false ? '' : entry.upCount}</small>
                 </button>
                 {entry.songRcmdUid === String(p.account?.userId) && (
                   <button
@@ -278,11 +335,7 @@ export function QueueDrawer({
         {inRoom && roomQueue.loading && (
           <p className="queue-loading">正在读取完整待播列表 · 已获取 {queued.length} 首…</p>
         )}
-        {(inRoom ? queued.length : p.personalQueue.length) > limit && (
-          <button className="text-btn load-more" onClick={() => setLimit((value) => value + 100)}>
-            显示更多
-          </button>
-        )}
+        <div ref={queueSentinel} className="pagination-sentinel" aria-hidden="true" />
       </div>
       <div className="queue-drawer-footer">
         {inRoom ? '待播顺序由一起听房间同步' : '个人播放队列'}

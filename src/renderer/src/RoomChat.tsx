@@ -1,27 +1,37 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
-import { MessageCircle, RefreshCw, Send, X } from 'lucide-react'
-import type { Room, Song } from '../../shared/types'
+import { MessageCircle, RefreshCw, Sticker, X } from 'lucide-react'
+import type { Member, Room, Song } from '../../shared/types'
 import { MessageContent } from './MessageContent'
+import { ChatMessageCard, RoomActivityCard } from './ChatMessageCard'
 import { EmojiPicker } from './EmojiPicker'
 import { MediaComposer } from './MediaComposer'
 import { CHAT_MAX_LENGTH } from '../../shared/chat'
 import type { useRoomChat } from './useRoomChat'
 import { useDismissable } from './player/useDismissable'
 import { usePresence } from './player/usePresence'
+import { useScrollPagination } from './useScrollPagination'
+import { ChatComposer } from './ChatComposer'
+import { captureHistoryAnchor, restoreHistoryAnchor, type HistoryAnchor } from './history-scroll'
 
 export function RoomChat({
   chat,
   room,
   uid,
   onlineCount,
+  members,
   onSong,
+  onAlbum,
+  onAudition,
   onMediaPlay,
 }: {
   chat: ReturnType<typeof useRoomChat>
   room: Room | null
   uid: string
   onlineCount: number | null
+  members: Member[]
   onSong(song: Song): void
+  onAlbum(id: string, title: string): void
+  onAudition(song: Song): void
   onMediaPlay(): void
 }) {
   const list = useRef<HTMLDivElement>(null)
@@ -29,7 +39,24 @@ export function RoomChat({
   const presence = usePresence(chat.visible)
   useDismissable(drawer, () => chat.setVisible(false), chat.visible, '[data-popup-toggle="chat"]')
   const nearBottom = useRef(true)
-  const historyAnchor = useRef<{ height: number; top: number } | null>(null)
+  const historyAnchor = useRef<HistoryAnchor | null>(null)
+  const composer = useRef<{ insertText(text: string): void }>(null)
+  const viewerNickname = members.find((member) => member.uid === uid)?.nickname || ''
+  const historyPages = useScrollPagination({
+    enabled: chat.visible && Boolean(room),
+    loading: chat.loading,
+    hasMore: chat.more,
+    blocked: Boolean(chat.error),
+    scope: `${uid}:${room?.roomId}`,
+    contentKey: chat.messages.length,
+    direction: 'top',
+    autoFill: false,
+    onLoad: older,
+  })
+  useEffect(() => {
+    nearBottom.current = true
+    historyAnchor.current = null
+  }, [uid, room?.roomId])
   useEffect(() => {
     if (!chat.visible) return
     const previous = document.activeElement as HTMLElement | null
@@ -39,7 +66,7 @@ export function RoomChat({
         event.key === 'Escape' &&
         !event.isComposing &&
         !event.defaultPrevented &&
-        !document.querySelector('[aria-modal="true"]')
+        !document.querySelector('[aria-modal="true"], :popover-open')
       ) {
         event.preventDefault()
         chat.setVisible(false)
@@ -56,16 +83,16 @@ export function RoomChat({
     if (!box) return
     const anchor = historyAnchor.current
     if (anchor) {
-      box.scrollTop = anchor.top + box.scrollHeight - anchor.height
+      restoreHistoryAnchor(box, anchor)
       historyAnchor.current = null
     } else if (nearBottom.current) box.scrollTop = box.scrollHeight
   }, [chat.messages, chat.visible])
   async function older() {
-    if (list.current)
-      historyAnchor.current = { height: list.current.scrollHeight, top: list.current.scrollTop }
+    const anchor = list.current ? captureHistoryAnchor(list.current) : null
+    historyAnchor.current = anchor
     await chat.loadOlder()
     requestAnimationFrame(() => {
-      historyAnchor.current = null
+      if (historyAnchor.current === anchor) historyAnchor.current = null
     })
   }
   return (
@@ -119,129 +146,120 @@ export function RoomChat({
               if (box) nearBottom.current = box.scrollHeight - box.scrollTop - box.clientHeight < 70
             }}
           >
-            {chat.more && (
-              <button className="text-btn chat-older" disabled={chat.loading} onClick={older}>
-                加载更早消息
-              </button>
-            )}
+            <div ref={historyPages} className="pagination-sentinel" aria-hidden="true" />
             {!chat.loading && !chat.messages.length && (
               <div className="chat-empty">还没有消息，聊聊正在听的歌吧</div>
             )}
-            {chat.messages.map((message) => (
-              <div
-                key={message.id}
-                className={`chat-message ${message.uid === uid ? 'mine' : ''} ${message.kind === 'notice' ? 'chat-notice' : ''}`}
-              >
-                <div className="chat-author">
-                  {message.avatar && <img src={message.avatar} alt="" />}
-                  <span>{message.uid === uid ? '我' : message.nickname}</span>
-                  <time>
-                    {new Date(message.time).toLocaleTimeString('zh-CN', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </time>
-                </div>
-                <MessageContent
-                  text={message.text}
-                  attachments={message.attachments}
-                  richText={message.richText}
-                  room
-                  onSong={onSong}
+            {chat.messages.map((message) => {
+              const activity = !message.emoji && message.kind !== 'text' && message.kind !== 'image'
+              const delivery = message.delivery && (
+                <small
+                  className={
+                    message.delivery === 'failed' || message.delivery === 'uncertain'
+                      ? 'chat-failed'
+                      : ''
+                  }
+                >
+                  {message.error ||
+                    {
+                      sending: '发送中…',
+                      submitted: '已提交，等待房间回显',
+                      failed: '发送失败',
+                      uncertain: '结果未确认',
+                    }[message.delivery]}
+                </small>
+              )
+              return activity ? (
+                <RoomActivityCard
+                  key={message.id}
+                  id={message.id}
+                  message={message}
+                  onAuthor={
+                    message.uid !== '0'
+                      ? () => composer.current?.insertText(`@${message.nickname} `)
+                      : undefined
+                  }
+                >
+                  {delivery}
+                </RoomActivityCard>
+              ) : (
+                <ChatMessageCard
+                  key={message.id}
+                  id={message.id}
+                  mine={message.uid === uid}
+                  author={message.nickname}
+                  avatar={message.avatar || members.find((m) => m.uid === message.uid)?.avatar}
+                  time={message.time}
+                  onAuthor={() => composer.current?.insertText(`@${message.nickname} `)}
+                  mentioned={
+                    Boolean(viewerNickname) && message.text.includes(`@${viewerNickname} `)
+                  }
+                >
+                  <MessageContent
+                    api={chat.api}
+                    accountKey={uid}
+                    text={message.text}
+                    attachments={message.attachments}
+                    richText={message.richText}
+                    room
+                    roomKey={room.roomId}
+                    onSong={onSong}
+                    onAlbum={onAlbum}
+                    onAudition={onAudition}
+                    onMediaPlay={onMediaPlay}
+                  />
+                  {delivery}
+                </ChatMessageCard>
+              )
+            })}
+          </div>
+          <ChatComposer
+            composerRef={composer}
+            key={`${uid}:${room.roomId}`}
+            className="chat-compose"
+            value={chat.draft}
+            onChange={chat.setDraft}
+            label="聊天内容"
+            placeholder="聊聊这首歌，输入 @ 提及成员…"
+            maxLength={CHAT_MAX_LENGTH}
+            busy={chat.sending}
+            disabled={!room.chatRoomId}
+            members={members}
+            notice={!room.chatRoomId ? '正在等待官方聊天室信息，可刷新房间成员后重试。' : undefined}
+            onSubmit={() => {
+              nearBottom.current = true
+              return chat.send()
+            }}
+            renderTools={(insertText) => (
+              <>
+                <EmojiPicker
+                  api={chat.api}
+                  accountKey={uid}
+                  scope="room"
+                  recipient="当前一起听房间"
+                  triggerLabel="表情包"
+                  triggerIcon={<Sticker size={16} />}
+                  disabled={chat.sending || !room.chatRoomId}
+                  onInsert={insertText}
+                  stickers={chat.messages.flatMap((message) =>
+                    message.emoji ? [message.emoji] : [],
+                  )}
+                  onSticker={(emoji) => {
+                    nearBottom.current = true
+                    chat.send(emoji)
+                  }}
+                />
+                <MediaComposer
+                  accountKey={uid}
+                  target={{ kind: 'room', roomId: room.roomId }}
+                  label="当前一起听房间"
+                  disabled={chat.sending || !room.chatRoomId}
+                  onSent={chat.acceptMedia}
                   onMediaPlay={onMediaPlay}
                 />
-                {message.delivery && (
-                  <small
-                    className={
-                      message.delivery === 'failed' || message.delivery === 'uncertain'
-                        ? 'chat-failed'
-                        : ''
-                    }
-                  >
-                    {message.error ||
-                      {
-                        sending: '发送中…',
-                        submitted: '已提交，等待房间回显',
-                        failed: '发送失败',
-                        uncertain: '结果未确认',
-                      }[message.delivery]}
-                  </small>
-                )}
-              </div>
-            ))}
-          </div>
-          <form
-            className="chat-compose"
-            onSubmit={(e) => {
-              e.preventDefault()
-              nearBottom.current = true
-              chat.send()
-            }}
-          >
-            {!room.chatRoomId && <p>正在等待官方聊天室信息，可刷新房间成员后重试。</p>}
-            <div className="compose-tools">
-              <MediaComposer
-                target={{ kind: 'room', roomId: room.roomId }}
-                label="当前一起听房间"
-                disabled={chat.sending || !room.chatRoomId}
-                onSent={chat.acceptMedia}
-                onMediaPlay={onMediaPlay}
-              />
-              <EmojiPicker
-                key={`${uid}:${room.roomId}`}
-                api={chat.api}
-                accountKey={uid}
-                scope="room"
-                recipient="当前一起听房间"
-                disabled={chat.sending || !room.chatRoomId}
-                onInsert={(value) =>
-                  chat.setDraft((draft) =>
-                    draft.length + value.length <= CHAT_MAX_LENGTH ? draft + value : draft,
-                  )
-                }
-                stickers={chat.messages.flatMap((message) =>
-                  message.emoji ? [message.emoji] : [],
-                )}
-                onSticker={(emoji) => {
-                  nearBottom.current = true
-                  chat.send(emoji)
-                }}
-              />
-            </div>
-            <textarea
-              aria-label="聊天内容"
-              placeholder="聊聊这首歌…"
-              value={chat.draft}
-              maxLength={CHAT_MAX_LENGTH}
-              disabled={!room.chatRoomId}
-              onChange={(e) => chat.setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (
-                  e.key === 'Enter' &&
-                  !e.shiftKey &&
-                  !e.nativeEvent.isComposing &&
-                  e.keyCode !== 229
-                ) {
-                  e.preventDefault()
-                  nearBottom.current = true
-                  chat.send()
-                }
-              }}
-            />
-            <div>
-              <small>
-                {chat.draft.length}/{CHAT_MAX_LENGTH} · Shift+Enter 换行
-              </small>
-              <button
-                className="primary"
-                type="submit"
-                disabled={!room.chatRoomId || chat.sending || !chat.draft.trim()}
-              >
-                <Send size={15} />
-                {chat.sending ? '发送中' : '发送'}
-              </button>
-            </div>
-          </form>
+              </>
+            )}
+          />
         </>
       )}
     </aside>

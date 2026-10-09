@@ -1,0 +1,7 @@
+.bar-volume-value {
+  min-width: 4ch;
+  font-size: calc(10px * var(--ui-font-scale, 1));
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--muted);
+}

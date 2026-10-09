@@ -37,6 +37,67 @@ test('immersive playback and native fullscreen preserve navigation, focus and no
     await expect(page.getByRole('button', { name: '收起播放界面' })).toBeFocused()
     await expect(page.locator('.sidebar')).toBeHidden()
     expect(await nativeFullScreen()).toBe(false)
+    // Resizing through former cover-size breakpoints must keep a square cover
+    // without a sudden change in its width.
+    const resizeCover = async (width: number, height: number) => {
+      await app.evaluate(
+        ({ BrowserWindow }, bounds) => BrowserWindow.getAllWindows()[0].setBounds(bounds),
+        { width, height },
+      )
+      await expect
+        .poll(() =>
+          app.evaluate(({ BrowserWindow }) => {
+            const { width, height } = BrowserWindow.getAllWindows()[0].getBounds()
+            return { width, height }
+          }),
+        )
+        .toEqual({ width, height })
+      await expect
+        .poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight })))
+        .toEqual({ width, height })
+      await page.evaluate(
+        () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+      )
+      // Container units can settle after the native resize. Wait for the cover
+      // to fit the new slot before comparing sizes across the breakpoint.
+      await expect
+        .poll(() =>
+          page.locator('.album-artwork').evaluate((node) => {
+            const cover = node.getBoundingClientRect()
+            const slot = node.parentElement!.getBoundingClientRect()
+            return cover.width <= slot.width + 1 && cover.height <= slot.height + 1
+          }),
+        )
+        .toBe(true)
+      const cover = await page.locator('.album-artwork').evaluate((node) => {
+        const { width, height } = node.getBoundingClientRect()
+        return { width, height }
+      })
+      expect(cover.width).toBeGreaterThan(0)
+      expect(Math.abs(cover.width - cover.height)).toBeLessThanOrEqual(1)
+      return cover.width
+    }
+    for (const [first, second] of [
+      [
+        [1099, 900],
+        [1101, 900],
+      ],
+      [
+        [1449, 900],
+        [1451, 900],
+      ],
+      [
+        [1200, 779],
+        [1200, 781],
+      ],
+    ]) {
+      const before = await resizeCover(first[0], first[1])
+      const after = await resizeCover(second[0], second[1])
+      expect(
+        Math.abs(after - before),
+        `cover width between ${first.join('×')} and ${second.join('×')}`,
+      ).toBeLessThanOrEqual(4)
+    }
     await page.getByRole('button', { name: '进入系统全屏' }).click()
     await expect.poll(nativeFullScreen).toBe(true)
     await expect(page.getByRole('button', { name: '退出系统全屏' })).toBeVisible()

@@ -1,6 +1,12 @@
 import type { Album, Artist, Method, Playlist, Song } from '../../shared/types'
 import { toSong } from '../../shared/protocol'
 export type ApiCall = (method: Method, args?: Record<string, unknown>) => Promise<any>
+export function likedPlaylist(playlists: Playlist[], uid: string | null): Playlist | undefined {
+  return playlists.find((playlist) => playlist.creatorId === uid && playlist.specialType === 5)
+}
+export function writablePlaylists(playlists: Playlist[], uid: string): Playlist[] {
+  return playlists.filter((playlist) => playlist.creatorId === uid && playlist.specialType !== 5)
+}
 export function playlistFrom(value: any): Playlist {
   return {
     id: String(value.id),

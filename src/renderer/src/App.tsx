@@ -21,8 +21,13 @@ import { useRoomChat } from './useRoomChat'
 import { usePrivateMessages } from './usePrivateMessages'
 import { useDesktop } from './useDesktop'
 import { MusicBrowser } from './MusicBrowser'
+import { BrowserSearch, type BrowserNavigationState } from './BrowserNavigation'
+import './browser-navigation.css'
 import { PrivateMessages } from './PrivateMessages'
+import { PrivateBubbles, PrivateConversationBubble } from './PrivateBubbles'
 import { RoomChat } from './RoomChat'
+import { usePlayerChrome } from './usePlayerChrome'
+import { PlayerBackground } from './PlayerBackground'
 import { Settings } from './Settings'
 import { Diagnostics } from './Diagnostics'
 import { PlayerView } from './player/PlayerView'
@@ -31,6 +36,7 @@ import { QueueDrawer } from './player/QueueDrawer'
 import { RoomSetup } from './player/RoomSetup'
 import { Overlay } from './player/Overlay'
 import { usePresence } from './player/usePresence'
+import { mediaDrafts } from './media-drafts'
 
 type Page =
   'player' | 'library' | 'albums' | 'liked' | 'search' | 'private' | 'settings' | 'diagnostics'
@@ -48,10 +54,28 @@ export function App() {
   const [unlikeSong, setUnlikeSong] = useState<Song | null>(null)
   const [unlikeError, setUnlikeError] = useState('')
   const [updateAvailable, setUpdateAvailable] = useState(false)
+  const [bubbleOpen, setBubbleOpen] = useState(false)
+  const [browserNavigation, setBrowserNavigation] = useState<BrowserNavigationState | null>(null)
+  const [messageAlbum, setMessageAlbum] = useState<{
+    id: string
+    title: string
+    account: string | null
+  } | null>(null)
+  const chromeVisible = usePlayerChrome(
+    expanded && activePage === 'player',
+    queueOpen ||
+      setupOpen ||
+      loginOpen ||
+      bubbleOpen ||
+      !!messageAlbum ||
+      !!unlikeSong ||
+      confirmEnd,
+  )
   const chat = useRoomChat(p.api, p.room, p.account)
   const uid = p.account ? String(p.account.userId) : null
+  useEffect(() => mediaDrafts.activateAccount(uid), [uid])
   const library = useLibrary(p.api, uid)
-  const inbox = usePrivateMessages(p.api, p.account, activePage === 'private')
+  const inbox = usePrivateMessages(p.api, p.account, activePage === 'private' || bubbleOpen)
   const desktop = useDesktop(p, (page) => (page === 'lyrics' ? showPlayer() : navigate(page)))
   const titles: Record<Page, string> = {
     player: '正在播放',
@@ -63,6 +87,7 @@ export function App() {
     settings: '设置',
     diagnostics: '观测记录',
   }
+  const navigation = browserNavigation?.scope === `${uid}:${activePage}` ? browserNavigation : null
   useEffect(() => {
     const accept = (state: import('../../shared/updates').UpdateState) =>
       setUpdateAvailable(['available', 'downloaded'].includes(state.phase))
@@ -80,8 +105,10 @@ export function App() {
   }, [p.notice])
   useEffect(() => {
     if (p.account) setLoginOpen(false)
+    setBubbleOpen(false)
     setUnlikeSong(null)
     setUnlikeError('')
+    setMessageAlbum(null)
   }, [p.account?.userId])
   useEffect(() => {
     if (p.room) {
@@ -110,6 +137,7 @@ export function App() {
       event.isComposing ||
       event.defaultPrevented ||
       document.querySelector('[aria-modal="true"]') ||
+      document.querySelector(':popover-open') ||
       queueOpen ||
       chat.visible
     )
@@ -139,6 +167,8 @@ export function App() {
     setExpanded(false)
   }
   function navigate(page: Page) {
+    if (page === 'search' && tab === 'search') browserNavigation?.onBack?.()
+    setBubbleOpen(false)
     collapsePlayer()
     setTab(page)
   }
@@ -168,15 +198,34 @@ export function App() {
   function onPlay(song: Song, ids?: string[]) {
     p.act(p.room ? '推送歌曲' : '播放歌曲', () => p.playSong(song, ids))
   }
+  function onAlbum(id: string, title: string) {
+    setMessageAlbum({ id, title, account: uid })
+  }
+  function onAudition(song: Song) {
+    p.auditionSong(song).catch((error) => p.setError(error.message))
+  }
   function onMessageMediaPlay() {
-    if (p.audio.current && !p.audio.current.paused)
-      p.togglePlay().catch((error) => p.setError(error.message))
+    if (p.audio.current) p.pauseForMedia().catch((error) => p.setError(error.message))
   }
   function onLike(song: Song) {
     if (library.likes.has(song.id)) {
       setUnlikeSong(song)
       setUnlikeError('')
-    } else library.toggleLike(song, true).catch((error) => p.setError(error.message))
+    } else {
+      const captured = p.captureRoomSong()
+      library
+        .toggleLike(song, true)
+        .then(async (confirmed) => {
+          if (confirmed && captured && captured.songId === song.id) {
+            try {
+              await p.redHeartRoomSong(captured)
+            } catch (error: any) {
+              p.setNotice(`已收藏歌曲；${error.message || '房间红心动态未确认'}`)
+            }
+          }
+        })
+        .catch((error) => p.setError(error.message))
+    }
   }
   async function joinPrivateInvite(invite: MultiInvitation) {
     await p.act('加入邀请房间', async () => {
@@ -196,7 +245,10 @@ export function App() {
     })
   }
   return (
-    <div className={`app-shell music-shell ${expanded ? 'player-expanded' : ''}`}>
+    <div
+      className={`app-shell music-shell ${desktop.info?.preferences.playerBackground.image ? 'has-custom-background' : ''} ${expanded ? 'player-expanded' : ''} ${!chromeVisible ? 'player-chrome-hidden' : ''}`}
+    >
+      {desktop.info && <PlayerBackground background={desktop.info.preferences.playerBackground} />}
       <aside className="sidebar">
         <div className="brand">
           <span className="brand-icon">
@@ -301,11 +353,18 @@ export function App() {
         <header className="music-header">
           <div className="page-location">
             {activePage !== 'player' && (
-              <button className="icon-btn" aria-label="返回播放界面" onClick={showPlayer}>
+              <button
+                className="icon-btn"
+                aria-label={navigation?.onBack ? '返回' : '返回播放界面'}
+                title={navigation?.onBack ? `返回${titles[activePage]}` : '返回播放界面'}
+                onClick={navigation?.onBack || showPlayer}
+              >
                 <ArrowLeft size={17} />
               </button>
             )}
-            <span>{titles[activePage]}</span>
+            <span className="page-title" title={navigation?.title || titles[activePage]}>
+              {navigation?.title || titles[activePage]}
+            </span>
           </div>
           <div className="header-right">
             {p.room && activePage !== 'player' && (
@@ -314,11 +373,7 @@ export function App() {
                 {p.onlineCount ?? '…'} 人一起听
               </button>
             )}
-            <button className="header-search" onClick={() => navigate('search')}>
-              <Search size={15} />
-              <span>搜索音乐</span>
-              <kbd>Ctrl F</kbd>
-            </button>
+            {navigation && <BrowserSearch navigation={navigation} />}
             <span className="version">
               <b>{p.version || '…'}</b>
             </span>
@@ -327,14 +382,6 @@ export function App() {
         <main
           className={`music-main ${activePage === 'player' ? 'player-main' : activePage === 'private' ? 'private-main' : ''}`}
         >
-          {activePage !== 'player' && activePage !== 'private' && (
-            <div className="heading section-heading">
-              <div>
-                <h1>{titles[activePage]}</h1>
-                {tab === 'private' && <p>一段对话，一场一起听。</p>}
-              </div>
-            </div>
-          )}
           {!setupOpen && !loginOpen && p.error && (
             <div className="alert error" role="alert">
               {p.error}
@@ -349,12 +396,6 @@ export function App() {
               <button aria-label="关闭通知" onClick={() => p.setNotice('')}>
                 <X size={16} />
               </button>
-            </div>
-          )}
-          {p.busy && (
-            <div className="busy" role="status">
-              <LoaderCircle size={14} className="spin" />
-              {p.busy}…
             </div>
           )}
           {activePage === 'player' && (
@@ -392,10 +433,13 @@ export function App() {
                 busy={!!p.busy}
                 onJoin={joinPrivateInvite}
                 onSong={onPlay}
+                onAlbum={onAlbum}
+                onAudition={onAudition}
                 onMediaPlay={onMessageMediaPlay}
               />
             ) : (
               <MusicBrowser
+                key={`${uid}:${tab}`}
                 api={p.api}
                 uid={uid}
                 view={tab}
@@ -405,6 +449,8 @@ export function App() {
                 busy={!!p.busy}
                 onPlay={onPlay}
                 onLike={onLike}
+                onAudition={onAudition}
+                onNavigation={setBrowserNavigation}
               />
             )}
           </div>
@@ -432,13 +478,68 @@ export function App() {
         />
       )}
       <RoomChat
+        members={p.members}
         chat={chat}
         room={p.room}
         uid={uid || ''}
         onlineCount={p.onlineCount}
         onSong={onPlay}
+        onAlbum={onAlbum}
+        onAudition={onAudition}
         onMediaPlay={onMessageMediaPlay}
       />
+      <PrivateBubbles
+        peers={inbox.notificationInbox}
+        visible={chromeVisible}
+        enabled={activePage !== 'private' && !bubbleOpen && !loginOpen && !setupOpen}
+        onOpen={(peer) => {
+          inbox.select(peer)
+          setBubbleOpen(true)
+        }}
+        onDismiss={inbox.dismissNotification}
+      />
+      {bubbleOpen && p.account && (
+        <PrivateConversationBubble
+          title={`与 ${inbox.selected?.nickname || '好友'} 对话`}
+          onClose={() => setBubbleOpen(false)}
+        >
+          <PrivateMessages
+            compact
+            inbox={inbox}
+            account={p.account}
+            room={p.room}
+            api={p.api}
+            busy={!!p.busy}
+            onJoin={joinPrivateInvite}
+            onSong={onPlay}
+            onAlbum={onAlbum}
+            onAudition={onAudition}
+            onMediaPlay={onMessageMediaPlay}
+          />
+        </PrivateConversationBubble>
+      )}
+      {messageAlbum && messageAlbum.account === uid && (
+        <Overlay title={`专辑：${messageAlbum.title}`} wide onClose={() => setMessageAlbum(null)}>
+          <MusicBrowser
+            key={`${uid}:${messageAlbum.id}`}
+            api={p.api}
+            uid={uid}
+            view="albums"
+            initialSource={{
+              key: `album:${messageAlbum.id}`,
+              title: messageAlbum.title,
+              albumId: messageAlbum.id,
+            }}
+            library={library}
+            room={!!p.room}
+            currentId={p.current?.id}
+            busy={!!p.busy}
+            onPlay={onPlay}
+            onLike={onLike}
+            onAudition={onAudition}
+          />
+        </Overlay>
+      )}
       <audio ref={p.audio} {...p.audioEvents} />
       {setupOpen && (
         <RoomSetup

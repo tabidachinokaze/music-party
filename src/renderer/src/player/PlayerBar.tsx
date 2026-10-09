@@ -9,12 +9,15 @@ import {
   Play,
   SkipBack,
   SkipForward,
+  Square,
   Volume2,
 } from 'lucide-react'
 import { waitingCount } from '../../../shared/playback-queue'
 import { useState } from 'react'
 import type { useParty } from '../useParty'
 import type { useLibrary } from '../useLibrary'
+import { useVolumeWheel } from '../useVolumeWheel'
+import './volume-control.css'
 const time = (ms: number) =>
   `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`
 export function PlayerBar({
@@ -41,6 +44,7 @@ export function PlayerBar({
   unread: number
 }) {
   const [preview, setPreview] = useState<number | null>(null)
+  const volumeWheelRef = useVolumeWheel<HTMLDivElement>(p.volume, p.setVolume)
   const commitSeek = (value: string) => {
     setPreview(null)
     p.act('跳转进度', () => p.seek(Number(value)))
@@ -83,24 +87,41 @@ export function PlayerBar({
         <div className="transport-controls">
           <button
             className="icon-btn"
-            aria-label="上一首"
-            disabled={!!p.room || !p.personalQueue.length || !!p.busy}
-            onClick={() => p.act('上一首', () => p.nextLocal(-1))}
+            aria-label={p.auditioning ? '重播试听' : '上一首'}
+            disabled={(!p.auditioning && (!!p.room || !p.personalQueue.length)) || !!p.busy}
+            onClick={() => p.act('上一首', () => (p.auditioning ? p.seek(0) : p.nextLocal(-1)))}
           >
             <SkipBack size={18} />
           </button>
           <button
             className="play-button"
-            aria-label={p.playing ? (p.room ? '本机暂停' : '暂停') : p.room ? '恢复同听' : '播放'}
-            disabled={!p.current || !!p.busy}
-            onClick={() => p.act('控制播放', p.togglePlay)}
+            aria-label={
+              p.auditioning
+                ? '停止试听'
+                : p.playing
+                  ? p.room
+                    ? '本机暂停'
+                    : '暂停'
+                  : p.room
+                    ? '恢复同听'
+                    : '播放'
+            }
+            title={p.auditioning ? '停止试听并返回房间当前歌曲' : undefined}
+            disabled={(!p.current && !p.auditioning) || !!p.busy}
+            onClick={() => p.act(p.auditioning ? '停止试听' : '控制播放', p.togglePlay)}
           >
-            {p.playing ? <Pause size={20} /> : <Play size={20} />}
+            {p.auditioning ? (
+              <Square size={20} fill="currentColor" />
+            ) : p.playing ? (
+              <Pause size={20} />
+            ) : (
+              <Play size={20} />
+            )}
           </button>
           <button
             className="icon-btn"
-            aria-label="下一首"
-            title={p.room ? '请求房间下一首' : '下一首'}
+            aria-label={p.auditioning ? '返回房间当前歌曲' : '下一首'}
+            title={p.auditioning ? '停止试听并返回一起听' : p.room ? '请求房间下一首' : '下一首'}
             disabled={!p.current || !!p.busy}
             onClick={() => p.act('下一首', () => (p.room ? p.nextSong() : p.nextLocal(1)))}
           >
@@ -115,7 +136,7 @@ export function PlayerBar({
             min="0"
             max={p.current?.duration || 1}
             value={preview ?? p.position}
-            disabled={!p.current || !!p.busy || !!p.room}
+            disabled={!p.current || !!p.busy || (!!p.room && !p.auditioning)}
             onChange={(event) => setPreview(Number(event.target.value))}
             onPointerUp={(event) => commitSeek(event.currentTarget.value)}
             onKeyUp={(event) => {
@@ -127,13 +148,21 @@ export function PlayerBar({
         </div>
       </div>
       <div className="player-right">
-        {p.room && (
+        {p.auditioning ? (
+          <button
+            className="bar-room"
+            onClick={() => p.stopAudition().catch((error) => p.setError(error.message))}
+            title="停止本机试听，返回房间当前歌曲"
+          >
+            返回一起听
+          </button>
+        ) : p.room ? (
           <button className="bar-room" onClick={onPlayer} title="回到一起听播放界面">
             <span className="dot" />
             一起听
           </button>
-        )}
-        <div className="bar-volume">
+        ) : null}
+        <div className="bar-volume" ref={volumeWheelRef} title="滚动鼠标滚轮调整音量">
           <Volume2 size={17} />
           <input
             aria-label="音量"
@@ -142,8 +171,12 @@ export function PlayerBar({
             max="1"
             step="0.01"
             value={p.volume}
+            aria-valuetext={`${Math.round(p.volume * 100)}%`}
             onChange={(event) => p.setVolume(Number(event.target.value))}
           />
+          <output className="bar-volume-value" aria-label="当前音量">
+            {Math.round(p.volume * 100)}%
+          </output>
         </div>
         {p.room && (
           <button

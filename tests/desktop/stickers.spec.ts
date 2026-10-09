@@ -21,7 +21,13 @@ test('official custom stickers load every page, upload to the library and send d
   const history: any[] = [],
     calls: { route: string; args: any }[] = []
   let failList = true,
-    uploads = 0
+    failTail = true,
+    uploads = 0,
+    deferInitialPage = true,
+    deferTailPage = true
+  let releaseInitialPage!: () => void, releaseTailPage!: () => void
+  const initialPageGate = new Promise<void>((resolve) => (releaseInitialPage = resolve)),
+    tailPageGate = new Promise<void>((resolve) => (releaseTailPage = resolve))
   const server = createServer(async (req, res) => {
     const chunks = []
     for await (const chunk of req) chunks.push(chunk)
@@ -73,17 +79,36 @@ test('official custom stickers load every page, upload to the library and send d
         body = { code: 503, message: '请重试表情列表' }
       } else {
         const offset = Number(args.data.cursor || 0)
-        body = {
-          code: 200,
-          data: {
-            emojis: items.slice(offset, offset + 10),
-            page: {
-              more: offset + 10 < items.length,
-              cursor: offset + 10 < items.length ? String(offset + 10) : '',
+        if (offset === 20 && failTail) {
+          failTail = false
+          body = { code: 503, message: '请重试下一页表情' }
+        } else {
+          if (offset === 0 && deferInitialPage) {
+            deferInitialPage = false
+            await initialPageGate
+          }
+          if (offset === 20 && deferTailPage) {
+            deferTailPage = false
+            await tailPageGate
+          }
+          body = {
+            code: 200,
+            data: {
+              emojis: items.slice(offset, offset + 10),
+              page: {
+                more: offset + 10 < items.length,
+                cursor: offset + 10 < items.length ? String(offset + 10) : '',
+              },
             },
-          },
+          }
         }
       }
+    }
+    if (route === '/api/social/emoji/cancel') {
+      const ids = new Set(JSON.parse(args.data.emojiIds))
+      for (let i = items.length - 1; i >= 0; i--)
+        if (ids.has(Number(items[i].emojiId))) items.splice(i, 1)
+      body = { code: 200, data: { result: true } }
     }
     if (route === '/__save_sticker') {
       uploads++
@@ -158,11 +183,63 @@ test('official custom stickers load every page, upload to the library and send d
       .getByRole('button', { name: /^Alice/ })
       .click()
     await page.getByLabel('私信内容').fill('保留输入的文字')
-    await page.getByRole('button', { name: '选择表情', exact: true }).click()
+    await page.getByRole('button', { name: '表情包', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText('请重试表情列表')
     await page.getByRole('button', { name: '重试', exact: true }).click()
+    const loading = page.locator('.cloud-sticker-loading')
+    const expectCompactLoading = async (text: string) => {
+      await expect(loading).toHaveText(text)
+      const layout = await loading.evaluate((node) => {
+        const bounds = node.getBoundingClientRect(),
+          modal = node.closest('[role="dialog"]')!,
+          popup = modal.getBoundingClientRect()
+        return {
+          loadingHeight: bounds.height,
+          bottomSpace: popup.bottom - bounds.bottom,
+          overflows: modal.scrollWidth > modal.clientWidth,
+        }
+      })
+      expect(layout.loadingHeight).toBeLessThanOrEqual(36)
+      expect(layout.bottomSpace).toBeLessThanOrEqual(32)
+      expect(layout.overflows).toBe(false)
+    }
+    await expectCompactLoading('正在读取表情…')
+    releaseInitialPage()
+    // The first page is shorter than the viewport, so another page fills it automatically.
+    await expect(page.locator('.cloud-sticker-grid button')).toHaveCount(20)
+    await expect(page.getByRole('button', { name: '加载更多表情', exact: true })).toHaveCount(0)
+    expect(
+      calls.filter(
+        (call) => call.route.endsWith('/groups/detail/page') && call.args.data.cursor === '20',
+      ),
+    ).toHaveLength(0)
+    const stickerGrid = page.locator('.cloud-sticker-grid')
+    await stickerGrid.evaluate((node) => {
+      node.scrollTop = node.scrollHeight
+      node.dispatchEvent(new Event('scroll'))
+    })
+    await expect(page.getByRole('alert')).toContainText('请重试下一页表情')
+    await expect(stickerGrid.locator('button')).toHaveCount(20)
+    const firstPageCalls = calls.filter(
+      (call) => call.route.endsWith('/groups/detail/page') && !call.args.data.cursor,
+    ).length
+    await stickerGrid.evaluate((node) => {
+      for (let i = 0; i < 5; i++) node.dispatchEvent(new Event('scroll'))
+    })
+    await page.getByRole('button', { name: '重试', exact: true }).click()
+    await expectCompactLoading('正在读取更多表情…')
+    await expect(stickerGrid.locator('button')).toHaveCount(20)
+    releaseTailPage()
     await expect(page.getByText('23 个表情', { exact: true })).toBeVisible()
     await expect(page.locator('.cloud-sticker-grid button')).toHaveCount(23)
+    expect(
+      calls.filter((call) => call.route.endsWith('/groups/detail/page') && !call.args.data.cursor),
+    ).toHaveLength(firstPageCalls)
+    expect(
+      calls.filter(
+        (call) => call.route.endsWith('/groups/detail/page') && call.args.data.cursor === '20',
+      ),
+    ).toHaveLength(2)
     await expect
       .poll(() =>
         page
@@ -183,6 +260,20 @@ test('official custom stickers load every page, upload to the library and send d
     expect(calls.find((call) => call.route.endsWith('/emoji/groups'))!.args.data.resourceType).toBe(
       2,
     )
+    const pagesBeforeReopen = calls.filter((call) =>
+      call.route.endsWith('/groups/detail/page'),
+    ).length
+    const cachedScroll = await stickerGrid.evaluate((node) => node.scrollTop)
+    await page.getByRole('button', { name: '关闭表情', exact: true }).click()
+    await expect(page.getByRole('dialog', { name: '表情', exact: true })).toHaveCount(0)
+    await page.getByRole('button', { name: '表情包', exact: true }).click()
+    await expect(stickerGrid.locator('button')).toHaveCount(23)
+    expect(
+      Math.abs((await stickerGrid.evaluate((node) => node.scrollTop)) - cachedScroll),
+    ).toBeLessThanOrEqual(1)
+    expect(calls.filter((call) => call.route.endsWith('/groups/detail/page'))).toHaveLength(
+      pagesBeforeReopen,
+    )
     const chooser = page.waitForEvent('filechooser')
     await page.getByRole('button', { name: '上传自定义表情', exact: true }).click()
     await (await chooser).setFiles({ name: '新增.gif', mimeType: 'image/gif', buffer: gif })
@@ -196,6 +287,29 @@ test('official custom stickers load every page, upload to the library and send d
     await expect(page.getByText('24 个表情', { exact: true })).toBeVisible()
     expect(uploads).toBe(1)
     expect(calls.filter((call) => call.route === '/api/communication/send/msg')).toHaveLength(0)
+    const pagesBeforeDelete = calls.filter((call) =>
+      call.route.endsWith('/groups/detail/page'),
+    ).length
+    const retained = page.getByRole('button', { name: '发送自定义表情 收藏表情23', exact: true })
+    await retained.scrollIntoViewIfNeeded()
+    const scrollBefore = await page
+      .locator('.cloud-sticker-grid')
+      .evaluate((node) => node.scrollTop)
+    await page.getByRole('button', { name: '整理表情', exact: true }).click()
+    await page.getByRole('button', { name: '选择删除 收藏表情23', exact: true }).click()
+    await page.getByRole('button', { name: '删除所选 (1)', exact: true }).click()
+    await expect(page.getByText('23 个表情', { exact: true })).toBeVisible()
+    await expect(page.locator('.cloud-sticker-grid button')).toHaveCount(23)
+    expect(calls.filter((call) => call.route.endsWith('/groups/detail/page')).length).toBe(
+      pagesBeforeDelete,
+    )
+    expect(
+      await page.locator('.cloud-sticker-grid').evaluate((node) => node.scrollTop),
+    ).toBeGreaterThan(0)
+    expect(scrollBefore).toBeGreaterThan(0)
+    await expect(
+      page.getByRole('button', { name: '发送自定义表情 收藏表情22', exact: true }),
+    ).toBeAttached()
     await page.screenshot({
       path: 'test-results/music-party-custom-stickers.png',
       animations: 'disabled',
@@ -218,6 +332,8 @@ test('official custom stickers load every page, upload to the library and send d
     expect(uploads).toBe(1)
     expect(errors).toEqual([])
   } finally {
+    releaseInitialPage()
+    releaseTailPage()
     await app.close()
     await new Promise<void>((resolve) => server.close(() => resolve()))
     await rm(profile, { recursive: true, force: true })

@@ -70,6 +70,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
       const state = {
         calls: [] as any[],
         failNext: true,
+        uncertainNext: false,
         block: false,
         pending: null as null | (() => void),
       }
@@ -91,6 +92,10 @@ test('private attachment previews, upload retry, recording, video and fixed reci
         if (state.failNext) {
           state.failNext = false
           return { ok: false, error: '模拟上传失败', deliveryUnknown: false }
+        }
+        if (state.uncertainNext) {
+          state.uncertainNext = false
+          return { ok: false, error: '发送结果未确认', deliveryUnknown: true }
         }
         if (state.block)
           return await new Promise((resolve) => {
@@ -203,6 +208,25 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await expect(page.getByRole('button', { name: '待发送附件' })).toBeVisible()
     await page.locator('.conversation-list').getByRole('button', { name: /^Bob/ }).click()
     await expect(page.getByRole('button', { name: '待发送附件' })).toHaveCount(0)
+    await page
+      .locator('.conversation-list')
+      .getByRole('button', { name: /^Alice/ })
+      .click()
+    await page.getByRole('button', { name: '待发送附件' }).click()
+    await expect(page.getByRole('dialog', { name: '发送附件' })).toContainText('Alice')
+    await expect(page.getByRole('dialog', { name: '发送附件' })).toContainText('notes.txt')
+    await page.getByRole('button', { name: '稍后发送', exact: true }).click()
+    await page.locator('.sidebar').getByRole('button', { name: '设置', exact: true }).click()
+    await page.locator('.sidebar').getByRole('button', { name: '私信', exact: true }).click()
+    await page
+      .locator('.conversation-list')
+      .getByRole('button', { name: /^Alice/ })
+      .click()
+    await page.getByRole('button', { name: '待发送附件' }).click()
+    await expect(page.getByRole('dialog', { name: '发送附件' })).toContainText('notes.txt')
+    await page.getByRole('button', { name: '稍后发送', exact: true }).click()
+    await page.locator('.conversation-list').getByRole('button', { name: /^Bob/ }).click()
+    await expect(page.getByRole('button', { name: '待发送附件' })).toHaveCount(0)
     const nextChooser = page.waitForEvent('filechooser')
     await page.getByRole('button', { name: '发送本地文件' }).click()
     await (
@@ -217,6 +241,33 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await expect(page.getByRole('alert')).toContainText('上传已取消')
     await page.getByRole('button', { name: '重试发送附件' }).click()
     await expect(page.getByRole('dialog', { name: '发送附件' })).toHaveCount(0)
+    const uncertainChooser = page.waitForEvent('filechooser')
+    await page.getByRole('button', { name: '发送本地文件' }).click()
+    await (
+      await uncertainChooser
+    ).setFiles({
+      name: 'uncertain.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('uncertain'),
+    })
+    await app.evaluate(() => {
+      ;(globalThis as any).__media.uncertainNext = true
+    })
+    await page.getByRole('button', { name: '确认发送附件' }).click()
+    await expect(page.getByRole('alert')).toContainText('请先刷新会话')
+    await page.getByRole('button', { name: '稍后发送', exact: true }).click()
+    await page
+      .locator('.conversation-list')
+      .getByRole('button', { name: /^Alice/ })
+      .click()
+    await page.locator('.conversation-list').getByRole('button', { name: /^Bob/ }).click()
+    await page.getByRole('button', { name: '待发送附件' }).click()
+    await expect(
+      page.getByRole('button', { name: '已确认未收到，重新发送', exact: true }),
+    ).toBeVisible()
+    await expect(page.getByRole('dialog', { name: '发送附件' })).toContainText('uncertain.txt')
+    await page.getByRole('button', { name: '移除附件', exact: true }).click()
+    await expect(page.getByRole('button', { name: '待发送附件' })).toHaveCount(0)
     const calls = await app.evaluate(() => (globalThis as any).__media.calls)
     expect(calls.map((item: any) => item.kind)).toEqual([
       'image',
@@ -225,9 +276,18 @@ test('private attachment previews, upload retry, recording, video and fixed reci
       'video',
       'file',
       'file',
+      'file',
     ])
     expect(calls.at(-1).target).toEqual({ kind: 'private', uid: '789' })
     expect(calls[2].duration).toBeGreaterThan(300)
+    await page.getByRole('button', { name: '退出账号', exact: true }).click()
+    await page.locator('.account').getByRole('button', { name: '扫码登录', exact: true }).click()
+    await expect(page.getByText('测试账户', { exact: true })).toBeVisible()
+    await page
+      .locator('.conversation-list')
+      .getByRole('button', { name: /^Alice/ })
+      .click()
+    await expect(page.getByRole('button', { name: '待发送附件' })).toHaveCount(0)
     expect(errors).toEqual([])
     await page.screenshot({ path: 'test-results/music-party-media.png', animations: 'disabled' })
   } finally {

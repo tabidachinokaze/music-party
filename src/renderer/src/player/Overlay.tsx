@@ -1,4 +1,11 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import type { ReactNode } from 'react'
@@ -8,15 +15,57 @@ export function Overlay({
   onClose,
   children,
   wide = false,
+  sideAnchor,
 }: {
   title: string
   onClose(): void
   children: ReactNode
   wide?: boolean
+  sideAnchor?: HTMLElement | null
 }) {
   const root = useRef<HTMLDivElement>(null)
   const [closing, setClosing] = useState(false)
   const close = useEffectEvent(onClose)
+  const [position, setPosition] = useState<CSSProperties>({})
+  useLayoutEffect(() => {
+    if (!sideAnchor || !root.current) return
+    const popup = root.current
+    const place = () => {
+      const anchor = sideAnchor.getBoundingClientRect()
+      const panel = sideAnchor
+        .closest('.chat-drawer,.private-conversation-bubble')
+        ?.getBoundingClientRect()
+      const margin = 20,
+        width = Math.min(360, innerWidth - margin * 2)
+      const edge = panel || anchor
+      let left = edge.left < innerWidth / 2 ? edge.right + 12 : edge.left - width - 12
+      left = Math.max(margin, Math.min(left, innerWidth - width - margin))
+      const top = panel
+        ? Math.max(margin, panel.top)
+        : Math.max(
+            margin,
+            Math.min(anchor.bottom - popup.offsetHeight, innerHeight - popup.offsetHeight - margin),
+          )
+      setPosition({
+        position: 'fixed',
+        left,
+        top,
+        width,
+        maxHeight: innerHeight - top - margin,
+        margin: 0,
+      })
+    }
+    const resize = new ResizeObserver(place)
+    resize.observe(popup)
+    window.addEventListener('resize', place)
+    document.addEventListener('scroll', place, true)
+    place()
+    return () => {
+      resize.disconnect()
+      window.removeEventListener('resize', place)
+      document.removeEventListener('scroll', place, true)
+    }
+  }, [sideAnchor])
   useEffect(() => {
     if (!closing) return
     const timer = setTimeout(
@@ -63,7 +112,7 @@ export function Overlay({
   }, [])
   return createPortal(
     <div
-      className="modal-backdrop"
+      className={`modal-backdrop ${sideAnchor ? 'side-popup-backdrop' : ''}`}
       data-closing={closing}
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) setClosing(true)
@@ -73,6 +122,7 @@ export function Overlay({
         ref={root}
         inert={closing}
         className={`modal player-modal ${wide ? 'player-modal-wide' : ''}`}
+        style={position}
         role="dialog"
         aria-modal="true"
         aria-label={title}

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { richMessageContent } from '../shared/message-content'
-import { savedSticker } from './stickers'
+import { savedSticker, downloadStickerImage } from './stickers'
+import type { StickerImageRequest } from '../shared/sticker-actions'
 import {
   neteaseAssetUrl,
   validateMediaRequest,
@@ -75,6 +76,32 @@ export class MediaSender {
     })
     return job.promise
   }
+  async saveImage(value: unknown, progress: (event: MediaProgress) => void): Promise<MediaReply> {
+    const request = value as StickerImageRequest
+    if (
+      !request ||
+      typeof request.requestId !== 'string' ||
+      !/^[0-9a-f-]{36}$/i.test(request.requestId)
+    )
+      return { ok: false, error: '附件请求标识无效' }
+    const captured = this.credentials()
+    const current = () => {
+      const now = this.credentials()
+      if (!captured.cookie || now.epoch !== captured.epoch || now.cookie !== captured.cookie)
+        throw new Error('账号已变化，请重新添加表情')
+    }
+    try {
+      current()
+      const file = await downloadStickerImage(request.image, current, this.fetcher)
+      current()
+      return this.send(
+        { requestId: request.requestId, target: { kind: 'sticker' }, file },
+        progress,
+      )
+    } catch (error: any) {
+      return { ok: false, error: error.message || '添加图片失败', deliveryUnknown: false }
+    }
+  }
   private async run(
     request: MediaRequest,
     signal: AbortSignal,
@@ -132,7 +159,12 @@ export class MediaSender {
       const upload = async (file: MediaFile, part: (value: number) => void) => {
         const md5 = createHash('md5').update(file.data).digest('hex')
         const isWhale = file.kind === 'voice' || file.kind === 'video'
-        const ext = file.name.split('.').pop()?.toLowerCase() || 'bin'
+        const ext =
+          file.kind === 'image'
+            ? file.mime === 'image/jpeg'
+              ? 'jpg'
+              : file.mime.split('/')[1]
+            : file.name.split('.').pop()?.toLowerCase() || 'bin'
         const params = isWhale
           ? {
               filename: file.name,
@@ -288,6 +320,7 @@ export class MediaSender {
             resourceId: file.kind === 'image' ? uploaded.md5 : uploaded.docId,
             url: file.kind === 'file' ? undefined : uploaded.url,
             cover: cover?.url,
+            ...(file.kind === 'image' ? { width: file.width, height: file.height } : {}),
             ...(file.kind === 'file'
               ? {
                   actionUrl: uploaded.url,

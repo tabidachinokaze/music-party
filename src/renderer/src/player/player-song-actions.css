@@ -1,0 +1,12 @@
+.album-caption > .album-song-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+@container (max-width: 280px) {
+  .album-caption > .album-song-actions {
+    flex-direction: column;
+    gap: 2px;
+  }
+}

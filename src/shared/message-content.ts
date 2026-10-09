@@ -106,7 +106,9 @@ export function richMessageContent(value: unknown): {
   attachments?: MessageAttachment[]
   richText?: MessageTextPart[]
 } {
-  const root = messageObject(value)
+  const envelope = messageObject(value)
+  const nested = messageObject(envelope.msgBody)
+  const root = envelope.msgType === undefined && nested.msgType !== undefined ? nested : envelope
   const body = messageObject(root.body ?? root.msgBody)
   const data = { ...root, ...body }
   const attachments: MessageAttachment[] = []
@@ -133,6 +135,23 @@ export function richMessageContent(value: unknown): {
       cover: mediaUrl(
         item.coverUrl || item.cover || item.coverImage?.url || item.coverImage?.picUrl,
       ),
+      ...(kind === 'image'
+        ? {
+            width:
+              Number.isSafeInteger(Number(item.width)) &&
+              Number(item.width) > 0 &&
+              Number(item.width) <= 30000
+                ? Number(item.width)
+                : undefined,
+            height:
+              Number.isSafeInteger(Number(item.height)) &&
+              Number(item.height) > 0 &&
+              Number(item.height) <= 30000
+                ? Number(item.height)
+                : undefined,
+            emoji: parseEmoji({ ...item, emojiImgUrl: url }),
+          }
+        : {}),
       resourceId:
         typeof (item.md5 || item.voiceKey || item.videoKey) === 'string'
           ? item.md5 || item.voiceKey || item.videoKey
@@ -143,7 +162,17 @@ export function richMessageContent(value: unknown): {
   if (emoji) addMedia('image', emoji, emoji.emojiName)
   const images = data.pics || data.pictures || data.images
   if (Array.isArray(images)) images.slice(0, 9).forEach((pic) => addMedia('image', pic, '图片'))
-  else addMedia('image', data.picInfo || data.picture || data.image || data.picUrl, '图片')
+  else
+    addMedia(
+      'image',
+      data.picInfo ||
+        data.picture ||
+        data.image ||
+        (root.msgType === 2 || (root.msgType >= 30 && root.msgType <= 48)
+          ? undefined
+          : data.picUrl),
+      '图片',
+    )
   addMedia('audio', data.voice || data.audio || (data.voiceUrl ? data : null), '语音消息')
   const video = messageObject(data.video)
   if (
@@ -274,4 +303,15 @@ export function richMessageContent(value: unknown): {
     ...(attachments.length ? { attachments: attachments.slice(0, 12) } : {}),
     ...(richText.length ? { richText } : {}),
   }
+}
+
+/** Old clients supply this fallback text alongside supported picture metadata. */
+export function messageDisplayText(value: string, attachments?: MessageAttachment[]): string {
+  if (
+    attachments?.some((item) => item.kind === 'image' && item.url) &&
+    /^\s*[（(]?升级\s*App\s*到最新版本即可查看该消息[）)]?\s*$/i.test(value)
+  )
+    return ''
+  if (attachments?.some((item) => item.emoji && value === `[${item.emoji.emojiName}]`)) return ''
+  return value
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DesktopInfo, PlayerCommand, Preferences } from '../../shared/desktop'
 import type { useParty } from './useParty'
+import { applyAppearance } from './appearance'
 
 type Party = ReturnType<typeof useParty>
 export function useDesktop(
@@ -27,6 +28,7 @@ export function useDesktop(
     setInfo({ ...next, ...fullScreenState.current })
     saved.current = next.preferences
     document.documentElement.dataset.theme = next.resolvedTheme
+    applyAppearance(document.documentElement, next.preferences, next.resolvedTheme)
   }
   async function setFullScreen(value: boolean | 'toggle') {
     if (fullScreenLock.current && value === 'toggle') return
@@ -52,6 +54,7 @@ export function useDesktop(
       if (run === requestEpoch.current) {
         applyInfo(next)
         setError('')
+        return true
       }
     } catch (e: any) {
       if (run === requestEpoch.current) {
@@ -59,6 +62,7 @@ export function useDesktop(
         setError(e.message || '设置保存失败')
       }
     }
+    return false
   }
   function command(command: PlayerCommand) {
     const p = latest.current.party
@@ -71,6 +75,7 @@ export function useDesktop(
     else if (command === 'play' && p.audio.current?.paused) p.act('播放', p.togglePlay)
     else if (command === 'pause' && !p.audio.current?.paused) p.act('暂停', p.togglePlay)
     else if (command === 'next') p.act('下一首', () => (p.room ? p.nextSong() : p.nextLocal(1)))
+    else if (command === 'previous' && p.auditioning) p.act('重播试听', () => p.seek(0))
     else if (command === 'previous' && !p.room) p.act('上一首', () => p.nextLocal(-1))
   }
   useEffect(() => {
@@ -144,7 +149,7 @@ export function useDesktop(
         artist: (party.current?.artist || '').slice(0, 300),
         playing: party.playing,
         canToggle: !!party.current,
-        canPrevious: !party.room && party.personalQueue.length > 0,
+        canPrevious: party.auditioning || (!party.room && party.personalQueue.length > 0),
         canNext: !!party.current,
         roomId: party.room?.roomId || null,
       })
@@ -155,6 +160,7 @@ export function useDesktop(
     party.current?.artist,
     party.playing,
     party.room?.roomId,
+    party.auditioning,
     party.personalQueue.length,
   ])
   useEffect(() => {
@@ -194,19 +200,20 @@ export function useDesktop(
       } catch {}
     }
     const current = !!party.current
+    const canSeek = !party.room || party.auditioning
     set('play', current ? () => command('play') : null)
     set('pause', current ? () => command('pause') : null)
     set('stop', current ? () => command('pause') : null)
     set('nexttrack', current ? () => command('next') : null)
-    set('previoustrack', current && !party.room ? () => command('previous') : null)
+    set('previoustrack', current && canSeek ? () => command('previous') : null)
     const seek = (position: number) => {
       const p = latest.current.party
-      if (!p.room)
+      if (!p.room || p.auditioning)
         p.act('调整进度', () => p.seek(Math.max(0, Math.min(position, p.current?.duration || 0))))
     }
     set(
       'seekto',
-      current && !party.room
+      current && canSeek
         ? (detail) => {
             if (detail.seekTime !== undefined) seek(detail.seekTime * 1000)
           }
@@ -214,13 +221,13 @@ export function useDesktop(
     )
     set(
       'seekbackward',
-      current && !party.room
+      current && canSeek
         ? (detail) => seek(latest.current.party.position - (detail.seekOffset || 10) * 1000)
         : null,
     )
     set(
       'seekforward',
-      current && !party.room
+      current && canSeek
         ? (detail) => seek(latest.current.party.position + (detail.seekOffset || 10) * 1000)
         : null,
     )
@@ -237,7 +244,7 @@ export function useDesktop(
       ] as const)
         set(action, null)
     }
-  }, [party.current?.id, party.room?.roomId])
+  }, [party.current?.id, party.room?.roomId, party.auditioning])
   useEffect(() => {
     if (!('mediaSession' in navigator)) return
     try {

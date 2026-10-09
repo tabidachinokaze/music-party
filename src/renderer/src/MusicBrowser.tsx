@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
-  ArrowLeft,
   Disc3,
   Trash2,
   X,
-  ArrowRight,
   Heart,
+  Headphones,
   Library,
   LoaderCircle,
+  ListPlus,
   Music2,
   Play,
   Plus,
@@ -18,9 +18,13 @@ import type { Artist, Playlist, SearchKind, Song } from '../../shared/types'
 import { toSong } from '../../shared/protocol'
 import { artistFrom, playlistFrom, type ApiCall } from './music-data'
 import { useSongCollection, type useLibrary } from './useLibrary'
+import { useScrollPagination } from './useScrollPagination'
+import { AddToPlaylist } from './AddToPlaylist'
+import './add-to-playlist.css'
+import { BrowserSearch, type BrowserNavigationState } from './BrowserNavigation'
 
 type LibraryState = ReturnType<typeof useLibrary>
-type Source = {
+export type MusicSource = {
   key: string
   title: string
   playlistId?: string
@@ -37,6 +41,8 @@ export function SongRows({
   library,
   onPlay,
   onLike,
+  onAudition,
+  onAddToPlaylist,
 }: {
   songs: Song[]
   ids?: string[]
@@ -46,9 +52,14 @@ export function SongRows({
   library: LibraryState
   onPlay(song: Song, ids?: string[]): void
   onLike(song: Song): void
+  onAudition?(song: Song): void
+  onAddToPlaylist?(song: Song): void
 }) {
+  if (!songs.length) return null
   return (
-    <div className="song-list">
+    <div
+      className={`song-list ${room && onAudition ? 'has-audition' : ''} ${onAddToPlaylist ? 'has-playlist-action' : ''}`}
+    >
       <div className="song-row list-label">
         <span>#</span>
         <span>歌曲 / 歌手</span>
@@ -76,6 +87,25 @@ export function SongRows({
             {String(Math.floor(song.duration / 1000) % 60).padStart(2, '0')}
           </span>
           <div className="song-actions" onDoubleClick={(event) => event.stopPropagation()}>
+            {onAddToPlaylist && (
+              <button
+                className="icon-btn"
+                aria-label={`添加到歌单 ${song.name}`}
+                onClick={() => onAddToPlaylist(song)}
+              >
+                <ListPlus size={16} />
+              </button>
+            )}
+            {room && onAudition && (
+              <button
+                className="icon-btn"
+                aria-label={`试听 ${song.name}`}
+                disabled={busy}
+                onClick={() => onAudition(song)}
+              >
+                <Headphones size={15} />
+              </button>
+            )}
             <button
               className={`icon-btn ${library.likes.has(song.id) ? 'liked' : ''}`}
               aria-label={`${library.likes.has(song.id) ? '取消喜欢' : '喜欢'} ${song.name}`}
@@ -109,6 +139,9 @@ export function MusicBrowser({
   busy,
   onPlay,
   onLike,
+  onAudition,
+  initialSource,
+  onNavigation,
 }: {
   api: ApiCall
   uid: string | null
@@ -119,10 +152,18 @@ export function MusicBrowser({
   busy: boolean
   onPlay(song: Song, ids?: string[]): void
   onLike(song: Song): void
+  onAudition?(song: Song): void
+  initialSource?: MusicSource
+  onNavigation?(navigation: BrowserNavigationState): void
 }) {
-  const [source, setSource] = useState<Source | null>(null)
+  const [source, setSource] = useState<MusicSource | null>(() => initialSource || null)
   const [filter, setFilter] = useState<'all' | 'created' | 'collected'>('all')
   const [query, setQuery] = useState('')
+  const [listQuery, setListQuery] = useState('')
+  const navigationRevision = useRef(0)
+  const [inputRevision, setInputRevision] = useState(0)
+  const [addSong, setAddSong] = useState<Song | null>(null)
+  const [addNotice, setAddNotice] = useState('')
   const [kind, setKind] = useState<SearchKind>('songs')
   const [history, setHistory] = useState<string[]>(() => {
     try {
@@ -140,11 +181,28 @@ export function MusicBrowser({
   const [searchMore, setSearchMore] = useState(false)
   const [searched, setSearched] = useState(false)
   const searchEpoch = useRef(0)
+  const searchLock = useRef(false)
   const searchOffset = useRef(0)
   const searchKey = useRef({ query: '', kind: 'songs' as SearchKind })
   useEffect(() => {
-    setSource(null)
-  }, [view, uid])
+    setSource(initialSource || null)
+  }, [view, uid, initialSource?.key])
+  useEffect(() => {
+    setAddSong(null)
+    setAddNotice('')
+  }, [uid, view])
+  useEffect(() => {
+    searchEpoch.current++
+    searchLock.current = false
+    searchOffset.current = 0
+    setSongResults([])
+    setPlaylistResults([])
+    setArtistResults([])
+    setSearchBusy(false)
+    setSearchError('')
+    setSearchMore(false)
+    setSearched(false)
+  }, [uid])
   useEffect(
     () => () => {
       searchEpoch.current++
@@ -154,14 +212,22 @@ export function MusicBrowser({
   const likedIds = [...library.likes]
   const effectiveSource =
     view === 'liked'
-      ? { key: `liked:${uid}:${likedIds.join(',')}`, title: '我喜欢的音乐', ids: likedIds }
+      ? !library.complete && !library.error
+        ? null
+        : {
+            key: `liked:${uid}:${library.likedPlaylist?.id || ''}:${likedIds.join(',')}`,
+            title: '我喜欢的音乐',
+            ...(library.likedPlaylist
+              ? { playlistId: library.likedPlaylist.id }
+              : { ids: likedIds }),
+          }
       : source
   const collection = useSongCollection(api, effectiveSource)
   const [collectionSearch, setCollectionSearch] = useState({ key: '', text: '' })
   const collectionKey = `${uid}:${view}:${effectiveSource?.key || ''}`
   useEffect(() => setCollectionSearch({ key: collectionKey, text: '' }), [collectionKey])
   const collectionQuery = collectionSearch.key === collectionKey ? collectionSearch.text : ''
-  const searchable = !!(effectiveSource?.playlistId || effectiveSource?.albumId)
+  const searchable = !!effectiveSource
   const terms = collectionQuery
     .normalize('NFKC')
     .trim()
@@ -177,6 +243,25 @@ export function MusicBrowser({
         return terms.every((term) => text.includes(term))
       })
     : collection.songs
+  const collectionSentinel = useScrollPagination({
+    enabled: !!effectiveSource && !filtering,
+    scope: collectionKey,
+    loading: collection.loading,
+    hasMore: collection.more,
+    blocked: !!collection.error,
+    contentKey: collection.songs.length,
+    onLoad: collection.loadMore,
+  })
+  const resultCount = songResults.length + playlistResults.length + artistResults.length
+  const searchSentinel = useScrollPagination({
+    enabled: view === 'search' && !effectiveSource,
+    scope: `${uid}:${kind}:${searchKey.current.query}`,
+    loading: searchBusy,
+    hasMore: searchMore,
+    blocked: !!searchError,
+    contentKey: resultCount,
+    onLoad: () => search(false),
+  })
   // Search the entire collection, including tracks beyond the first loaded page.
   // Stop on errors; retry remains an explicit user action.
   useEffect(() => {
@@ -194,15 +279,18 @@ export function MusicBrowser({
   ])
 
   async function search(reset: boolean, newKind = kind, newQuery = query) {
-    if (!newQuery.trim() || (!reset && searchBusy)) return
+    if (!newQuery.trim() || (!reset && searchLock.current)) return
     const epoch = ++searchEpoch.current
+    searchLock.current = true
     const offset = reset ? 0 : searchOffset.current
     if (reset) {
+      searchOffset.current = 0
       searchKey.current = { query: newQuery.trim(), kind: newKind }
       setSongResults([])
       setPlaylistResults([])
       setArtistResults([])
       setSource(null)
+      setSearchMore(false)
     }
     const selection = searchKey.current
     if (reset)
@@ -230,6 +318,20 @@ export function MusicBrowser({
             ? result.playlists
             : result.artists
       const values = Array.isArray(raw) ? raw : []
+      const previous = reset
+        ? []
+        : selection.kind === 'songs'
+          ? songResults
+          : selection.kind === 'playlists'
+            ? playlistResults
+            : artistResults
+      const seen = new Set(previous.map((item) => item.id))
+      const fresh = values.filter((item: any) => {
+        const id = String(item.id)
+        if (seen.has(id)) return false
+        seen.add(id)
+        return true
+      })
       const total = Number(
         result[
           selection.kind === 'songs'
@@ -239,29 +341,99 @@ export function MusicBrowser({
               : 'artistCount'
         ] || 0,
       )
+      if (values.length && !fresh.length) throw new Error('搜索结果分页未继续前进，请重试')
       searchOffset.current = offset + values.length
       setSearchMore(
         values.length > 0 && (total ? offset + values.length < total : values.length === 30),
       )
       if (selection.kind === 'songs')
-        setSongResults((old) => (reset ? values.map(toSong) : [...old, ...values.map(toSong)]))
+        setSongResults((old) => (reset ? fresh.map(toSong) : [...old, ...fresh.map(toSong)]))
       else if (selection.kind === 'playlists')
         setPlaylistResults((old) =>
-          reset ? values.map(playlistFrom) : [...old, ...values.map(playlistFrom)],
+          reset ? fresh.map(playlistFrom) : [...old, ...fresh.map(playlistFrom)],
         )
       else
         setArtistResults((old) =>
-          reset ? values.map(artistFrom) : [...old, ...values.map(artistFrom)],
+          reset ? fresh.map(artistFrom) : [...old, ...fresh.map(artistFrom)],
         )
     } catch (e: any) {
       if (epoch === searchEpoch.current) setSearchError(e.message)
     } finally {
-      if (epoch === searchEpoch.current) setSearchBusy(false)
+      if (epoch === searchEpoch.current) {
+        searchLock.current = false
+        setSearchBusy(false)
+      }
     }
   }
   function openPlaylist(playlist: Playlist) {
     setSource({ key: `playlist:${playlist.id}`, title: playlist.name, playlistId: playlist.id })
   }
+  const navigation: BrowserNavigationState = {
+    scope: `${uid}:${view}`,
+    inputKey: collectionKey,
+    revision: inputRevision,
+    title:
+      effectiveSource?.title ||
+      { library: '我的歌单', albums: '收藏的专辑', liked: '我喜欢的音乐', search: '搜索' }[view],
+    query: effectiveSource ? collectionQuery : view === 'search' ? query : listQuery,
+    label: effectiveSource
+      ? effectiveSource.artistId
+        ? '搜索当前歌手歌曲'
+        : '搜索当前歌单或专辑'
+      : view === 'search'
+        ? '搜索音乐库'
+        : view === 'albums'
+          ? '搜索当前专辑列表'
+          : '搜索当前歌单列表',
+    placeholder: effectiveSource
+      ? '搜索歌曲、歌手、专辑'
+      : view === 'search'
+        ? '搜索歌曲、歌单、歌手'
+        : view === 'albums'
+          ? '搜索专辑名称'
+          : '搜索歌单名称',
+    busy: searchBusy,
+    onQuery: (text) => {
+      const revision = ++navigationRevision.current
+      setInputRevision(revision)
+      if (effectiveSource) setCollectionSearch({ key: collectionKey, text })
+      else if (view === 'search') setQuery(text)
+      else setListQuery(text)
+      return revision
+    },
+    onBack:
+      effectiveSource && view !== 'liked' && !initialSource ? () => setSource(null) : undefined,
+    onSubmit:
+      !effectiveSource && view === 'search' ? (text) => void search(true, kind, text) : undefined,
+  }
+  const publishNavigation = useEffectEvent(() => onNavigation?.(navigation))
+  useEffect(() => {
+    publishNavigation()
+  }, [
+    uid,
+    view,
+    effectiveSource?.key,
+    effectiveSource?.title,
+    collectionKey,
+    collectionQuery,
+    query,
+    listQuery,
+    kind,
+    searchBusy,
+    inputRevision,
+  ])
+  const matchesList = (name: string) =>
+    name
+      .normalize('NFKC')
+      .toLocaleLowerCase()
+      .includes(listQuery.normalize('NFKC').trim().toLocaleLowerCase())
+  const visiblePlaylists = library.playlists.filter(
+    (item) =>
+      matchesList(item.name) &&
+      (filter === 'all' ||
+        (filter === 'created' ? item.creatorId === uid : item.creatorId !== uid)),
+  )
+  const visibleAlbums = library.albums.filter((album) => matchesList(album.name))
   const cards = (items: Playlist[]) => (
     <div className="playlist-grid">
       {items.map((item) => (
@@ -289,9 +461,9 @@ export function MusicBrowser({
         <span>到“一起听”页面扫码连接网易云账号</span>
       </div>
     )
-  if (view === 'liked' && !library.likesReady)
+  if (view === 'liked' && (!library.likesReady || (!library.complete && !library.error)))
     return (
-      <section>
+      <section className="music-browser">
         <div className="empty">
           <Heart size={25} />
           <strong>{library.error || '正在读取喜欢的音乐…'}</strong>
@@ -305,23 +477,37 @@ export function MusicBrowser({
     )
   return (
     <section className="music-browser">
-      {room && (
-        <div className="room-context">
-          <span className="dot" />
-          正在官方多人房间中 · 歌曲播放操作会推送到房间
+      {!onNavigation && <BrowserSearch navigation={navigation} />}
+      {addNotice && (
+        <div className="alert" role="status">
+          {addNotice}
         </div>
+      )}
+      {addSong && uid && (
+        <AddToPlaylist
+          key={`${uid}:${addSong.id}`}
+          api={api}
+          uid={uid}
+          song={addSong}
+          playlists={library.playlists}
+          loading={library.loading}
+          error={library.error}
+          onRefresh={library.refresh}
+          onClose={() => setAddSong(null)}
+          onAdded={(playlist, alreadyExists) => {
+            setAddNotice(
+              alreadyExists ? `歌曲已在“${playlist.name}”中` : `已添加到“${playlist.name}”`,
+            )
+            if (!alreadyExists) library.recordPlaylistAdded(playlist.id)
+            if (effectiveSource?.playlistId === playlist.id) collection.retry()
+            setAddSong(null)
+          }}
+        />
       )}
       {effectiveSource ? (
         <>
           <div className="section-title">
             <div>
-              {view !== 'liked' && (
-                <button className="text-btn" onClick={() => setSource(null)}>
-                  <ArrowLeft size={15} />
-                  返回
-                </button>
-              )}
-              <h2>{effectiveSource.title}</h2>
               <p>
                 已加载 {collection.songs.length} / {collection.total} 首
                 {collection.unavailable > 0 ? ` · ${collection.unavailable} 首暂不可用` : ''}
@@ -347,43 +533,12 @@ export function MusicBrowser({
               </button>
             )}
           </div>
-          {searchable && (
-            <div className="collection-search-bar">
-              <div className="collection-search">
-                <Search size={17} aria-hidden="true" />
-                <input
-                  type="search"
-                  aria-label="搜索当前歌单或专辑"
-                  placeholder="搜索歌曲、歌手、专辑"
-                  value={collectionQuery}
-                  onChange={(event) =>
-                    setCollectionSearch({ key: collectionKey, text: event.target.value })
-                  }
-                  onKeyDown={(event) => {
-                    if (event.key === 'Escape') {
-                      event.stopPropagation()
-                      setCollectionSearch({ key: collectionKey, text: '' })
-                    }
-                  }}
-                />
-                {collectionQuery && (
-                  <button
-                    className="icon-btn"
-                    aria-label="清空列表搜索"
-                    onClick={() => setCollectionSearch({ key: collectionKey, text: '' })}
-                  >
-                    <X size={16} />
-                  </button>
-                )}
-              </div>
-              {filtering && (
-                <span className="collection-search-status" role="status">
-                  {collection.loading || collection.more
-                    ? `已找到 ${visibleSongs.length} 首 · ${collection.error ? '搜索未完成，请重试' : '正在搜索完整列表…'}`
-                    : `找到 ${visibleSongs.length} 首`}
-                </span>
-              )}
-            </div>
+          {filtering && (
+            <span className="collection-search-status" role="status">
+              {collection.loading || collection.more
+                ? `已找到 ${visibleSongs.length} 首 · ${collection.error ? '搜索未完成，请重试' : '正在搜索完整列表…'}`
+                : `找到 ${visibleSongs.length} 首`}
+            </span>
           )}
           {collection.error && (
             <div className="alert error" role="alert">
@@ -400,6 +555,8 @@ export function MusicBrowser({
             library={library}
             onPlay={onPlay}
             onLike={onLike}
+            onAudition={onAudition}
+            onAddToPlaylist={uid ? setAddSong : undefined}
           />
           {collection.loading && (
             <div className="loading">
@@ -413,21 +570,12 @@ export function MusicBrowser({
               <strong>{filtering ? '没有找到匹配歌曲' : '这里还没有歌曲'}</strong>
             </div>
           )}
-          {collection.more && (
-            <button
-              className="secondary load-more"
-              disabled={collection.loading}
-              onClick={() => collection.loadMore()}
-            >
-              加载更多歌曲
-            </button>
-          )}
+          <div ref={collectionSentinel} className="pagination-sentinel" aria-hidden="true" />
         </>
       ) : view === 'albums' ? (
         <>
           <div className="section-title">
             <div>
-              <h2>收藏的专辑</h2>
               <p>
                 {library.albumsComplete ? '全部专辑' : '已加载专辑'} · {library.albums.length} 张
               </p>
@@ -443,7 +591,7 @@ export function MusicBrowser({
             </div>
           )}
           <div className="playlist-grid album-grid">
-            {library.albums.map((album) => (
+            {visibleAlbums.map((album) => (
               <button
                 className="playlist-card"
                 key={album.id}
@@ -466,6 +614,11 @@ export function MusicBrowser({
               </button>
             ))}
           </div>
+          {listQuery.trim() && !library.loading && !visibleAlbums.length && (
+            <div className="empty">
+              <strong>没有找到匹配专辑</strong>
+            </div>
+          )}
           {library.loading && !library.albumsComplete && (
             <div className="loading">
               <LoaderCircle size={16} className="spin" />
@@ -484,7 +637,6 @@ export function MusicBrowser({
         <>
           <div className="section-title">
             <div>
-              <h2>我的歌单</h2>
               <p>
                 {library.complete ? '全部歌单' : '已加载歌单'} · {library.playlists.length} 个
               </p>
@@ -499,6 +651,7 @@ export function MusicBrowser({
               <button
                 key={value}
                 className={filter === value ? 'selected' : ''}
+                aria-pressed={filter === value}
                 onClick={() => setFilter(value)}
               >
                 {['全部', '我创建的', '我收藏的'][i]}
@@ -510,12 +663,11 @@ export function MusicBrowser({
               {library.error}
             </div>
           )}
-          {cards(
-            library.playlists.filter(
-              (item) =>
-                filter === 'all' ||
-                (filter === 'created' ? item.creatorId === uid : item.creatorId !== uid),
-            ),
+          {cards(visiblePlaylists)}
+          {listQuery.trim() && !library.loading && !visiblePlaylists.length && (
+            <div className="empty">
+              <strong>没有找到匹配歌单</strong>
+            </div>
           )}
           {library.loading && (
             <div className="loading">
@@ -532,25 +684,6 @@ export function MusicBrowser({
         </>
       ) : (
         <>
-          <form
-            className="wide-search"
-            onSubmit={(e) => {
-              e.preventDefault()
-              search(true)
-            }}
-          >
-            <Search size={20} />
-            <input
-              aria-label="搜索音乐库"
-              placeholder="搜索歌曲、歌单、歌手"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <button className="primary" disabled={!query.trim()}>
-              <ArrowRight size={17} />
-              搜索
-            </button>
-          </form>
           {history.length > 0 && (
             <div className="search-history">
               <span>最近搜索</span>
@@ -601,6 +734,7 @@ export function MusicBrowser({
               <button
                 key={value}
                 className={kind === value ? 'selected' : ''}
+                aria-pressed={kind === value}
                 onClick={() => {
                   setKind(value)
                   search(true, value)
@@ -613,6 +747,7 @@ export function MusicBrowser({
           {searchError && (
             <div className="alert error" role="alert">
               {searchError}
+              <button onClick={() => search(searchOffset.current === 0)}>重试</button>
             </div>
           )}
           {kind === 'songs' && (
@@ -624,6 +759,8 @@ export function MusicBrowser({
               library={library}
               onPlay={onPlay}
               onLike={onLike}
+              onAudition={onAudition}
+              onAddToPlaylist={uid ? setAddSong : undefined}
             />
           )}
           {kind === 'playlists' && cards(playlistResults)}
@@ -672,15 +809,7 @@ export function MusicBrowser({
                 <strong>{searched ? '没有找到匹配内容' : '从一首好歌开始'}</strong>
               </div>
             )}
-          {searchMore && (
-            <button
-              className="secondary load-more"
-              disabled={searchBusy}
-              onClick={() => search(false)}
-            >
-              加载更多结果
-            </button>
-          )}
+          <div ref={searchSentinel} className="pagination-sentinel" aria-hidden="true" />
         </>
       )}
     </section>
