@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@neteasecloudmusicapienhanced/api": "4.40.1",
+    "@yxim/nim-web-sdk": "9.21.19",
     "electron-updater": "6.8.9",
     "lucide-react": "^1.48.0",
     "react": "^19.3.0",

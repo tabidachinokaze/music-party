@@ -52,6 +52,7 @@ export function useParty() {
   const [preview, setPreview] = useState<any>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [membersStatus, setMembersStatus] = useState('等待房间成员信息')
+  const memberVersionRef = useRef(0)
   const [onlineCount, setOnlineCount] = useState<number | null>(null)
   const [roomPlayback, setRoomPlayback] = useState<RoomPlayback | null>(null)
   const [queueRevision, setQueueRevision] = useState(0)
@@ -225,6 +226,30 @@ export function useParty() {
     const unsubscribe = window.together.onTrace((trace) =>
       setTraces((items) => [trace, ...items].slice(0, 300)),
     )
+    const unsubscribeMembers = window.together.onRoomMembers((update) => {
+      const active = roomRef.current
+      if (!active || (update.roomId && update.roomId !== active.roomId)) return
+      if (update.version < memberVersionRef.current) return
+      memberVersionRef.current = update.version
+      // 30005 is a periodic room snapshot, not only an enter/leave event. Keep the
+      // current order when the member set did not change, so avatars do not shuffle
+      // every 30 seconds.
+      setMembers((current) => {
+        const same =
+          current.length === update.members.length &&
+          current.every((member) =>
+            update.members.some(
+              (next) =>
+                next.uid === member.uid &&
+                next.nickname === member.nickname &&
+                next.avatar === member.avatar,
+            ),
+          )
+        return same ? current : update.members
+      })
+      if (update.onlineCount !== null) setOnlineCount(update.onlineCount)
+      setMembersStatus(`成员更新于 ${new Date().toLocaleTimeString()}（IM）`)
+    })
     window.together
       .sessionInfo()
       .then((data) => {
@@ -240,6 +265,7 @@ export function useParty() {
       transition.current?.pause()
       syncPlayer.current?.reset()
       unsubscribe()
+      unsubscribeMembers()
     }
   }, [])
   useEffect(() => {
@@ -319,12 +345,14 @@ export function useParty() {
     localPlayEpoch.current++
     roomRef.current = null
     setRoom(null)
+    void window.together.leaveImChatroom().catch(() => {})
     syncPlayer.current?.reset()
     localPlayingId.current = ''
     playbackRef.current = null
     setRoomPlayback(null)
     setMembers([])
     setMembersStatus('等待房间成员信息')
+    memberVersionRef.current = 0
     setOnlineCount(null)
     setCurrent(personalSaved.current)
     setPosition(0)
@@ -369,6 +397,7 @@ export function useParty() {
     } else setMembersStatus('服务端暂未返回成员列表，请稍后刷新')
     if (snapshot.onlineCount !== null) setOnlineCount(snapshot.onlineCount)
     if (roomRef.current) {
+      const previousChat = roomRef.current.chatRoomId
       const next = {
         ...roomRef.current,
         chatRoomId: snapshot.chatRoomId || roomRef.current.chatRoomId,
@@ -376,6 +405,8 @@ export function useParty() {
       }
       roomRef.current = next
       setRoom(next)
+      if (next.chatRoomId && next.chatRoomId !== previousChat)
+        void window.together.joinImChatroom(next.chatRoomId).catch(() => {})
     }
   }
   async function refreshMembers() {
@@ -489,6 +520,7 @@ export function useParty() {
     localPlayingId.current = ''
     syncPlayer.current?.reset()
     interval.current = 5000
+    memberVersionRef.current = 0
     audioFailure.current = null
     playbackRef.current = null
     setRoomPlayback(null)
@@ -502,6 +534,8 @@ export function useParty() {
     setAvailableRoom(null)
     roomRef.current = next
     setRoom(next)
+    if (snapshot.chatRoomId)
+      void window.together.joinImChatroom(snapshot.chatRoomId).catch(() => {})
     applySnapshot(value, sampledAt, generation.current)
     setNotice('已加入一起听，歌曲会自动同步。')
   }
