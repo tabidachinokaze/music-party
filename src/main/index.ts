@@ -98,7 +98,14 @@ function startWorker() {
   child = utilityProcess.fork(join(__dirname, 'worker.js'), [], {
     serviceName: 'Music Party API',
     stdio: 'ignore',
-    env: { ...process.env, TMPDIR: temp, TMP: temp, TEMP: temp, NETEASE_COOKIE: '' },
+    env: {
+      ...process.env,
+      TMPDIR: temp,
+      TMP: temp,
+      TEMP: temp,
+      NETEASE_COOKIE: '',
+      MUSIC_PARTY_IM_DEBUG: process.env.MUSIC_PARTY_IM_DEBUG ?? (app.isPackaged ? '0' : '1'),
+    },
   })
   let cookie = ''
   if (canPersist()) {
@@ -110,6 +117,14 @@ function startWorker() {
   child.on('message', (message) => {
     if (message.type === 'private-notifications')
       win?.webContents.send('private-notifications', message.batch)
+    if (message.type === 'room-members') win?.webContents.send('room-members', message.update)
+    if (message.type === 'im-debug') {
+      const raw =
+        typeof message.content === 'string' ? message.content : JSON.stringify(message.content)
+      console.log(
+        `[IM ${new Date(Number(message.timestamp) || Date.now()).toISOString()}] ${String(raw).slice(0, 20000)}`,
+      )
+    }
     if (message.type === 'media-progress') {
       for (const task of mediaPending.values())
         if (task.requestId === message.progress.requestId) task.phase = message.progress.phase
@@ -389,6 +404,16 @@ app.whenReady().then(() => {
     )
       throw new Error('通知游标无效')
     return workerResult({ type: 'notifications', cursor, session })
+  })
+  ipcMain.handle('join-im-chatroom', (event, chatroomId: unknown) => {
+    assertSender(event)
+    if (typeof chatroomId !== 'string' || !/^[1-9]\d{0,23}$/.test(chatroomId))
+      throw new Error('聊天室 ID 无效')
+    child?.postMessage({ type: 'join-chatroom', chatroomId })
+  })
+  ipcMain.handle('leave-im-chatroom', (event) => {
+    assertSender(event)
+    child?.postMessage({ type: 'leave-chatroom' })
   })
   for (const type of ['match-open', 'match-poll', 'match-close'])
     ipcMain.handle(type, (event, attemptId?: unknown) => {

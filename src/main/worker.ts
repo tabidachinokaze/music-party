@@ -9,6 +9,7 @@ import { multiEndpoints, multiPayload, type MultiMethod } from './multi-api'
 import { MediaSender } from './media-send'
 import { parsePreciseJson, preciseMediaEndpoint } from './precise-json'
 import { SharedNotifications } from './shared-notifications'
+import { LtChatroom } from './lt-chatroom'
 
 const requireApi = createRequire(__filename)
 // Upstream can print raw error responses; diagnostics leave this process only through ApiService.
@@ -90,6 +91,13 @@ let mediaCookie = '',
 const media = new MediaSender(invoke, () => ({ cookie: mediaCookie, epoch: mediaEpoch }))
 let notifications: SharedNotifications | null = null
 let notificationUid = ''
+let ltChatroom: LtChatroom | null = null
+let ltChatroomId = ''
+function stopLtChatroom() {
+  ltChatroom?.close()
+  ltChatroom = null
+  ltChatroomId = ''
+}
 const emptySession = randomUUID()
 function notificationSnapshot(cursor = 0, session?: string) {
   return {
@@ -107,8 +115,10 @@ function stopNotifications() {
   notifications?.close()
   notifications = null
   notificationUid = ''
+  stopLtChatroom()
 }
 function enableNotifications(uid: string) {
+  const imDebug = process.env.MUSIC_PARTY_IM_DEBUG === '1'
   mediaEpoch = service.session().epoch
   if (!uid) {
     stopNotifications()
@@ -116,7 +126,7 @@ function enableNotifications(uid: string) {
   }
   if (notificationUid && notificationUid !== uid) stopNotifications()
   notificationUid = uid
-  if (!notifications)
+  if (!notifications) {
     notifications = new SharedNotifications(
       async () => {
         const auth = service.session()
@@ -146,8 +156,79 @@ function enableNotifications(uid: string) {
           type: 'private-notifications',
           batch: { ...batch, accountUid: notificationUid },
         }),
+      (update) => process.parentPort?.postMessage({ type: 'room-members', update }),
+      (content, timestamp) => {
+        if (imDebug) process.parentPort?.postMessage({ type: 'im-debug', content, timestamp })
+      },
+      (message, data) => {
+        if (imDebug)
+          process.parentPort?.postMessage({
+            type: 'im-debug',
+            content: `[${message}]${data === undefined ? '' : ` ${JSON.stringify(data)}`}`,
+            timestamp: Date.now(),
+          })
+      },
     )
+    if (imDebug)
+      process.parentPort?.postMessage({
+        type: 'im-debug',
+        content: '[debug tap enabled]',
+        timestamp: Date.now(),
+      })
+  }
   notifications.enablePrivate(uid)
+}
+
+async function startLtChatroom(chatroomId: string) {
+  if (!/^[1-9]\d{0,23}$/.test(chatroomId)) return
+  if (ltChatroom && ltChatroomId === chatroomId) return
+  stopLtChatroom()
+  const auth = service.session()
+  if (!auth.cookie || !auth.uid) throw new Error('请先登录网易云账号')
+  const result = await standard('api', {
+    uri: '/api/middle/im/token-and-chatroom-addr/get',
+    data: { bizName: 'music_listenTogether', roomId: chatroomId, appType: '6' },
+    crypto: 'eapi',
+    cookie: auth.cookie,
+    timeout: 12000,
+  })
+  const data = result.body?.data
+  if (
+    result.body?.code !== 200 ||
+    typeof data?.accId !== 'string' ||
+    !data.accId ||
+    typeof data?.token !== 'string' ||
+    !data.token
+  )
+    throw new Error('暂时无法取得聊天室凭据')
+  if (service.session().epoch !== auth.epoch) throw new Error('账号已变化')
+  ltChatroomId = chatroomId
+  ltChatroom = await LtChatroom.open({
+    chatroomId,
+    account: data.accId,
+    token: data.token,
+    onUpdate: (update) => process.parentPort?.postMessage({ type: 'room-members', update }),
+    onStatus: (status, detail) => {
+      if (process.env.MUSIC_PARTY_IM_DEBUG === '1')
+        process.parentPort?.postMessage({
+          type: 'im-debug',
+          content: `[lt-chatroom] ${status}${
+            detail === undefined ? '' : ` ${JSON.stringify(detail)}`
+          }`,
+          timestamp: Date.now(),
+        })
+    },
+    onDebug: (raw, type) => {
+      if (process.env.MUSIC_PARTY_IM_DEBUG === '1')
+        process.parentPort?.postMessage({
+          type: 'im-debug',
+          content: `[lt-chatroom] ${String(type)} ${
+            typeof raw === 'string' ? raw : JSON.stringify(raw)
+          }`,
+          timestamp: Date.now(),
+        })
+    },
+  })
 }
 const service = new ApiService(
   invoke,
@@ -180,6 +261,26 @@ process.parentPort?.on('message', async ({ data }) => {
       process.parentPort?.postMessage({ type: 'media-progress', progress }),
     )
     process.parentPort?.postMessage({ type: 'media-reply', id: data.id, reply })
+    return
+  }
+  if (data.type === 'join-chatroom') {
+    if (typeof data.chatroomId !== 'string') return
+    try {
+      await startLtChatroom(data.chatroomId)
+    } catch (error) {
+      if (process.env.MUSIC_PARTY_IM_DEBUG === '1')
+        process.parentPort?.postMessage({
+          type: 'im-debug',
+          content: `[lt-chatroom] open failed ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          timestamp: Date.now(),
+        })
+    }
+    return
+  }
+  if (data.type === 'leave-chatroom') {
+    stopLtChatroom()
     return
   }
   if (

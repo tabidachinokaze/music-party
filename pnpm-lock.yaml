@@ -14,6 +14,9 @@ importers:
       '@neteasecloudmusicapienhanced/api':
         specifier: 4.40.1
         version: 4.40.1(patch_hash=47be77f8d503d36c0debff015e7ca0602a09346b16eca75c244aff9063b9f28b)(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
+      '@yxim/nim-web-sdk':
+        specifier: 9.21.19
+        version: 9.21.19
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9(supports-color@7.2.0)
@@ -981,6 +984,9 @@ packages:
     resolution: {integrity: sha512-/5NV/vDALVFDXgLmfsy9TRCBlKwO2LNBFzpzvb9iIj+jR+eSc6DLYYvVOdivT/jm7MtU6TebYuRmzEOI7w40UA==}
     engines: {node: '>=10.0.0'}
 
+  '@yxim/nim-web-sdk@9.21.19':
+    resolution: {integrity: sha512-0hTR/Qs00GWtbaOIrZXXHKksVCfFlpMwathgl97xiYi84j6DZUBkTbKdl7vCcdtHT9WgTBOr9JwIU92iOwjKgQ==}
+
   abbrev@4.0.0:
     resolution: {integrity: sha512-a1wflyaL0tHtJSmLSOVybYhy22vRih4eduhhrkcjgrWGnRfrZtovJ2FRjxuTtkkj47O/baf0R86QU5OuYpz8fA==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -1710,7 +1716,7 @@ packages:
 
   glob@7.2.3:
     resolution: {integrity: sha512-nFR0zLpU2YCaRxwoCJvL6UvCH2JFyFVIvwTLsIf21AuHlMskA1hhTdk+LlYJtOlYt9v6dvszD2BGRqBL+iQK9Q==}
-    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+    deprecated: Glob versions prior to v9 are no longer supported
 
   global-agent@3.0.0:
     resolution: {integrity: sha512-PT6XReJ+D07JvGoxQMkT6qji/jVNfX/h364XHZOWeRzy64sSFr+xJ5OX7LI3b4MPQzdL4H8Y8M0xzPpsVMwA8Q==}
@@ -3825,6 +3831,8 @@ snapshots:
   '@vitest/spy@5.0.2': {}
 
   '@xmldom/xmldom@0.8.15': {}
+
+  '@yxim/nim-web-sdk@9.21.19': {}
 
   abbrev@4.0.0: {}
 

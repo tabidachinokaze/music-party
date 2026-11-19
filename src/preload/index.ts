@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { UpdateState } from '../shared/updates'
 import type { DesktopInfo, PlayerCommand } from '../shared/desktop'
 import type { Bridge, Trace, AccountNotifications } from '../shared/types'
+import type { LtMemberUpdate } from '../shared/lt-members'
 import type { MediaProgress } from '../shared/media'
 const bridge: Bridge = {
   call: (request) => ipcRenderer.invoke('api', request),
@@ -25,9 +26,16 @@ const bridge: Bridge = {
     ipcRenderer.on('private-notifications', listener)
     return () => ipcRenderer.removeListener('private-notifications', listener)
   },
+  onRoomMembers(callback) {
+    const listener = (_event: Electron.IpcRendererEvent, update: LtMemberUpdate) => callback(update)
+    ipcRenderer.on('room-members', listener)
+    return () => ipcRenderer.removeListener('room-members', listener)
+  },
   matchOpen: (id) => ipcRenderer.invoke('match-open', id),
   matchPoll: (id) => ipcRenderer.invoke('match-poll', id),
   matchClose: (id) => ipcRenderer.invoke('match-close', id),
+  joinImChatroom: (chatroomId) => ipcRenderer.invoke('join-im-chatroom', chatroomId),
+  leaveImChatroom: () => ipcRenderer.invoke('leave-im-chatroom'),
   cancelMedia: (requestId) => ipcRenderer.invoke('media-cancel', requestId),
   requestMicrophone: () => ipcRenderer.invoke('microphone-request'),
   onMediaProgress(callback) {

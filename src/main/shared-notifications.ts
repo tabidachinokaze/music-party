@@ -4,6 +4,7 @@
 import { randomUUID } from 'node:crypto'
 import { MiniNotifications, type MiniNotificationOptions } from './mini-notifications'
 import { parsePrivateNotice } from './private-notice'
+import { parseLtMemberUpdate, type LtMemberUpdate } from '../shared/lt-members'
 import type {
   PrivateNotice,
   PrivateNotificationBatch,
@@ -39,7 +40,19 @@ export class SharedNotifications {
     private readonly make: NotificationFactory = (options) => new MiniNotifications(options),
     /** Electron can forward these batches directly through IPC, without polling the feed. */
     private readonly onBatch?: (batch: PrivateNotificationBatch) => void,
+    /** LTMultiUserChangeMsg (30005) pushes a complete room user list on member enter/leave. */
+    private readonly onRoomMembers?: (update: LtMemberUpdate) => void,
+    /** Development-only raw IM envelope tap; may contain private message content. */
+    private readonly onRawNotification?: (content: unknown, timestamp: number) => void,
+    /** Development-only connection lifecycle tap. */
+    private readonly onDebug?: (message: string, data?: unknown) => void,
   ) {}
+
+  private debug(message: string, data?: unknown) {
+    try {
+      this.onDebug?.(message, data)
+    } catch {}
+  }
 
   /** Push only sanitized events; use poll() once to recover the current session snapshot. */
   subscribe(listener: (batch: PrivateNotificationBatch) => void): () => void {
@@ -50,6 +63,7 @@ export class SharedNotifications {
 
   enablePrivate(uid: string) {
     if (this.ended || !/^[1-9]\d{0,23}$/.test(uid)) return
+    this.debug('enablePrivate', { uid: `${uid.slice(0, 4)}…`, connected: this.connected })
     if (this.selfUid && this.selfUid !== uid) {
       this.matchClose()
       this.stopConnection()
@@ -186,6 +200,7 @@ export class SharedNotifications {
 
   private lost(transport: Transport, reason: string) {
     if (this.transport !== transport) return
+    this.debug('connection lost', { reason })
     this.transport = null
     this.opening = null
     this.connected = false
@@ -213,10 +228,20 @@ export class SharedNotifications {
     if (this.opening) return this.opening
     if (this.reconnect) clearTimeout(this.reconnect)
     this.reconnect = null
+    this.debug('opening connection')
     const transport = this.make({
       persistent: true,
       onNotification: (content, timestamp) => {
         if (this.transport !== transport || !this.selfUid || this.ended) return
+        try {
+          this.onRawNotification?.(content, timestamp)
+        } catch {}
+        const members = parseLtMemberUpdate(content)
+        if (members) {
+          try {
+            this.onRoomMembers?.(members)
+          } catch {}
+        }
         const notice = parsePrivateNotice(content, timestamp, this.selfUid)
         if (!notice || this.seen.has(notice.id)) return
         this.seen.add(notice.id)
@@ -237,8 +262,13 @@ export class SharedNotifications {
       try {
         const value = await credentials
         if (this.transport !== transport || this.ended) throw new Error('匹配已取消')
+        this.debug('credentials ready', {
+          accId: `${value.accId.slice(0, 4)}…`,
+          tokenLength: value.token.length,
+        })
         await transport.open(value)
         if (this.transport !== transport || this.ended) throw new Error('匹配已取消')
+        this.debug('connected')
         this.connected = true
         this.backoff = 1000
         if (this.selfUid) this.sync()
