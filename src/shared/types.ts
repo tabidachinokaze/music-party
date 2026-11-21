@@ -8,6 +8,7 @@ import type {
 } from './desktop'
 import type { MediaRequest, MediaReply, MediaProgress } from './media'
 import type { PrivateNotificationBatch } from './private-notices'
+import type { LtMemberUpdate } from './lt-members'
 import type { MiniNotice } from '../main/mini-notifications'
 import type { StickerImageRequest } from './sticker-actions'
 export type Method =
@@ -107,9 +108,12 @@ export interface Bridge {
   onLifecycle(callback: (event: 'suspend' | 'resume') => void): () => void
   privateNotifications(cursor?: number, session?: string): Promise<AccountNotifications>
   onPrivateNotifications(callback: (batch: AccountNotifications) => void): () => void
+  onRoomMembers(callback: (update: LtMemberUpdate) => void): () => void
   matchOpen(id: string): Promise<void>
   matchPoll(id: string): Promise<MiniNotice[]>
   matchClose(id?: string): Promise<void>
+  joinImChatroom(chatroomId: string): Promise<void>
+  leaveImChatroom(): Promise<void>
 }
 export type AccountNotifications = PrivateNotificationBatch & { accountUid: string }
 export interface Song {
