@@ -82,6 +82,10 @@ export interface Reply {
   trace?: Trace
 }
 export interface Bridge {
+  panelAction(id: import('./panels').PanelId, action: import('./panels').PanelAction): Promise<void>
+  onPanelStatus(
+    callback: (id: import('./panels').PanelId, status: import('./panels').PanelStatus) => void,
+  ): () => void
   call(request: Request): Promise<Reply>
   onTrace(callback: (trace: Trace) => void): () => void
   exportTrace(): Promise<boolean>

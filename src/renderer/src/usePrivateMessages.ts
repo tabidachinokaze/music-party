@@ -24,7 +24,16 @@ import {
 import type { ApiCall } from './music-data'
 import type { MediaReceipt, MediaTarget } from '../../shared/media'
 
-export function usePrivateMessages(api: ApiCall, account: any, visible: boolean) {
+export function usePrivateMessages(
+  api: ApiCall,
+  account: any,
+  visible: boolean,
+  viewDocument?: Document,
+) {
+  const reader = useRef(viewDocument)
+  reader.current = viewDocument
+  const focused = () =>
+    !!reader.current && reader.current.visibilityState === 'visible' && reader.current.hasFocus()
   const selfUid = account ? String(account.userId) : ''
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [conversationMore, setConversationMore] = useState(false)
@@ -222,13 +231,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
     }
   }
   async function markRead(peer: Conversation, through: ReadBoundary | null) {
-    if (
-      !through ||
-      !visibleRef.current ||
-      document.visibilityState !== 'visible' ||
-      !document.hasFocus() ||
-      selectedRef.current?.uid !== peer.uid
-    )
+    if (!through || !visibleRef.current || !focused() || selectedRef.current?.uid !== peer.uid)
       return
     const previous = readThrough.current.get(peer.uid)
     if (
@@ -310,7 +313,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
         setHistoryError('')
         if (!older) {
           // Match the mod's bounded foreground catch-up without moving the history cursor.
-          for (let count = 0; count < 2 && visibleRef.current && document.hasFocus(); count++) {
+          for (let count = 0; count < 2 && visibleRef.current && focused(); count++) {
             const cursor = historyGaps.current.next()
             if (cursor === null) break
             const missing = parsePrivatePage(
@@ -342,8 +345,8 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
       }
     }
   }
-  function select(peer: Conversation) {
-    if (peer.uid === selfUid || peer.uid === selectedRef.current?.uid) return
+  function select(peer: Conversation | null) {
+    if (peer?.uid === selfUid || peer?.uid === selectedRef.current?.uid) return
     if (selectedRef.current) {
       const previous = selectedRef.current.uid
       drafts.current.set(previous, draftRef.current)
@@ -358,7 +361,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
       while (historyMemory.current.size > 20)
         historyMemory.current.delete(historyMemory.current.keys().next().value!)
     }
-    const memory = historyMemory.current.get(peer.uid)
+    const memory = peer ? historyMemory.current.get(peer.uid) : undefined
     historyEpoch.current++
     historyPending.current = null
     historyDirty.current = false
@@ -375,11 +378,13 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
     setHistoryError('')
     setReadError('')
     setHistoryBusy(false)
-    const nextDraft = drafts.current.get(peer.uid) || ''
+    const nextDraft = peer ? drafts.current.get(peer.uid) || '' : ''
     setDraft(nextDraft)
     draftRef.current = nextDraft
-    updateConversations(mergeConversations(convRef.current, [peer]))
-    void refreshPresence([peer])
+    if (peer) {
+      updateConversations(mergeConversations(convRef.current, [peer]))
+      void refreshPresence([peer])
+    }
   }
   useEffect(() => {
     accountEpoch.current++
@@ -427,8 +432,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
     let stopped = false
     let timer: ReturnType<typeof setTimeout>
     const tick = async () => {
-      if (visibleRef.current && document.visibilityState === 'visible' && document.hasFocus())
-        await fetchConversations()
+      if (visibleRef.current && focused()) await fetchConversations()
       if (!stopped) timer = setTimeout(tick, 10000)
     }
     // Background reception belongs to the account's Mini session. HTTP only backs up a visible view.
@@ -445,7 +449,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
     let stopped = false
     let timer: ReturnType<typeof setTimeout>
     const tick = async () => {
-      if (document.visibilityState === 'visible' && document.hasFocus()) await fetchHistory()
+      if (focused()) await fetchHistory()
       if (!stopped) timer = setTimeout(tick, 10000)
     }
     tick()
@@ -460,7 +464,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
   useEffect(() => {
     if (!selfUid || !visible) return
     const refresh = () => {
-      if (document.visibilityState === 'visible' && document.hasFocus())
+      if (focused())
         void refreshPresence([
           ...convRef.current,
           ...contactsRef.current,
@@ -473,18 +477,19 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
   }, [visible, selfUid])
   useEffect(() => {
     const refreshVisible = () => {
-      if (visibleRef.current && document.visibilityState === 'visible' && document.hasFocus()) {
+      if (visibleRef.current && focused()) {
         fetchConversations()
         fetchHistory()
       }
     }
-    window.addEventListener('focus', refreshVisible)
-    document.addEventListener('visibilitychange', refreshVisible)
+    const viewer = viewDocument?.defaultView
+    viewer?.addEventListener('focus', refreshVisible)
+    viewDocument?.addEventListener('visibilitychange', refreshVisible)
     return () => {
-      window.removeEventListener('focus', refreshVisible)
-      document.removeEventListener('visibilitychange', refreshVisible)
+      viewer?.removeEventListener('focus', refreshVisible)
+      viewDocument?.removeEventListener('visibilitychange', refreshVisible)
     }
-  }, [selfUid])
+  }, [selfUid, viewDocument])
   useEffect(() => {
     if (!selfUid) return
     let stopped = false
@@ -551,7 +556,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
         void refreshPresence([peer])
         if (
           unread &&
-          (!visibleRef.current || selectedRef.current?.uid !== peer.uid || !document.hasFocus()) &&
+          (!visibleRef.current || selectedRef.current?.uid !== peer.uid || !focused()) &&
           (!replay || Date.now() - notice.timestamp < 30000)
         )
           setNotificationInbox((items) =>
@@ -695,7 +700,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
         if (!room && !emoji) setDraft((current) => (current.trim() === text ? '' : current))
         await fetchHistory()
       } else {
-        const memory = historyMemory.current.get(peer.uid)
+        const memory = peer ? historyMemory.current.get(peer.uid) : undefined
         if (memory)
           memory.messages = mergePrivate(memory.messages, [{ ...local, delivery: 'submitted' }])
         if (!room && !emoji && drafts.current.get(peer.uid)?.trim() === text)
@@ -735,7 +740,7 @@ export function usePrivateMessages(api: ApiCall, account: any, visible: boolean)
         )
         setHistoryError(message)
       } else {
-        const memory = historyMemory.current.get(peer.uid)
+        const memory = peer ? historyMemory.current.get(peer.uid) : undefined
         if (memory)
           memory.messages = mergePrivate(memory.messages, [
             {

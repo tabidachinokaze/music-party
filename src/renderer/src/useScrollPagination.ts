@@ -98,10 +98,7 @@ export function useScrollPagination(options: Options) {
       if (direction === 'top' ? event.deltaY < 0 : event.deltaY > 0) attempt(true)
     }
     function key(event: KeyboardEvent) {
-      if (
-        event.target instanceof HTMLElement &&
-        event.target.closest('input,textarea,[contenteditable="true"]')
-      )
+      if ((event.target as HTMLElement | null)?.closest('input,textarea,[contenteditable="true"]'))
         return
       const keys =
         direction === 'top' ? ['ArrowUp', 'PageUp', 'Home'] : ['ArrowDown', 'PageDown', 'End']

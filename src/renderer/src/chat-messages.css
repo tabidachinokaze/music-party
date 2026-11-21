@@ -1,10 +1,10 @@
 /* Shared room and private message cards, using the app's dark/light theme pairs. */
 :root {
-  --chat-on-surface: var(--tone-e5e5ed);
-  --chat-on-surface-variant: var(--tone-b8b9c4);
-  --chat-surface-container: var(--tone-2b2c34);
-  --chat-primary-container: var(--tone-4c3040);
-  --chat-on-primary-container: var(--tone-f4dce5);
+  --chat-on-surface: var(--hf-ink);
+  --chat-on-surface-variant: var(--hf-ink-2);
+  --chat-surface-container: var(--hf-surface-3);
+  --chat-primary-container: var(--accent-containerHover, var(--hf-primary-soft));
+  --chat-on-primary-container: var(--accent-text, var(--hf-on-primary-soft));
 }
 
 .chat-messages,
@@ -35,7 +35,7 @@
   height: 28px;
   border-radius: 50%;
   overflow: hidden;
-  background: var(--tone-342631);
+  background: var(--accent-container, var(--hf-primary-soft));
   color: var(--pink);
   font-size: calc(11px * var(--ui-font-scale, 1));
 }
@@ -123,7 +123,7 @@
   overflow-wrap: anywhere;
 }
 .chat-failed {
-  color: var(--tone-e5a5ac);
+  color: var(--hf-danger);
 }
 .private-messages .chat-message {
   max-width: min(560px, 92%);
@@ -173,14 +173,14 @@
   overflow-wrap: anywhere;
 }
 .chat-activity-actor {
-  color: var(--tone-c4b4c1);
+  color: var(--hf-ink-2);
   font-weight: 500;
 }
 .chat-activity-song {
   padding: 1px 4px;
   border-radius: 4px;
   background: color-mix(in srgb, currentColor 7%, transparent);
-  color: var(--tone-c5c5ce);
+  color: var(--hf-ink-2);
   font-weight: 500;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;

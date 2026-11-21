@@ -1,3 +1,4 @@
+import { openTool, settingsGroup } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
@@ -30,8 +31,10 @@ test('desktop settings survive restart and close-to-tray retains the same render
     })
   let app = await launch()
   try {
-    let page = await app.firstWindow()
-    await page.getByRole('button', { name: '设置', exact: true }).click()
+    let player = await app.firstWindow()
+    let page = player
+    page = await openTool(app, player, 'settings')
+    await settingsGroup(page, '外观')
     await page.getByRole('button', { name: '浅色', exact: true }).click()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
     const defaultFont = await page
@@ -49,7 +52,9 @@ test('desktop settings survive restart and close-to-tray retains the same render
       .toBeCloseTo(defaultFont * 1.5, 2)
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
     expect(
-      await page.locator('.brand > div').evaluate((node) => node.scrollWidth <= node.clientWidth),
+      await page
+        .locator('.panel-titlebar')
+        .evaluate((node) => node.scrollWidth <= node.clientWidth),
     ).toBe(true)
     await page.getByLabel('界面字体大小', { exact: true }).fill('130')
     await page.getByLabel('主题颜色', { exact: true }).fill('#448aff')
@@ -58,16 +63,18 @@ test('desktop settings survive restart and close-to-tray retains the same render
     const lightAccent = await page
       .locator('html')
       .evaluate((node) => getComputedStyle(node).getPropertyValue('--pink'))
+    const controls = await openTool(app, player, 'controls')
+    await settingsGroup(page, '播放与桌面')
     await page.getByLabel('默认音量').fill('0.23')
-    await expect(page.getByLabel('当前音量', { exact: true })).toHaveText('23%')
+    await expect(controls.getByRole('status')).toHaveText('23%')
     await page.getByLabel('默认音量').hover()
     await page.mouse.wheel(0, -100)
     await expect(page.getByLabel('默认音量')).toHaveValue('0.28')
-    await expect(page.getByLabel('当前音量', { exact: true })).toHaveText('28%')
-    await page.getByLabel('音量', { exact: true }).hover()
-    await page.mouse.wheel(0, 100)
+    await expect(controls.getByRole('status')).toHaveText('28%')
+    await controls.getByLabel('音量', { exact: true }).hover()
+    await controls.mouse.wheel(0, 100)
     await expect(page.getByLabel('默认音量')).toHaveValue('0.23')
-    await expect(page.getByLabel('音量', { exact: true })).toHaveAttribute('aria-valuetext', '23%')
+    await expect(controls.getByLabel('音量', { exact: true })).toHaveValue('0.23')
     await page.getByLabel('默认播放模式').selectOption('loop')
     await expect
       .poll(
@@ -76,18 +83,32 @@ test('desktop settings survive restart and close-to-tray retains the same render
       )
       .toBe(0.23)
     await page.screenshot({ path: 'test-results/music-party-settings-light.png' })
-    const info = await page.evaluate(() => window.together.desktopInfo())
+    const info = await player.evaluate(() => window.together.desktopInfo())
     expect(info.trayAvailable).toBe(true)
     const rendererPid = await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].webContents.getOSProcessId(),
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL() !== 'about:blank')!
+        .webContents.getOSProcessId(),
     )
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].close())
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL() !== 'about:blank')!
+        .close(),
+    )
     await expect
-      .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()))
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()
+            .find((w) => w.webContents.getURL() !== 'about:blank')!
+            .isVisible(),
+        ),
+      )
       .toBe(false)
     expect(
       await app.evaluate(({ BrowserWindow }) =>
-        BrowserWindow.getAllWindows()[0].webContents.getOSProcessId(),
+        BrowserWindow.getAllWindows()
+          .find((w) => w.webContents.getURL() !== 'about:blank')!
+          .webContents.getOSProcessId(),
       ),
     ).toBe(rendererPid)
     const second = spawn(
@@ -114,9 +135,21 @@ test('desktop settings survive restart and close-to-tray retains the same render
     } finally {
       if (second.exitCode === null) second.kill()
     }
-    expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length)).toBe(1)
+    expect(
+      await app.evaluate(
+        ({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows().filter((w) => w.webContents.getURL() !== 'about:blank')
+            .length,
+      ),
+    ).toBe(1)
     await expect
-      .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible()))
+      .poll(() =>
+        app.evaluate(({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()
+            .find((w) => w.webContents.getURL() !== 'about:blank')!
+            .isVisible(),
+        ),
+      )
       .toBe(true)
     await page.getByLabel('关闭窗口后继续运行').uncheck()
     await expect
@@ -127,32 +160,45 @@ test('desktop settings survive restart and close-to-tray retains the same render
       )
       .toBe(false)
     await app.evaluate(({ BrowserWindow }) =>
-      BrowserWindow.getAllWindows()[0].setBounds({ width: 1150, height: 780 }),
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL() !== 'about:blank')!
+        .setBounds({ width: 405, height: 720 }),
     )
     await expect
       .poll(() =>
         app.evaluate(
-          ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getNormalBounds().width,
+          ({ BrowserWindow }) =>
+            BrowserWindow.getAllWindows()
+              .find((w) => w.webContents.getURL() !== 'about:blank')!
+              .getNormalBounds().width,
         ),
       )
-      .toBe(1150)
+      .toBe(405)
     await app.close()
     app = await launch()
-    page = await app.firstWindow()
+    player = await app.firstWindow()
+    page = player
     await expect(page).toHaveTitle(`Music Party ${packageInfo.version} · 官方多人一起听`)
-    await page.getByRole('button', { name: '设置', exact: true }).click()
+    page = await openTool(app, player, 'settings')
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+    await settingsGroup(page, '播放与桌面')
     await expect(page.getByLabel('默认音量')).toHaveValue('0.23')
     await expect(page.getByLabel('默认播放模式')).toHaveValue('loop')
+    await settingsGroup(page, '外观')
     await expect(page.getByLabel('界面字体大小', { exact: true })).toHaveValue('130')
     await expect(page.getByLabel('主题颜色', { exact: true })).toHaveValue('#448aff')
     await expect(page.getByLabel('当前主题色')).toHaveText('#448aff')
+    await settingsGroup(page, '播放与桌面')
     await expect(page.getByLabel('关闭窗口后继续运行')).not.toBeChecked()
     expect(
       await app.evaluate(
-        ({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getNormalBounds().width,
+        ({ BrowserWindow }) =>
+          BrowserWindow.getAllWindows()
+            .find((w) => w.webContents.getURL() !== 'about:blank')!
+            .getNormalBounds().width,
       ),
-    ).toBe(1150)
+    ).toBe(405)
+    await settingsGroup(page, '外观')
     await page.getByRole('button', { name: '深色', exact: true }).click()
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
     await expect
@@ -187,7 +233,13 @@ test('desktop settings survive restart and close-to-tray retains the same render
     await expect(page.locator('html')).not.toHaveAttribute('data-custom-accent', 'true')
     const exited = app.waitForEvent('close')
     await app.evaluate(({ BrowserWindow }) => {
-      setTimeout(() => BrowserWindow.getAllWindows()[0].close(), 20)
+      setTimeout(
+        () =>
+          BrowserWindow.getAllWindows()
+            .find((w) => w.webContents.getURL() !== 'about:blank')!
+            .close(),
+        20,
+      )
     })
     await exited
   } finally {

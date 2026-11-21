@@ -1,3 +1,4 @@
+import { settingsGroup, openTool, panelPage, loginFixture } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -125,13 +126,14 @@ test('favorite views share server playlist ordering and adding to an owned playl
     },
   })
   try {
-    const page = await app.firstWindow()
+    const player = await app.firstWindow()
+    let page = player
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
-    await page.getByRole('button', { name: '扫码登录', exact: true }).click()
-    await expect(page.getByText(self.nickname, { exact: true })).toBeVisible()
+    await loginFixture(app, player)
     // A category reacts only within its own button; the rest of the bar stays unchanged.
-    await page.locator('.sidebar').getByRole('button', { name: '我的歌单', exact: true }).click()
+    page = await openTool(app, player, 'library')
+    await page.locator('.catalog-tabs').getByRole('button', { name: '歌单', exact: true }).click()
     const category = page
       .locator('.filter-tabs')
       .getByRole('button', { name: '我创建的', exact: true })
@@ -148,12 +150,11 @@ test('favorite views share server playlist ordering and adding to an owned playl
     expect(
       await page.locator('.filter-tabs').evaluate((node) => getComputedStyle(node).backgroundColor),
     ).toBe(tabsBackground)
-    await page.getByRole('button', { name: '设置', exact: true }).click()
+    page = await openTool(app, player, 'settings')
+    await settingsGroup(page, '外观')
     await page.getByLabel('界面字体大小', { exact: true }).fill('150')
-    await page
-      .locator('.sidebar')
-      .getByRole('button', { name: '我喜欢的音乐', exact: true })
-      .click()
+    page = await openTool(app, player, 'library')
+    await page.getByRole('button', { name: '我喜欢', exact: true }).click()
     await expect(page.locator('.song-title strong')).toHaveText([
       '排序歌曲9',
       '排序歌曲2',
@@ -165,15 +166,20 @@ test('favorite views share server playlist ordering and adding to an owned playl
     expect(calls.some((call) => call.route === '/playlist/detail' && call.args.id === '10')).toBe(
       true,
     )
-    await page.locator('.sidebar').getByRole('button', { name: '我的歌单', exact: true }).click()
+    page = await openTool(app, player, 'library')
+    await page.locator('.catalog-tabs').getByRole('button', { name: '歌单', exact: true }).click()
     await page.getByRole('button', { name: /^喜欢的音乐 3/ }).click()
+    page = await panelPage(app, 'detail-playlist-10')
     await expect(page.locator('.song-title strong')).toHaveText([
       '排序歌曲9',
       '排序歌曲2',
       '排序歌曲7',
     ])
     await page.getByRole('button', { name: '添加到歌单 排序歌曲9', exact: true }).click()
-    let popup = page.getByRole('dialog', { name: '添加歌曲到歌单', exact: true })
+    let popup = (await panelPage(app, 'add')).getByRole('dialog', {
+      name: '添加歌曲到歌单',
+      exact: true,
+    })
     await expect(popup.getByRole('button', { name: /^他人歌单/ })).toHaveCount(0)
     await expect(popup.getByRole('button', { name: /^喜欢的音乐/ })).toHaveCount(0)
     await expect(popup.getByRole('button', { name: '确认添加', exact: true })).toBeDisabled()
@@ -184,17 +190,28 @@ test('favorite views share server playlist ordering and adding to an owned playl
     expect(calls.filter((call) => call.route.endsWith('/manipulate/tracks'))).toHaveLength(1)
     await popup.getByRole('button', { name: '确认添加', exact: true }).click()
     await expect(popup).toHaveCount(0)
-    await expect(page.getByRole('status').filter({ hasText: '已添加到“晚间歌单”' })).toBeVisible()
+    await expect(
+      (await panelPage(app, 'feedback'))
+        .getByRole('status')
+        .filter({ hasText: '已添加到“晚间歌单”' }),
+    ).toBeVisible()
     expect(targetIds).toEqual(['9'])
     expect(
       calls.filter((call) => call.route.endsWith('/manipulate/tracks')).at(-1)?.args.data,
     ).toEqual({ op: 'add', pid: '20', trackIds: '["9"]', imme: 'true' })
     await page.getByRole('button', { name: '添加到歌单 排序歌曲9', exact: true }).click()
-    popup = page.getByRole('dialog', { name: '添加歌曲到歌单', exact: true })
+    popup = (await panelPage(app, 'add')).getByRole('dialog', {
+      name: '添加歌曲到歌单',
+      exact: true,
+    })
     await popup.getByRole('button', { name: /^晚间歌单 1/ }).click()
     await popup.getByRole('button', { name: '确认添加', exact: true }).click()
     await expect(popup).toHaveCount(0)
-    await expect(page.getByRole('status').filter({ hasText: '歌曲已在“晚间歌单”中' })).toBeVisible()
+    await expect(
+      (await panelPage(app, 'feedback'))
+        .getByRole('status')
+        .filter({ hasText: '歌曲已在“晚间歌单”中' }),
+    ).toBeVisible()
     expect(calls.filter((call) => call.route.endsWith('/manipulate/tracks'))).toHaveLength(2)
     expect(targetIds).toEqual(['9'])
     await page.screenshot({ path: 'test-results/music-party-library-order.png' })
@@ -372,69 +389,69 @@ test('player playlist entry keeps the chosen song across playback changes and is
     },
   })
   try {
-    const page = await app.firstWindow()
+    const player = await app.firstWindow()
+    let page = player
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
-    await page.locator('audio').evaluate((node: HTMLAudioElement) => (node.muted = true))
-    await page.getByRole('button', { name: '扫码登录', exact: true }).click()
-    await expect(page.getByText(self.nickname, { exact: true })).toBeVisible()
-    await page
-      .locator('.sidebar')
-      .getByRole('button', { name: '我喜欢的音乐', exact: true })
-      .click()
+    await player.locator('audio').evaluate((node: HTMLAudioElement) => (node.muted = true))
+    await loginFixture(app, player)
+    page = await openTool(app, player, 'library')
+    await page.getByRole('button', { name: '我喜欢', exact: true }).click()
     await page.getByRole('button', { name: '播放 播放页歌曲2', exact: true }).click()
-    await expect(page.locator('.now-playing strong')).toHaveText('播放页歌曲2')
-    await page.getByRole('button', { name: '打开播放界面', exact: true }).click()
-    await page.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
-    let popup = page.getByRole('dialog', { name: '添加歌曲到歌单', exact: true })
+    const controls = await openTool(app, player, 'controls')
+    await expect(controls.locator('.song-identity strong')).toHaveText('播放页歌曲2')
+    await player.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
+    let popup = (await panelPage(app, 'add')).getByRole('dialog', {
+      name: '添加歌曲到歌单',
+      exact: true,
+    })
     await expect(popup.locator('.playlist-add-song strong')).toHaveText('播放页歌曲2')
     await expect(popup.getByRole('button', { name: /^他人歌单|^喜欢的音乐/ })).toHaveCount(0)
     await expect(popup.getByRole('button', { name: '确认添加', exact: true })).toBeDisabled()
     // Playback may advance while the user is choosing a playlist; the dialog retains song 2.
-    await page.locator('audio').evaluate((node) => node.dispatchEvent(new Event('ended')))
-    await expect(page.locator('.now-playing strong')).toHaveText('播放页歌曲7')
+    await player.locator('audio').evaluate((node) => node.dispatchEvent(new Event('ended')))
+    await expect(controls.locator('.song-identity strong')).toHaveText('播放页歌曲7')
     await expect(popup.locator('.playlist-add-song strong')).toHaveText('播放页歌曲2')
     await popup.getByRole('button', { name: /^晚间歌单/ }).click()
     expect(writes).toHaveLength(0)
     await popup.getByRole('button', { name: '确认添加', exact: true }).click()
     await expect(popup).toHaveCount(0)
     expect(targetIds).toEqual(['2'])
-    await page.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
+    await player.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
     await expect(popup.locator('.playlist-add-song strong')).toHaveText('播放页歌曲7')
     // Simulate account departure while the modal owns focus; stale choices must be discarded.
-    await page
-      .getByRole('button', { name: '退出账号', exact: true, includeHidden: true })
-      .evaluate((node) => (node as HTMLElement).click())
-    await expect(popup).toHaveCount(0)
-    await expect(
-      page.getByRole('button', { name: '扫码登录', exact: true, includeHidden: true }),
-    ).toBeAttached()
+    const settings = await openTool(app, player, 'settings')
+    await settingsGroup(settings, '账号')
+    await settings.getByRole('button', { name: '退出账号', exact: true }).click()
+    await expect(popup).toBeHidden()
+    await expect(settings.getByRole('button', { name: '扫码登录', exact: true })).toBeVisible()
     roomActive = true
-    await page.getByRole('button', { name: '收起播放界面', exact: true }).click()
-    await page.getByRole('button', { name: '扫码登录', exact: true }).click()
-    await expect(page.getByText(self.nickname, { exact: true })).toBeVisible()
+    await loginFixture(app, player)
     await expect(popup).toHaveCount(0)
-    await page.locator('.sidebar').getByRole('button', { name: '正在播放', exact: true }).click()
-    await page.getByRole('button', { name: '一起听', exact: true }).click()
+    page = player
+    await page.bringToFront()
+    page = await openTool(app, player, 'room')
     await page.getByRole('button', { name: '恢复当前房间', exact: true }).click()
-    await expect(page.locator('.now-playing strong')).toHaveText('播放页歌曲9')
-    await page.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
-    popup = page.getByRole('dialog', { name: '添加歌曲到歌单', exact: true })
+    await expect(controls.locator('.song-identity strong')).toHaveText('播放页歌曲9')
+    await player.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
+    popup = (await panelPage(app, 'add')).getByRole('dialog', {
+      name: '添加歌曲到歌单',
+      exact: true,
+    })
     await expect(popup.locator('.playlist-add-song strong')).toHaveText('播放页歌曲9')
     await popup.getByRole('button', { name: /^晚间歌单/ }).click()
     await popup.getByRole('button', { name: '确认添加', exact: true }).click()
     await expect(popup).toHaveCount(0)
     expect(targetIds).toEqual(['2', '9'])
-    await page.getByRole('button', { name: '收起播放界面', exact: true }).click()
-    await page
-      .locator('.sidebar')
-      .getByRole('button', { name: '我喜欢的音乐', exact: true })
-      .click()
+    page = await openTool(app, player, 'library')
+    await page.getByRole('button', { name: '我喜欢', exact: true }).click()
     await page.getByRole('button', { name: '试听 播放页歌曲7', exact: true }).click()
-    await expect(page.locator('.now-playing strong')).toHaveText('播放页歌曲7')
-    await page.getByRole('button', { name: '打开播放界面', exact: true }).click()
-    await page.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
-    popup = page.getByRole('dialog', { name: '添加歌曲到歌单', exact: true })
+    await expect(controls.locator('.song-identity strong')).toHaveText('播放页歌曲7')
+    await player.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
+    popup = (await panelPage(app, 'add')).getByRole('dialog', {
+      name: '添加歌曲到歌单',
+      exact: true,
+    })
     await expect(popup.locator('.playlist-add-song strong')).toHaveText('播放页歌曲7')
     roomSong = '2'
     version++

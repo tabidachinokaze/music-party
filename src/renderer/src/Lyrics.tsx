@@ -15,6 +15,7 @@ export function Lyrics({
   onSeek?(position: number): void
 }) {
   const [lines, setLines] = useState<LyricLine[]>([])
+  const [translations, setTranslations] = useState(new Map<number, string>())
   const [message, setMessage] = useState('播放一首歌，让歌词在这里流动')
   const [follow, setFollow] = useState(true)
   const container = useRef<HTMLDivElement>(null)
@@ -22,6 +23,7 @@ export function Lyrics({
   useEffect(() => {
     let active = true
     setLines([])
+    setTranslations(new Map())
     setFollow(true)
     if (!songId) {
       setMessage('播放一首歌，让歌词在这里流动')
@@ -33,6 +35,7 @@ export function Lyrics({
         if (!active) return
         const next = parseLyrics(body.lrc?.lyric || '')
         setLines(next)
+        setTranslations(new Map(parseLyrics(body.tlyric?.lyric || '').map((l) => [l.time, l.text])))
         setMessage(next.length ? '' : body.nolyric ? '纯音乐，请欣赏' : '这首歌暂时没有歌词')
       })
       .catch(() => {
@@ -92,6 +95,9 @@ export function Lyrics({
                   }}
                 >
                   {line.text}
+                  {translations.get(line.time) && (
+                    <small className="lyric-translation">{translations.get(line.time)}</small>
+                  )}
                 </button>
               ) : (
                 <p
@@ -102,6 +108,9 @@ export function Lyrics({
                   className={`lyric-line ${i === activeIndex ? 'lyric-active' : ''}`}
                 >
                   {line.text}
+                  {translations.get(line.time) && (
+                    <small className="lyric-translation">{translations.get(line.time)}</small>
+                  )}
                 </p>
               ),
             )}

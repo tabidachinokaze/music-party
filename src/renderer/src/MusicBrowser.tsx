@@ -19,7 +19,6 @@ import { toSong } from '../../shared/protocol'
 import { artistFrom, playlistFrom, type ApiCall } from './music-data'
 import { useSongCollection, type useLibrary } from './useLibrary'
 import { useScrollPagination } from './useScrollPagination'
-import { AddToPlaylist } from './AddToPlaylist'
 import './add-to-playlist.css'
 import { BrowserSearch, type BrowserNavigationState } from './BrowserNavigation'
 
@@ -27,6 +26,8 @@ type LibraryState = ReturnType<typeof useLibrary>
 export type MusicSource = {
   key: string
   title: string
+  byline?: string
+  cover?: string
   playlistId?: string
   albumId?: string
   artistId?: string
@@ -82,10 +83,10 @@ export function SongRows({
             </div>
           </div>
           <span className="album">{song.album}</span>
-          <span>
+          <time className="song-duration" dateTime={`PT${Math.floor(song.duration / 1000)}S`}>
             {Math.floor(song.duration / 60000)}:
             {String(Math.floor(song.duration / 1000) % 60).padStart(2, '0')}
-          </span>
+          </time>
           <div className="song-actions" onDoubleClick={(event) => event.stopPropagation()}>
             {onAddToPlaylist && (
               <button
@@ -141,6 +142,9 @@ export function MusicBrowser({
   onLike,
   onAudition,
   initialSource,
+  onSource,
+  onLogin,
+  onAdd,
   onNavigation,
 }: {
   api: ApiCall
@@ -153,17 +157,18 @@ export function MusicBrowser({
   onPlay(song: Song, ids?: string[]): void
   onLike(song: Song): void
   onAudition?(song: Song): void
+  onSource(source: MusicSource): void
+  onLogin(): void
+  onAdd(song: Song): void
   initialSource?: MusicSource
   onNavigation?(navigation: BrowserNavigationState): void
 }) {
-  const [source, setSource] = useState<MusicSource | null>(() => initialSource || null)
+  const source = initialSource || null
   const [filter, setFilter] = useState<'all' | 'created' | 'collected'>('all')
   const [query, setQuery] = useState('')
   const [listQuery, setListQuery] = useState('')
   const navigationRevision = useRef(0)
   const [inputRevision, setInputRevision] = useState(0)
-  const [addSong, setAddSong] = useState<Song | null>(null)
-  const [addNotice, setAddNotice] = useState('')
   const [kind, setKind] = useState<SearchKind>('songs')
   const [history, setHistory] = useState<string[]>(() => {
     try {
@@ -184,13 +189,6 @@ export function MusicBrowser({
   const searchLock = useRef(false)
   const searchOffset = useRef(0)
   const searchKey = useRef({ query: '', kind: 'songs' as SearchKind })
-  useEffect(() => {
-    setSource(initialSource || null)
-  }, [view, uid, initialSource?.key])
-  useEffect(() => {
-    setAddSong(null)
-    setAddNotice('')
-  }, [uid, view])
   useEffect(() => {
     searchEpoch.current++
     searchLock.current = false
@@ -222,7 +220,11 @@ export function MusicBrowser({
               : { ids: likedIds }),
           }
       : source
-  const collection = useSongCollection(api, effectiveSource)
+  const collection = useSongCollection(
+    api,
+    effectiveSource,
+    effectiveSource?.playlistId ? library.playlistChanges[effectiveSource.playlistId] : 0,
+  )
   const [collectionSearch, setCollectionSearch] = useState({ key: '', text: '' })
   const collectionKey = `${uid}:${view}:${effectiveSource?.key || ''}`
   useEffect(() => setCollectionSearch({ key: collectionKey, text: '' }), [collectionKey])
@@ -289,7 +291,6 @@ export function MusicBrowser({
       setSongResults([])
       setPlaylistResults([])
       setArtistResults([])
-      setSource(null)
       setSearchMore(false)
     }
     const selection = searchKey.current
@@ -366,7 +367,13 @@ export function MusicBrowser({
     }
   }
   function openPlaylist(playlist: Playlist) {
-    setSource({ key: `playlist:${playlist.id}`, title: playlist.name, playlistId: playlist.id })
+    onSource({
+      key: `playlist:${playlist.id}`,
+      title: playlist.name,
+      cover: playlist.cover,
+      byline: playlist.creator,
+      playlistId: playlist.id,
+    })
   }
   const navigation: BrowserNavigationState = {
     scope: `${uid}:${view}`,
@@ -401,8 +408,6 @@ export function MusicBrowser({
       else setListQuery(text)
       return revision
     },
-    onBack:
-      effectiveSource && view !== 'liked' && !initialSource ? () => setSource(null) : undefined,
     onSubmit:
       !effectiveSource && view === 'search' ? (text) => void search(true, kind, text) : undefined,
   }
@@ -453,12 +458,14 @@ export function MusicBrowser({
       ))}
     </div>
   )
-  if (!uid && view !== 'search')
+  if (!uid && !source && view !== 'search')
     return (
       <div className="empty">
         <Library size={28} />
         <strong>登录后查看你的音乐库</strong>
-        <span>到“一起听”页面扫码连接网易云账号</span>
+        <button className="primary" onClick={onLogin}>
+          扫码登录
+        </button>
       </div>
     )
   if (view === 'liked' && (!library.likesReady || (!library.complete && !library.error)))
@@ -478,36 +485,12 @@ export function MusicBrowser({
   return (
     <section className="music-browser">
       {!onNavigation && <BrowserSearch navigation={navigation} />}
-      {addNotice && (
-        <div className="alert" role="status">
-          {addNotice}
-        </div>
-      )}
-      {addSong && uid && (
-        <AddToPlaylist
-          key={`${uid}:${addSong.id}`}
-          api={api}
-          uid={uid}
-          song={addSong}
-          playlists={library.playlists}
-          loading={library.loading}
-          error={library.error}
-          onRefresh={library.refresh}
-          onClose={() => setAddSong(null)}
-          onAdded={(playlist, alreadyExists) => {
-            setAddNotice(
-              alreadyExists ? `歌曲已在“${playlist.name}”中` : `已添加到“${playlist.name}”`,
-            )
-            if (!alreadyExists) library.recordPlaylistAdded(playlist.id)
-            if (effectiveSource?.playlistId === playlist.id) collection.retry()
-            setAddSong(null)
-          }}
-        />
-      )}
       {effectiveSource ? (
         <>
-          <div className="section-title">
+          <div className="section-title collection-summary">
+            {source?.cover && <img src={source.cover} alt="" />}
             <div>
+              {source?.byline && <strong>{source.byline}</strong>}
               <p>
                 已加载 {collection.songs.length} / {collection.total} 首
                 {collection.unavailable > 0 ? ` · ${collection.unavailable} 首暂不可用` : ''}
@@ -556,7 +539,7 @@ export function MusicBrowser({
             onPlay={onPlay}
             onLike={onLike}
             onAudition={onAudition}
-            onAddToPlaylist={uid ? setAddSong : undefined}
+            onAddToPlaylist={uid ? onAdd : undefined}
           />
           {collection.loading && (
             <div className="loading">
@@ -596,7 +579,13 @@ export function MusicBrowser({
                 className="playlist-card"
                 key={album.id}
                 onClick={() =>
-                  setSource({ key: `album:${album.id}`, title: album.name, albumId: album.id })
+                  onSource({
+                    key: `album:${album.id}`,
+                    title: album.name,
+                    cover: album.cover,
+                    byline: album.artist,
+                    albumId: album.id,
+                  })
                 }
               >
                 {album.cover ? (
@@ -760,7 +749,7 @@ export function MusicBrowser({
               onPlay={onPlay}
               onLike={onLike}
               onAudition={onAudition}
-              onAddToPlaylist={uid ? setAddSong : undefined}
+              onAddToPlaylist={uid ? onAdd : undefined}
             />
           )}
           {kind === 'playlists' && cards(playlistResults)}
@@ -771,10 +760,12 @@ export function MusicBrowser({
                   className="playlist-card artist-card"
                   key={artist.id}
                   onClick={() =>
-                    setSource({
+                    onSource({
                       key: `artist:${artist.id}`,
                       title: artist.name,
                       artistId: artist.id,
+                      cover: artist.cover,
+                      byline: artist.aliases.join(' / '),
                     })
                   }
                 >

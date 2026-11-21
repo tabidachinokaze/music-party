@@ -27,6 +27,7 @@ import {
 } from '../shared/media'
 import { validate } from './service'
 import { SettingsStore } from './settings'
+import { PanelWindows } from './panels'
 import { DesktopController } from './desktop'
 import { restoreWindow, validatePreferences } from '../shared/desktop'
 import { normalizeStoredPlayerBackground, preparePlayerBackground } from './player-background-image'
@@ -34,11 +35,20 @@ import { autoUpdater } from 'electron-updater'
 import { UpdateController } from './updates'
 import { PROJECT_LINKS, updateSupport, type ProjectLink } from '../shared/updates'
 
+// Wayland does not let clients position independent top-level windows. XWayland supports docking.
+if (
+  process.platform === 'linux' &&
+  process.env.WAYLAND_DISPLAY &&
+  process.env.DISPLAY &&
+  !app.commandLine.hasSwitch('ozone-platform')
+)
+  app.commandLine.appendSwitch('ozone-platform', 'x11')
 app.setName('Music Party')
 if (process.env.MUSIC_PARTY_PROFILE) app.setPath('userData', process.env.MUSIC_PARTY_PROFILE)
 const primaryInstance = app.requestSingleInstanceLock()
 if (!primaryInstance) app.quit()
 let win: BrowserWindow | null = null
+let panels: PanelWindows | null = null
 let store: SettingsStore
 let desktop: DesktopController | null = null
 let quitting = false
@@ -63,7 +73,10 @@ function saveBounds() {
   if (!win || win.isDestroyed() || win.isFullScreen() || desktop?.fullscreen?.value || !store)
     return
   try {
-    store.saveWindow({ ...win.getNormalBounds(), maximized: win.isMaximized() })
+    const bounds = win.getNormalBounds()
+    const [width, height] = win.getContentSize()
+    if (win.isMaximized() && store.window) store.saveWindow({ ...store.window, maximized: true })
+    else if (!win.isMaximized()) store.saveWindow({ ...bounds, width, height, maximized: false })
   } catch {
     desktop?.notify()
   }
@@ -447,6 +460,10 @@ app.whenReady().then(() => {
     }
     return callApi(request)
   })
+  ipcMain.handle('panel-action', (event, id, action) => {
+    assertSender(event)
+    panels?.action(id, action)
+  })
   ipcMain.handle('desktop-info', (event) => {
     assertSender(event)
     return desktop!.info()
@@ -533,11 +550,12 @@ app.whenReady().then(() => {
       y: geometry.y,
       width: geometry.width,
       height: geometry.height,
-      minWidth: Math.min(1000, geometry.width),
-      minHeight: Math.min(720, geometry.height),
+      useContentSize: true,
+      minWidth: Math.min(288, geometry.width),
+      minHeight: Math.min(512, geometry.height),
       title: 'Music Party',
       icon: join(app.getAppPath(), 'resources/icon.png'),
-      backgroundColor: desktop!.info().resolvedTheme === 'dark' ? '#111214' : '#edeeee',
+      backgroundColor: desktop!.info().resolvedTheme === 'dark' ? '#060606' : '#fbf7f7',
       autoHideMenuBar: true,
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
@@ -547,6 +565,36 @@ app.whenReady().then(() => {
         backgroundThrottling: false,
       },
     })
+    win.setMenu(null)
+    win.setAspectRatio(9 / 16)
+    const playerWindow = win
+    let previousSize = playerWindow.getContentSize()
+    let ratioTimer: ReturnType<typeof setTimeout>
+    playerWindow.on('resize', () => {
+      if (playerWindow.isMaximized() || playerWindow.isFullScreen()) return
+      clearTimeout(ratioTimer)
+      ratioTimer = setTimeout(() => {
+        if (playerWindow.isDestroyed() || playerWindow.isMaximized() || playerWindow.isFullScreen())
+          return
+        const [w, h] = playerWindow.getContentSize(),
+          bounds = playerWindow.getBounds()
+        if (Math.abs((w * 16) / 9 - h) > 1) {
+          const area = screen.getDisplayMatching(bounds).workArea
+          const byWidth = (Math.abs(w - previousSize[0]) * 16) / 9 >= Math.abs(h - previousSize[1])
+          const width = Math.max(
+            1,
+            Math.min(
+              area.width - (bounds.width - w),
+              Math.floor(((area.height - bounds.height + h) * 9) / 16),
+              Math.round(byWidth ? w : (h * 9) / 16),
+            ),
+          )
+          playerWindow.setContentSize(width, Math.round((width * 16) / 9))
+        }
+        previousSize = playerWindow.getContentSize()
+      }, 45)
+    })
+    playerWindow.on('closed', () => clearTimeout(ratioTimer))
     if (geometry.maximized) win.maximize()
     win.on('resize', scheduleBounds)
     win.on('move', scheduleBounds)
@@ -566,7 +614,11 @@ app.whenReady().then(() => {
         app.quit()
       }
     })
-    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+    panels = new PanelWindows(
+      win,
+      join(app.getPath('userData'), 'panel-layout.json'),
+      () => quitting,
+    )
     win.webContents.on('will-navigate', (event) => event.preventDefault())
     win.webContents.session.setPermissionCheckHandler(
       (wc, permission, _origin, details) =>
@@ -588,6 +640,7 @@ app.whenReady().then(() => {
     if (process.env.ELECTRON_RENDERER_URL) win.loadURL(process.env.ELECTRON_RENDERER_URL)
     else win.loadFile(join(__dirname, '../renderer/index.html'))
     win.on('closed', () => {
+      panels = null
       win = null
     })
   }

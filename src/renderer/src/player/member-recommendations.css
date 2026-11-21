@@ -6,7 +6,7 @@
   width: 34px;
   height: 34px;
   border-radius: 50%;
-  background: var(--tone-373841);
+  background: var(--hf-line);
   overflow: hidden;
 }
 .member-recommendation-avatar img {
@@ -30,10 +30,10 @@
 }
 .member-current-recommender {
   margin-bottom: 10px;
-  background: var(--tone-30222e);
+  background: var(--accent-container, var(--hf-primary-soft));
 }
 .member-directory-row:hover {
-  background: var(--tone-272830);
+  background: var(--hf-surface-2);
 }
 .member-current-recommender strong,
 .member-recommendation-heading strong,
@@ -76,7 +76,7 @@
   border-radius: 10px;
 }
 .member-recommendation-song[data-current='true'] {
-  background: var(--tone-30222e);
+  background: var(--accent-container, var(--hf-primary-soft));
 }
 .member-recommendation-song > img,
 .member-recommendation-art {
@@ -85,7 +85,7 @@
   height: 38px;
   border-radius: 7px;
   object-fit: cover;
-  background: var(--tone-272830);
+  background: var(--hf-surface-2);
 }
 .member-recommendation-art {
   display: grid;

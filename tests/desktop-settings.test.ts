@@ -130,16 +130,16 @@ it('relocates a disconnected-monitor window inside an available display', () => 
   expect(result.x! + result.width).toBeLessThanOrEqual(area.width)
   expect(result.y! + result.height).toBeLessThanOrEqual(area.height)
 })
-it('keeps valid negative monitor coordinates and fits small displays', () => {
+it('migrates the landscape workspace and fits the portrait player on small and negative-coordinate displays', () => {
   expect(
     restoreWindow({ x: -1800, y: 50, width: 1100, height: 760, maximized: true }, [
       { x: 0, y: 0, width: 1920, height: 1080 },
       { x: -1920, y: 0, width: 1920, height: 1080 },
     ]),
-  ).toMatchObject({ x: -1800, y: 50, maximized: true })
+  ).toMatchObject({ x: -1800, y: 50, width: 360, height: 640, maximized: false })
   expect(restoreWindow(undefined, [{ x: 0, y: 0, width: 800, height: 600 }])).toMatchObject({
-    width: 800,
-    height: 600,
+    width: 315,
+    height: 560,
   })
 })
 it('persists preferences independently of window geometry and recovers a corrupted file', () => {

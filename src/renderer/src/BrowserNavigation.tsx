@@ -48,6 +48,7 @@ export function BrowserSearch({ navigation }: { navigation: BrowserNavigationSta
     >
       <Search size={16} aria-hidden="true" />
       <input
+        autoFocus={!!navigation.onSubmit}
         type="search"
         aria-label={navigation.label}
         placeholder={navigation.placeholder}

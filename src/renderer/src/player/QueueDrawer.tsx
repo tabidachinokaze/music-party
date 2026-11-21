@@ -1,30 +1,19 @@
+import { PanelHeader } from '../windows/Surface'
 import { useEffect, useRef, useState } from 'react'
-import {
-  ArrowUpToLine,
-  ListMusic,
-  Music2,
-  Play,
-  RefreshCw,
-  ThumbsUp,
-  Trash2,
-  X,
-} from 'lucide-react'
+import { ArrowUpToLine, ListMusic, Music2, Play, RefreshCw, ThumbsUp, Trash2 } from 'lucide-react'
 import type { Song, QueueSong, RoomQueueEntry } from '../../../shared/types'
 import type { useParty } from '../useParty'
 import { waitingCount } from '../../../shared/playback-queue'
 import { toSong } from '../../../shared/protocol'
-import { useDismissable } from './useDismissable'
 import { useRoomQueue } from '../useRoomQueue'
 import { Overlay } from './Overlay'
 import { useScrollPagination } from '../useScrollPagination'
 
 export function QueueDrawer({
   party: p,
-  onClose,
   closing,
 }: {
   party: ReturnType<typeof useParty>
-  onClose(): void
   closing: boolean
 }) {
   const [limit, setLimit] = useState(100)
@@ -33,8 +22,6 @@ export function QueueDrawer({
   const [loading, setLoading] = useState(false)
   const [removing, setRemoving] = useState<RoomQueueEntry | null>(null)
   const cache = useRef<Record<string, Song | null>>({})
-  const drawer = useRef<HTMLElement>(null)
-  useDismissable(drawer, onClose, !closing, '[data-popup-toggle="queue"]')
   const inRoom = !!p.room
   const roomQueue = useRoomQueue(
     p.api,
@@ -48,10 +35,12 @@ export function QueueDrawer({
     (entry) => entry.songBizId === p.roomPlayback?.song?.songBizId,
   )
   const officialSong = p.roomPlayback?.song
-  const roomSong =
-    officialSong && inRoom && !p.auditioning && p.current?.id === officialSong.songId
-      ? officialSong
-      : null
+  const roomSong = inRoom ? officialSong : null
+  const nowPlaying = inRoom
+    ? roomQueue.entries[currentIndex]?.track ||
+      (p.current?.id === officialSong?.songId ? p.current : null) ||
+      (officialSong ? tracks[officialSong.songId] : null)
+    : p.current
   const recommenderName = (song: QueueSong, entry?: Partial<RoomQueueEntry>) => {
     if (!song.songRcmdUid || song.songRcmdUid === '0') return '系统推荐'
     const member = p.members.find((member) => member.uid === song.songRcmdUid)
@@ -78,7 +67,8 @@ export function QueueDrawer({
     contentKey: limit,
     onLoad: () => setLimit((value) => value + 100),
   })
-  const idsKey = ids.join(',')
+  const idsToLoad = officialSong ? [officialSong.songId, ...ids] : ids
+  const idsKey = idsToLoad.join(',')
   useEffect(() => {
     cache.current = {}
     setTracks({})
@@ -88,7 +78,7 @@ export function QueueDrawer({
   useEffect(() => {
     let active = true
     setError('')
-    const missing = [...new Set(ids)].filter((id) => !Object.hasOwn(cache.current, id))
+    const missing = [...new Set(idsToLoad)].filter((id) => !Object.hasOwn(cache.current, id))
     if (!missing.length) {
       setLoading(false)
       return
@@ -116,27 +106,6 @@ export function QueueDrawer({
       active = false
     }
   }, [scope, idsKey])
-  useEffect(() => {
-    if (closing) return
-    const previous = document.activeElement as HTMLElement | null
-    drawer.current?.querySelector<HTMLButtonElement>('[aria-label="关闭播放队列"]')?.focus()
-    const close = (event: KeyboardEvent) => {
-      if (
-        event.key === 'Escape' &&
-        !event.isComposing &&
-        !event.defaultPrevented &&
-        !document.querySelector('[aria-modal="true"]')
-      ) {
-        event.preventDefault()
-        onClose()
-      }
-    }
-    window.addEventListener('keydown', close)
-    return () => {
-      window.removeEventListener('keydown', close)
-      if (previous?.isConnected) previous.focus()
-    }
-  }, [closing])
   const title = inRoom ? '房间待播列表' : '播放队列'
   const count = inRoom
     ? roomQueue.complete
@@ -152,39 +121,33 @@ export function QueueDrawer({
       data-closing={closing}
       aria-hidden={closing}
       inert={closing}
-      ref={drawer}
       role="dialog"
       aria-label={title}
       aria-modal="false"
     >
-      <div className="queue-drawer-heading">
-        <div>
-          <h2>
-            <ListMusic size={19} />
-            {title}
-          </h2>
-          <p>{count === undefined ? '正在同步房间…' : `${count} 首${inRoom ? '待播' : ''}`}</p>
+      <PanelHeader>
+        <div className="panel-inline-actions">
+          <small>
+            {count === undefined ? '正在同步房间…' : `${count} 首${inRoom ? '待播' : ''}`}
+          </small>
+          {inRoom && (
+            <button
+              className="icon-btn"
+              aria-label="刷新待播列表"
+              disabled={roomQueue.loading}
+              onClick={roomQueue.refresh}
+            >
+              <RefreshCw size={15} />
+            </button>
+          )}
         </div>
-        {inRoom && (
-          <button
-            className="icon-btn"
-            aria-label="刷新待播列表"
-            disabled={roomQueue.loading}
-            onClick={roomQueue.refresh}
-          >
-            <RefreshCw size={16} />
-          </button>
-        )}
-        <button className="icon-btn" aria-label="关闭播放队列" onClick={onClose}>
-          <X size={19} />
-        </button>
-      </div>
-      {p.current && (
+      </PanelHeader>
+      {nowPlaying && (
         <div className="queue-playing">
           <span className="queue-section-label">正在播放</span>
           <div>
-            {p.current.cover ? (
-              <img src={p.current.cover} alt="" />
+            {nowPlaying.cover ? (
+              <img src={nowPlaying.cover} alt="" />
             ) : (
               <span className="queue-art-placeholder">
                 <Music2 size={20} />
@@ -196,8 +159,8 @@ export function QueueDrawer({
                   {currentRecommender}
                 </span>
               )}
-              <strong>{p.current.name}</strong>
-              <small>{p.current.artist}</small>
+              <strong>{nowPlaying.name}</strong>
+              <small>{nowPlaying.artist}</small>
             </span>
             <span className={`equalizer ${p.playing ? 'playing' : ''}`} aria-hidden="true">
               <i />
@@ -207,10 +170,10 @@ export function QueueDrawer({
             {roomSong && (
               <button
                 className={`icon-btn queue-playing-like ${currentLiked ? 'liked' : ''}`}
-                aria-label={`点赞正在播放歌曲 ${p.current.name}`}
+                aria-label={`点赞正在播放歌曲 ${nowPlaying.name}`}
                 aria-pressed={currentLiked}
                 title={currentLiked ? '已为房间当前歌曲点赞' : '为房间当前歌曲点赞'}
-                disabled={!!p.busy || !currentReaction || p.roomReaction.loading}
+                disabled={!!p.busy || p.auditioning || !currentReaction || p.roomReaction.loading}
                 onClick={() => p.act('一起听点赞', p.likeRoomSong)}
               >
                 <ThumbsUp size={16} />

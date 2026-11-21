@@ -13,6 +13,7 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
+import { useSurfaceDocument } from './windows/Surface'
 import { Smile } from 'lucide-react'
 import type { Member } from '../../shared/types'
 import { mountComposerSubmit } from './composer-submit'
@@ -36,6 +37,7 @@ export function ChatComposer({
   disabled = false,
   className = '',
   members,
+  leadingTool,
   renderTools,
   notice,
   submitLabel = '发送',
@@ -51,11 +53,14 @@ export function ChatComposer({
   disabled?: boolean
   className?: string
   members?: Member[]
+  leadingTool?: ReactNode
   renderTools(insertText: (text: string) => void): ReactNode
   notice?: ReactNode
   submitLabel?: string
   composerRef?: Ref<{ insertText(text: string): void }>
 }) {
+  const document = useSurfaceDocument(),
+    window = document.defaultView!
   const form = useRef<HTMLFormElement>(null),
     draft = useRef<HTMLTextAreaElement>(null),
     send = useRef<HTMLButtonElement>(null),
@@ -113,9 +118,13 @@ export function ChatComposer({
         width = bounds.width,
         height = bounds.height
       let left = anchor.right + gap
-      if (left + width > innerWidth - margin) left = anchor.left - width - gap
-      if (left < margin) left = Math.max(margin, Math.min(anchor.left, innerWidth - width - margin))
-      const top = Math.max(margin, Math.min(anchor.bottom - height, innerHeight - height - margin))
+      if (left + width > window.innerWidth - margin) left = anchor.left - width - gap
+      if (left < margin)
+        left = Math.max(margin, Math.min(anchor.left, window.innerWidth - width - margin))
+      const top = Math.max(
+        margin,
+        Math.min(anchor.bottom - height, window.innerHeight - height - margin),
+      )
       node.style.left = `${left}px`
       node.style.top = `${top}px`
     }
@@ -278,6 +287,7 @@ export function ChatComposer({
         }}
       />
       <div className="composer-tools">
+        {leadingTool}
         <button
           ref={emojiButton}
           className="icon-btn composer-tool"

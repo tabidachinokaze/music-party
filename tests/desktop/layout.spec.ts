@@ -1,3 +1,4 @@
+import { settingsGroup, openTool, panelPage, loginFixture, widenPanel } from './windows'
 import { test, expect, _electron as electron, type Locator } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -195,17 +196,17 @@ test('application pages keep their controls and content inside small windows at 
     },
   })
   try {
-    const page = await app.firstWindow()
+    const player = await app.firstWindow()
+    let page = player
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await page.locator('audio').evaluate((node: HTMLAudioElement) => (node.muted = true))
-    await page.getByRole('button', { name: '扫码登录', exact: true }).click()
-    await expect(page.getByText(self.nickname, { exact: true })).toBeVisible()
-    await page.locator('.sidebar').getByRole('button', { name: '正在播放', exact: true }).click()
-    await page.getByRole('button', { name: '一起听', exact: true }).click()
+    await loginFixture(app, player)
+    page = await openTool(app, player, 'room')
     await page.getByRole('button', { name: '恢复当前房间', exact: true }).click()
-    await expect(page.locator('.now-playing strong')).toHaveText(songs[0].name)
-    await page.evaluate(async () => {
+    const controls = await openTool(app, player, 'controls')
+    await expect(controls.locator('.song-identity strong')).toHaveText(songs[0].name)
+    await player.evaluate(async () => {
       const canvas = document.createElement('canvas')
       canvas.width = 400
       canvas.height = 240
@@ -223,8 +224,6 @@ test('application pages keep their controls and content inside small windows at 
         playerBackground: { image, zoom: 100, opacity: 100, blur: 0, x: 50, y: 50 },
       })
     })
-    await expect(page.locator('.app-shell')).toHaveClass(/has-custom-background/)
-    await page.getByRole('button', { name: '收起播放界面', exact: true }).click()
     const insideWindow = async (locator: Locator) => {
       await expect(locator).toBeVisible()
       // Pages may scroll vertically at larger font sizes. Their controls must
@@ -234,7 +233,10 @@ test('application pages keep their controls and content inside small windows at 
       // Keep a proportion check, then bound actual clipping on every edge below.
       await expect(locator).toBeInViewport({ ratio: 0.99 })
       const box = (await locator.boundingBox())!
-      const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+      const viewport = await locator.evaluate((node) => ({
+        width: node.ownerDocument.defaultView!.innerWidth,
+        height: node.ownerDocument.defaultView!.innerHeight,
+      }))
       expect(box.width).toBeGreaterThan(0)
       expect(box.height).toBeGreaterThan(0)
       expect(box.x).toBeGreaterThanOrEqual(-1)
@@ -264,37 +266,6 @@ test('application pages keep their controls and content inside small windows at 
       for (const pixels of clipped)
         expect(pixels, 'each clipped edge stays within one CSS pixel').toBeLessThanOrEqual(1)
     }
-    const contentGutters = async (locator: Locator) => {
-      const main = (await page.locator('main.music-main').boundingBox())!
-      const content = (await locator.boundingBox())!
-      const gaps = [
-        content.x - main.x,
-        main.x + main.width - content.x - content.width,
-        content.y - main.y,
-      ]
-      for (const gap of gaps) {
-        expect(gap, 'page content has useful space from its main boundaries').toBeGreaterThan(0)
-        expect(
-          gap,
-          'page content does not lose a large part of the window to padding',
-        ).toBeLessThan(main.width / 4)
-      }
-    }
-    const chrome = async () => {
-      await insideWindow(page.locator('.music-header'))
-      await insideWindow(page.getByLabel('底部播放栏', { exact: true }))
-      const main = (await page.locator('main.music-main').boundingBox())!
-      const header = (await page.locator('.music-header').boundingBox())!
-      const footer = (await page.getByLabel('底部播放栏', { exact: true }).boundingBox())!
-      expect(header.y + header.height).toBeLessThanOrEqual(main.y + 1)
-      expect(main.y + main.height).toBeLessThanOrEqual(footer.y + 1)
-      expect(
-        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
-      ).toBe(true)
-      await expect(page.locator('.app-shell > .player-background-layer')).toHaveCount(1)
-      await expect(page.locator('.room-context')).toHaveCount(0)
-      await expect(page.getByText('正在官方多人房间中', { exact: false })).toHaveCount(0)
-    }
     const songControls = async () => {
       await expect(page.locator('.song-row:not(.list-label)')).toHaveCount(3)
       expect(
@@ -310,120 +281,68 @@ test('application pages keep their controls and content inside small windows at 
       for (const action of await actions.all()) await insideWindow(action)
     }
     for (const [width, height, fontScale] of [
-      [1200, 800, 100],
-      [1000, 720, 100],
-      [1200, 800, 150],
-      [1000, 720, 150],
+      [360, 640, 100],
+      [288, 512, 150],
+      [450, 800, 150],
     ]) {
-      await app.evaluate(
-        ({ BrowserWindow }, bounds) => BrowserWindow.getAllWindows()[0].setBounds(bounds),
-        { width, height },
-      )
-      await expect
-        .poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight })))
-        .toEqual({ width, height })
-      await page.evaluate(
+      const main = await app.browserWindow(player)
+      await main.evaluate((w, size) => w.setContentSize(size.width, size.height), { width, height })
+      await player.evaluate(
         (fontScale) => window.together.updatePreferences({ fontScale }),
         fontScale,
       )
-      await expect
-        .poll(() =>
-          page.evaluate(() =>
-            getComputedStyle(document.documentElement).getPropertyValue('--ui-font-scale').trim(),
-          ),
-        )
-        .toBe(String(fontScale / 100))
-      const screenshot = async (name: string) => {
-        if ((width === 1200 && fontScale === 100) || (width === 1000 && fontScale === 150))
-          await page.screenshot({
-            path: `test-results/layout-${name}-${width === 1200 ? 'regular' : 'small-large-font'}.png`,
-            animations: 'disabled',
-          })
-      }
-      const navigate = async (name: string) => {
-        await page.locator('.sidebar').getByRole('button', { name, exact: true }).click()
-        await page.locator('main').evaluate((node) => node.scrollTo(0, 0))
-        await chrome()
-      }
-      await navigate('搜索')
-      await page.locator('.music-header').getByLabel('搜索音乐库').fill('布局')
-      await page.locator('.music-header').getByLabel('搜索音乐库').press('Enter')
+      const art = await player.locator('.sleeve').boundingBox()
+      expect(art!.width).toEqual(art!.height)
+      for (const node of [
+        player.locator('.sleeve'),
+        player.locator('.playhead'),
+        ...(await player.locator('button').all()),
+      ])
+        await insideWindow(node)
+      page = await openTool(app, player, 'search')
+      await widenPanel(app, page, width + 32, height)
+      const search = page.locator('.panel-titlebar').getByLabel('搜索音乐库')
+      await insideWindow(search)
+      await search.fill('布局')
+      await search.press('Enter')
       await songControls()
-      await contentGutters(page.locator('.music-browser'))
-      await insideWindow(page.locator('.music-header .header-search'))
-      await screenshot('search')
-      await navigate('我的歌单')
-      await expect(page.locator('.playlist-card')).toHaveCount(2)
-      await contentGutters(page.locator('.music-browser'))
-      await insideWindow(page.locator('.playlist-card').first())
-      await screenshot('playlists')
-      await page.getByRole('button', { name: new RegExp(`^${playlistName}`) }).click()
+      page = await openTool(app, player, 'library')
+      await page.getByRole('button', { name: '歌单', exact: true }).click()
+      const list = page.getByRole('button', { name: new RegExp('^' + playlistName) })
+      await insideWindow(list)
+      await list.click()
+      page = await panelPage(app, 'detail-playlist-20')
       await songControls()
-      await insideWindow(page.getByRole('button', { name: '返回', exact: true }))
-      await screenshot('playlist-detail')
-      await navigate('收藏的专辑')
-      await expect(page.locator('.album-grid .playlist-card')).toHaveCount(1)
-      await contentGutters(page.locator('.music-browser'))
-      await screenshot('albums')
+      page = await openTool(app, player, 'library')
+      await page.getByRole('button', { name: '收藏的专辑', exact: true }).click()
       await page.locator('.album-grid .playlist-card').click()
+      page = await panelPage(app, 'detail-album-50')
       await songControls()
-      await screenshot('album-detail')
-      await navigate('私信')
-      await expect(page.locator('.conversation-list > button')).toHaveCount(1)
-      await page.locator('.conversation-list > button').click()
-      await expect(page.getByRole('log', { name: '私信消息', exact: true })).toContainText(
-        '私信布局检查',
-      )
-      await contentGutters(page.locator('.private-layout'))
-      await page.getByLabel('私信内容', { exact: true }).fill('布局草稿，不发送给任何真实账号。')
-      await insideWindow(page.getByLabel('私信内容', { exact: true }))
-      await insideWindow(page.locator('.private-compose'))
-      const tools = page.locator('.private-compose .composer-tools button:visible')
-      expect(await tools.count()).toBeGreaterThanOrEqual(4)
-      for (const tool of await tools.all()) await insideWindow(tool)
+      page = await openTool(app, player, 'private')
+      await widenPanel(app, page, Math.max(350, width), height)
+      if (!(await page.getByLabel('私信内容', { exact: true }).isVisible()))
+        await page.locator('.conversation-list > button').first().click()
+      await expect(page.getByRole('log', { name: '私信消息' })).toContainText('私信布局检查')
+      await page.getByLabel('私信内容', { exact: true }).fill('布局草稿')
+      for (const node of [
+        page.getByLabel('私信内容', { exact: true }),
+        ...(await page.locator('.private-compose .composer-tools button:visible').all()),
+      ])
+        await insideWindow(node)
       expect(
         await page
           .locator('.private-layout')
           .evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
       ).toBe(true)
-      await screenshot('private')
-      await navigate('设置')
-      await contentGutters(page.locator('.settings-page'))
-      await insideWindow(page.getByLabel('界面字体大小', { exact: true }))
-      await page
-        .getByRole('button', { name: '自定义播放器背景', exact: true })
-        .scrollIntoViewIfNeeded()
+      page = await openTool(app, player, 'settings')
+      await settingsGroup(page, '外观')
+      await insideWindow(page.getByLabel('界面字体大小'))
       await insideWindow(page.getByRole('button', { name: '自定义播放器背景', exact: true }))
-      await page.locator('main').evaluate((node) => node.scrollTo(0, 0))
-      await screenshot('settings')
-      await page.getByRole('button', { name: '观测记录', exact: true }).click()
-      await page.locator('main').evaluate((node) => node.scrollTo(0, 0))
-      await chrome()
-      await contentGutters(page.locator('.diagnostics'))
-      await insideWindow(page.getByRole('button', { name: '导出记录', exact: true }))
-      expect(
-        await page
-          .locator('.trace-layout')
-          .evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
-      ).toBe(true)
-      await screenshot('diagnostics')
-      await page.getByRole('button', { name: '打开播放界面', exact: true }).click()
-      await page.mouse.move(20, 20)
-      const cover = page.locator('.album-artwork')
-      await insideWindow(cover)
-      const box = (await cover.boundingBox())!
-      expect(Math.abs(box.width - box.height)).toBeLessThanOrEqual(1)
-      await insideWindow(page.locator('.lyric-column'))
-      for (const action of await page
-        .locator('.room-inline-actions button, .session-actions button, .album-song-actions button')
-        .all())
-        await insideWindow(action)
-      await insideWindow(page.getByRole('button', { name: '收起播放界面', exact: true }))
-      expect(
-        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
-      ).toBe(true)
-      await screenshot('player')
-      await page.getByRole('button', { name: '收起播放界面', exact: true }).click()
+      await settingsGroup(page, '更新与帮助')
+      await page.getByRole('button', { name: '观测记录' }).click()
+      page = await panelPage(app, 'diagnostics')
+      await insideWindow(page.getByRole('button', { name: '导出记录' }))
+      await player.screenshot({ path: test.info().outputPath('player-' + width + '.png') })
     }
     expect(errors).toEqual([])
   } finally {

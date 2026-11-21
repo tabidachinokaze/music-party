@@ -1,3 +1,4 @@
+import { openTool, panelPage } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -39,7 +40,8 @@ test('members show complete recommendation counts, distinct played occurrences a
     },
   })
   try {
-    const page = await app.firstWindow(),
+    const player = await app.firstWindow()
+    let page = player,
       errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await app.evaluate(({ ipcMain }, url) => {
@@ -149,15 +151,12 @@ test('members show complete recommendation counts, distinct played occurrences a
         return { ok: true, data: body }
       })
     }, audioUrl)
-    await page.reload()
-    await page.getByRole('button', { name: '一起听', exact: true }).click()
-    await page
-      .getByRole('dialog', { name: '一起听', exact: true })
-      .getByRole('button', { name: '恢复当前房间', exact: true })
-      .click()
-    await expect(page.getByRole('heading', { name: '3 人一起听' })).toBeVisible()
-    await page.getByRole('button', { name: '查看房间成员', exact: true }).click()
-    const members = page.getByRole('dialog', { name: '房间成员', exact: true })
+    await player.reload()
+    page = await openTool(app, player, 'room')
+    await page.getByRole('button', { name: '恢复当前房间' }).click()
+    await expect(page.getByText('3 人一起听', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '查看房间成员' }).click()
+    const members = await panelPage(app, 'members')
     await expect(
       members.getByRole('button', { name: '查看 Alice 的推荐', exact: true }),
     ).toContainText('推荐 4 首')
@@ -176,7 +175,7 @@ test('members show complete recommendation counts, distinct played occurrences a
     await expect(played.locator('[data-biz-id="101"]')).toContainText('12 赞')
     await expect(played.locator('[data-biz-id="100"]')).toContainText('2 赞')
     await expect(waiting.getByRole('button', { name: /^删除推荐/ })).toHaveCount(0)
-    await page.screenshot({ path: 'test-results/music-party-member-recommendations.png' })
+    await members.screenshot({ path: 'test-results/music-party-member-recommendations.png' })
     await members.getByRole('button', { name: '返回成员列表', exact: true }).click()
     await members.getByRole('button', { name: '查看 测试用户 的推荐', exact: true }).click()
     await members.getByRole('button', { name: '删除推荐 歌曲113', exact: true }).click()
@@ -188,7 +187,7 @@ test('members show complete recommendation counts, distinct played occurrences a
           ).length,
       ),
     ).toBe(0)
-    await page.getByRole('button', { name: '确认删除推荐', exact: true }).click()
+    await members.getByRole('button', { name: '确认删除推荐', exact: true }).click()
     await expect(members.getByText('共推荐 0 首', { exact: true })).toBeVisible()
     await app.evaluate(() => {
       ;(globalThis as any).__memberTest.failPlayed = true

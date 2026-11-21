@@ -7,7 +7,8 @@ import { PLAYER_BACKGROUND_LIMITS, type PreparedPlayerBackground } from '../../s
 /** Chromium decodes local image formats; the main process validates the resulting static PNG. */
 export async function importPlayerBackground(file: File): Promise<PreparedPlayerBackground> {
   if (file.size > PLAYER_BACKGROUND_LIMITS.inputBytes) throw new Error('背景图片不能超过 20 MiB')
-  const bytes = new Uint8Array(await file.arrayBuffer())
+  // A file chosen in a satellite belongs to that window's JavaScript realm.
+  const bytes = new Uint8Array(await new Blob([file]).arrayBuffer())
   const { mime } = validateBackgroundImageBytes(bytes)
   let bitmap: ImageBitmap | undefined
   let png: Blob

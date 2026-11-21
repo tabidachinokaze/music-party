@@ -42,13 +42,13 @@
   min-width: 0;
   padding: 10px;
   border-radius: 9px;
-  background: var(--tone-222329);
+  background: var(--hf-surface-2);
 }
 .playlist-target:hover {
-  background: var(--tone-30313a);
+  background: var(--hf-surface-3);
 }
 .playlist-target[aria-pressed='true'] {
-  background: var(--tone-382831);
+  background: var(--accent-container, var(--hf-primary-soft));
   color: var(--pink);
 }
 .playlist-target img {

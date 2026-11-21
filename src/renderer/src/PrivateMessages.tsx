@@ -5,6 +5,7 @@ import {
   LoaderCircle,
   Mail,
   Plus,
+  ArrowLeft,
   RefreshCw,
   Search,
   Sticker,
@@ -165,10 +166,12 @@ export function PrivateMessages({
     contentKey: inbox.contacts.length,
     onLoad: () => inbox.loadContacts(true),
   })
+  const [showLatest, setShowLatest] = useState(false)
   const readingKey = `${compact ? 'bubble' : 'inbox'}:${inbox.selected?.uid}`
   useLayoutEffect(() => {
     privateViewAccount(String(account?.userId || ''))
     const saved = privateViewPosition(readingKey)
+    setShowLatest(saved?.latest === false)
     stick.current = saved?.latest ?? true
     historyAnchor.current = saved && !saved.latest ? saved.anchor : null
     setConfirmInvite(null)
@@ -209,7 +212,6 @@ export function PrivateMessages({
       <div className="empty private-inbox-empty">
         <Mail size={28} />
         <strong>登录后查看网易云私信</strong>
-        <span>点击左下角登录网易云账号</span>
       </div>
     )
   const selfUid = String(account.userId)
@@ -219,7 +221,10 @@ export function PrivateMessages({
   const dateLabel = (time: number) =>
     new Date(time).toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
   return (
-    <section className={`private-layout ${compact ? 'private-compact' : ''}`}>
+    <section
+      data-selected={!!inbox.selected}
+      className={`private-layout ${compact ? 'private-compact' : ''}`}
+    >
       <aside className="conversation-pane">
         <div className="conversation-toolbar">
           <strong>{inbox.conversations.length} 个会话</strong>
@@ -333,6 +338,15 @@ export function PrivateMessages({
         ) : (
           <>
             <div className="private-thread-heading">
+              {!compact && (
+                <button
+                  className="icon-btn private-back"
+                  aria-label="返回私信列表"
+                  onClick={() => inbox.select(null)}
+                >
+                  <ArrowLeft size={17} />
+                </button>
+              )}
               <span className="avatar thread-avatar">
                 {inbox.selected.avatar ? (
                   <img src={inbox.selected.avatar} alt="" />
@@ -391,8 +405,8 @@ export function PrivateMessages({
                 const box = log.current
                 if (box) {
                   stick.current = box.scrollHeight - box.scrollTop - box.clientHeight < 70
-                  if (inbox.messages.length)
-                    savePrivateView(readingKey, stick.current, captureHistoryAnchor(box))
+                  if (inbox.messages.length) setShowLatest(!stick.current)
+                  savePrivateView(readingKey, stick.current, captureHistoryAnchor(box))
                 }
               }}
             >
@@ -460,6 +474,19 @@ export function PrivateMessages({
                 </div>
               ))}
             </div>
+            {showLatest && (
+              <button
+                className="back-to-latest"
+                aria-label="回到最新消息"
+                onClick={() => {
+                  if (log.current) log.current.scrollTop = log.current.scrollHeight
+                  stick.current = true
+                  setShowLatest(false)
+                }}
+              >
+                回到最新
+              </button>
+            )}
             <ChatComposer
               key={`${selfUid}:${inbox.selected.uid}`}
               className="private-compose"

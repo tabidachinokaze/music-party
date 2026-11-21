@@ -1,3 +1,4 @@
+import { openTool, panelPage } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -39,7 +40,8 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
     },
   })
   try {
-    const page = await app.firstWindow()
+    const player = await app.firstWindow()
+    let page = player
     // Isolate the renderer workflow; production service payload/permissions are unit-tested.
     await app.evaluate(({ ipcMain }, url) => {
       const state = {
@@ -150,17 +152,17 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
         state.calls.push({ method: 'matchClose', id })
       })
     }, audioUrl)
-    await page.reload()
-    await page.locator('.sidebar').getByRole('button', { name: '搜索', exact: true }).click()
+    await player.reload()
+    const controls = await openTool(app, player, 'controls')
+    page = await openTool(app, player, 'search')
     await page.getByLabel('搜索音乐库').fill('111')
     await page
-      .locator('.music-header .header-search')
+      .locator('.panel-header-slot .header-search')
       .getByRole('button', { name: '搜索', exact: true })
       .click()
     await page.getByRole('button', { name: '播放 歌曲111' }).click()
-    await expect(page.locator('.now-playing strong')).toHaveText('歌曲111')
-    await page.getByRole('button', { name: '打开播放界面' }).click()
-    await page.getByRole('button', { name: '一起听', exact: true }).click()
+    await expect(controls.locator('.song-identity strong')).toHaveText('歌曲111')
+    page = await openTool(app, player, 'room')
     await page.getByLabel('搜索匹配用歌曲').fill('222')
     await page
       .locator('.match-song-picker')
@@ -169,26 +171,27 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
     await page.getByLabel('匹配歌曲搜索结果').getByRole('button').click()
     await expect(page.locator('.match-song-selected strong')).toHaveText('歌曲222')
     await page.getByRole('button', { name: '关闭一起听' }).click()
-    await page.getByRole('button', { name: '搜索并选歌' }).click()
+    page = await openTool(app, player, 'search')
     await page.getByLabel('搜索音乐库').fill('333')
     await page
-      .locator('.music-header .header-search')
+      .locator('.panel-header-slot .header-search')
       .getByRole('button', { name: '搜索', exact: true })
       .click()
     await page.getByRole('button', { name: '播放 歌曲333' }).click()
-    await expect(page.locator('.now-playing strong')).toHaveText('歌曲333')
-    await page.getByRole('button', { name: '打开播放界面' }).click()
-    await page.getByRole('button', { name: '一起听', exact: true }).click()
+    await expect(controls.locator('.song-identity strong')).toHaveText('歌曲333')
+    page = await openTool(app, player, 'room')
     await expect(page.locator('.match-song-selected strong')).toHaveText('歌曲222')
     await page.getByLabel('允许陌生人匹配（公开好友房）').check()
     await page.getByRole('button', { name: '创建', exact: true }).click()
-    await expect(page.getByRole('heading', { name: '1 人一起听' })).toBeVisible()
+    await expect(page.getByText('1 人一起听', { exact: true })).toBeVisible()
     const creation = await app.evaluate(() =>
       (globalThis as any).__roomSetup.calls.find((call: any) => call.method === 'multiCreate'),
     )
     expect(creation.args).toEqual({ songId: '222', allowStrangerMatch: true })
-    await expect(page.locator('.room-identity')).toContainText('公开好友房')
+    await expect(page.locator('.room-count')).toContainText('公开好友房')
+    const room = page
     await page.getByRole('button', { name: '重新匹配', exact: true }).click()
+    page = await panelPage(app, 'match')
     await page
       .getByRole('dialog', { name: '一起听' })
       .getByRole('button', { name: '重新匹配', exact: true })
@@ -216,7 +219,7 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
       })
     })
     await expect(page.getByRole('dialog', { name: '一起听' })).toBeHidden()
-    await expect(page.locator('.room-identity')).toContainText('公开匹配房')
+    await expect(room.locator('.room-count')).toContainText('公开匹配房')
     calls = await app.evaluate(() => (globalThis as any).__roomSetup.calls)
     expect(calls.find((call: any) => call.method === 'multiJoin').args).toEqual({
       roomId: 'matched-room',
@@ -227,14 +230,16 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
         .filter((call: any) => call.method === 'multiMatch')
         .map((call: any) => call.args.songId),
     ).toEqual(['222', '222'])
-    await expect(page.locator('.now-playing strong')).toHaveText('歌曲222')
-    await page.getByRole('button', { name: '喜欢封面歌曲', exact: true }).click()
-    await expect(page.getByRole('button', { name: '喜欢封面歌曲', exact: true })).toBeDisabled()
+    await expect(controls.locator('.song-identity strong')).toHaveText('歌曲222')
+    await player.getByRole('button', { name: '喜欢当前歌曲', exact: true }).click()
+    await expect(player.getByRole('button', { name: '喜欢当前歌曲', exact: true })).toBeDisabled()
     calls = await app.evaluate(() => (globalThis as any).__roomSetup.calls)
     expect(calls.filter((call: any) => call.method === 'like')).toHaveLength(1)
     expect(calls.filter((call: any) => call.method === 'multiRedHeart')).toHaveLength(0)
     await app.evaluate(() => (globalThis as any).__roomSetup.pendingLike?.())
-    await expect(page.getByRole('button', { name: '取消喜欢封面歌曲', exact: true })).toBeEnabled()
+    await expect(
+      player.getByRole('button', { name: '取消喜欢当前歌曲', exact: true }),
+    ).toBeEnabled()
     await expect
       .poll(() =>
         app.evaluate(
@@ -255,11 +260,12 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
       songId: '222',
       bizId: '900222',
     })
-    await page.getByRole('button', { name: '取消喜欢封面歌曲', exact: true }).click()
+    await player.getByRole('button', { name: '取消喜欢当前歌曲', exact: true }).click()
+    page = await panelPage(app, 'confirm')
     await expect(page.getByRole('dialog', { name: '取消喜欢这首歌？' })).toBeVisible()
     await page.getByRole('button', { name: '确认取消喜欢', exact: true }).click()
     await expect(page.getByRole('dialog', { name: '取消喜欢这首歌？' })).toBeHidden()
-    await expect(page.getByRole('button', { name: '喜欢封面歌曲', exact: true })).toBeEnabled()
+    await expect(player.getByRole('button', { name: '喜欢当前歌曲', exact: true })).toBeEnabled()
     calls = await app.evaluate(() => (globalThis as any).__roomSetup.calls)
     expect(calls.filter((call: any) => call.method === 'multiRedHeart')).toHaveLength(1)
     expect(calls.filter((call: any) => call.method === 'like').at(-1).args).toEqual({

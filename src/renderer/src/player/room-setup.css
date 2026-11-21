@@ -2,7 +2,7 @@
   padding: 18px;
   margin-bottom: 18px;
   border-radius: 18px;
-  background: var(--tone-202027);
+  background: var(--hf-surface);
 }
 .match-song-picker h3 {
   margin: 0 0 12px;
@@ -55,7 +55,7 @@
   padding: 8px;
 }
 .match-song-results button.selected {
-  background: var(--tone-30232e);
+  background: var(--accent-container, var(--hf-primary-soft));
 }
 .match-progress {
   justify-content: space-between;

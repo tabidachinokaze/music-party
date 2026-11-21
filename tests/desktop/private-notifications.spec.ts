@@ -1,3 +1,4 @@
+import { openTool, panelPage, widenPanel } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -19,7 +20,8 @@ test('Mini pushes open a player conversation while background HTTP stays idle an
     },
   })
   try {
-    const page = await app.firstWindow()
+    const player = await app.firstWindow()
+    let page = player
     await app.evaluate(({ ipcMain }) => {
       const self = { userId: 123, nickname: '我' },
         alice = { userId: 456, nickname: 'Alice' },
@@ -107,9 +109,13 @@ test('Mini pushes open a player conversation while background HTTP stays idle an
       })
     })
     await page.clock.install()
-    await page.reload()
+    await player.reload()
     await page.bringToFront()
-    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].focus())
+    await app.evaluate(({ BrowserWindow }) =>
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL() !== 'about:blank')!
+        .focus(),
+    )
     await expect
       .poll(() => app.evaluate(() => (globalThis as any).__privateNotices.snapshotRequested))
       .toBe(true)
@@ -149,23 +155,27 @@ test('Mini pushes open a player conversation while background HTTP stays idle an
           },
         }
       })
-      BrowserWindow.getAllWindows()[0].webContents.send('private-notifications', {
-        accountUid: '123',
-        session: 'notice-test-session',
-        cursor: 2,
-        connected: true,
-        reset: false,
-        events,
-      })
+      BrowserWindow.getAllWindows()
+        .find((w) => w.webContents.getURL() !== 'about:blank')!
+        .webContents.send('private-notifications', {
+          accountUid: '123',
+          session: 'notice-test-session',
+          cursor: 2,
+          connected: true,
+          reset: false,
+          events,
+        })
     })
-    const bubbles = page.getByLabel('新私信通知')
+    const privateWindow = await panelPage(app, 'private')
+    const bubbles = privateWindow.locator('.notice-peers')
     await expect(bubbles).toContainText('后台消息第二条')
     await expect(bubbles).not.toContainText('后台消息第一条')
-    const position = await bubbles.boundingBox()
-    const viewport = await page.evaluate(() => ({ width: innerWidth, height: innerHeight }))
-    expect(position!.x).toBeGreaterThan(viewport.width / 2)
-    expect(position!.y).toBeLessThan(viewport.height / 2)
-    expect(viewport.width - position!.x - position!.width).toBeGreaterThanOrEqual(19)
+    const front = await app.browserWindow(player)
+    const notice = await app.browserWindow(privateWindow)
+    const mainBounds = await front.evaluate((w) => w.getBounds())
+    const noticeBounds = await notice.evaluate((w) => w.getBounds())
+    expect(noticeBounds.x).toBeGreaterThanOrEqual(mainBounds.x + mainBounds.width)
+    expect(await notice.evaluate((w) => w.isFocused())).toBe(false)
     expect(
       await app.evaluate(
         () =>
@@ -174,22 +184,11 @@ test('Mini pushes open a player conversation while background HTTP stays idle an
           ).length,
       ),
     ).toBe(0)
-    // Hover pauses this notification's eight-second preview; afterward the avatar remains.
-    await bubbles.hover()
-    await page.clock.runFor(9000)
-    await expect(bubbles).toContainText('后台消息第二条')
-    await page.mouse.move(30, 30)
-    await page.clock.runFor(8100)
-    await expect(bubbles.locator('.private-bubble-content')).toHaveCount(0)
-    await page.mouse.move(40, 40)
-    await expect(bubbles.getByRole('button', { name: /与Alice对话/ })).toBeVisible()
-    // A stale initial snapshot must not downgrade live push metadata to disconnected.
     await app.evaluate(() => (globalThis as any).__privateNotices.pendingSnapshot?.())
-    await bubbles.getByRole('button', { name: /与Alice对话/ }).click()
-    const conversation = page.getByRole('dialog', { name: '与 Alice 对话' })
+    await bubbles.getByRole('button', { name: /Alice/ }).click()
+    const conversation = privateWindow.locator('.private-compact')
     await expect(conversation).toBeVisible()
-    await expect(conversation.locator('.private-connection')).toHaveText('实时')
-    await expect(page.getByLabel('播放界面', { exact: true })).toBeVisible()
+    await expect(player.getByLabel('播放界面', { exact: true })).toBeVisible()
     await expect(conversation.getByText('正在读取私信…')).toBeVisible()
     expect(
       await app.evaluate(
@@ -232,12 +231,9 @@ test('Mini pushes open a player conversation while background HTTP stays idle an
     )
     expect(sent).toHaveLength(1)
     expect(sent[0].args).toMatchObject({ uid: '456', text: '第一行\n第二行' })
-    await conversation.getByRole('button', { name: '关闭与 Alice 对话' }).click()
-    await page.clock.runFor(200)
+    await content.fill('保留下来的草稿')
+    await privateWindow.getByRole('button', { name: '关闭私信' }).click()
     await expect(conversation).toBeHidden()
-    await expect(
-      page.getByLabel('新私信通知').getByRole('button', { name: /与Alice对话/ }),
-    ).toBeVisible()
     const backgroundBefore = await app.evaluate(
       () =>
         (globalThis as any).__privateNotices.calls.filter((call: any) =>
@@ -253,7 +249,10 @@ test('Mini pushes open a player conversation while background HTTP stays idle an
           ).length,
       ),
     ).toBe(backgroundBefore)
-    await page.locator('.sidebar').getByRole('button', { name: /^私信/ }).click()
+    page = await openTool(app, player, 'private')
+    await widenPanel(app, page)
+    await expect(page.getByLabel('私信内容')).toHaveValue('保留下来的草稿')
+    await expect(page.locator('.private-connection')).toHaveText('实时')
     await expect(page.locator('.conversation-list > button').first().locator('strong')).toHaveText(
       'Bob',
     )

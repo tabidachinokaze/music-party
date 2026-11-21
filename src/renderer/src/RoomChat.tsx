@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useRef } from 'react'
-import { MessageCircle, RefreshCw, Sticker, X } from 'lucide-react'
+import { PanelHeader } from './windows/Surface'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
+import { CircleArrowDown, ThumbsUp, RefreshCw, Sticker } from 'lucide-react'
 import type { Member, Room, Song } from '../../shared/types'
 import { MessageContent } from './MessageContent'
 import { ChatMessageCard, RoomActivityCard } from './ChatMessageCard'
@@ -7,8 +8,6 @@ import { EmojiPicker } from './EmojiPicker'
 import { MediaComposer } from './MediaComposer'
 import { CHAT_MAX_LENGTH } from '../../shared/chat'
 import type { useRoomChat } from './useRoomChat'
-import { useDismissable } from './player/useDismissable'
-import { usePresence } from './player/usePresence'
 import { useScrollPagination } from './useScrollPagination'
 import { ChatComposer } from './ChatComposer'
 import { captureHistoryAnchor, restoreHistoryAnchor, type HistoryAnchor } from './history-scroll'
@@ -22,6 +21,8 @@ export function RoomChat({
   onSong,
   onAlbum,
   onAudition,
+  onLike,
+  likeDisabled,
   onMediaPlay,
 }: {
   chat: ReturnType<typeof useRoomChat>
@@ -32,12 +33,12 @@ export function RoomChat({
   onSong(song: Song): void
   onAlbum(id: string, title: string): void
   onAudition(song: Song): void
+  onLike(): void
+  likeDisabled: boolean
   onMediaPlay(): void
 }) {
   const list = useRef<HTMLDivElement>(null)
-  const drawer = useRef<HTMLElement>(null)
-  const presence = usePresence(chat.visible)
-  useDismissable(drawer, () => chat.setVisible(false), chat.visible, '[data-popup-toggle="chat"]')
+  const [showLatest, setShowLatest] = useState(false)
   const nearBottom = useRef(true)
   const historyAnchor = useRef<HistoryAnchor | null>(null)
   const composer = useRef<{ insertText(text: string): void }>(null)
@@ -55,29 +56,9 @@ export function RoomChat({
   })
   useEffect(() => {
     nearBottom.current = true
+    setShowLatest(false)
     historyAnchor.current = null
   }, [uid, room?.roomId])
-  useEffect(() => {
-    if (!chat.visible) return
-    const previous = document.activeElement as HTMLElement | null
-    drawer.current?.querySelector<HTMLButtonElement>('[aria-label="关闭聊天"]')?.focus()
-    const key = (event: KeyboardEvent) => {
-      if (
-        event.key === 'Escape' &&
-        !event.isComposing &&
-        !event.defaultPrevented &&
-        !document.querySelector('[aria-modal="true"], :popover-open')
-      ) {
-        event.preventDefault()
-        chat.setVisible(false)
-      }
-    }
-    window.addEventListener('keydown', key)
-    return () => {
-      window.removeEventListener('keydown', key)
-      if (previous?.isConnected && previous.getClientRects().length) previous.focus()
-    }
-  }, [chat.visible])
   useLayoutEffect(() => {
     const box = list.current
     if (!box) return
@@ -97,32 +78,26 @@ export function RoomChat({
   }
   return (
     <aside
-      hidden={!presence.mounted}
-      ref={drawer}
+      hidden={!chat.visible}
       className="chat-drawer"
       aria-label="官方房间聊天"
-      data-closing={presence.closing}
-      aria-hidden={presence.closing}
-      inert={presence.closing}
+      data-closing={!chat.visible}
+      aria-hidden={!chat.visible}
+      inert={!chat.visible}
     >
-      <div className="chat-heading">
-        <MessageCircle size={19} />
-        <div>
-          <strong>房间聊天</strong>
-          <small>{onlineCount === null ? '官方多人一起听' : `${onlineCount} 人一起听`}</small>
+      <PanelHeader>
+        <div className="panel-inline-actions">
+          <small>{onlineCount === null ? '一起听' : onlineCount + ' 人一起听'}</small>
+          <button
+            className="icon-btn"
+            aria-label="刷新聊天"
+            disabled={!room || chat.loading}
+            onClick={chat.refresh}
+          >
+            <RefreshCw size={15} />
+          </button>
         </div>
-        <button
-          className="icon-btn"
-          aria-label="刷新聊天"
-          disabled={!room || chat.loading}
-          onClick={chat.refresh}
-        >
-          <RefreshCw size={16} />
-        </button>
-        <button className="icon-btn" aria-label="关闭聊天" onClick={() => chat.setVisible(false)}>
-          <X size={18} />
-        </button>
-      </div>
+      </PanelHeader>
       {!room ? (
         <div className="chat-empty">加入官方多人房间后，与听友聊天</div>
       ) : (
@@ -143,12 +118,15 @@ export function RoomChat({
             ref={list}
             onScroll={() => {
               const box = list.current
-              if (box) nearBottom.current = box.scrollHeight - box.scrollTop - box.clientHeight < 70
+              if (box) {
+                nearBottom.current = box.scrollHeight - box.scrollTop - box.clientHeight < 30
+                setShowLatest(!nearBottom.current)
+              }
             }}
           >
             <div ref={historyPages} className="pagination-sentinel" aria-hidden="true" />
             {!chat.loading && !chat.messages.length && (
-              <div className="chat-empty">还没有消息，聊聊正在听的歌吧</div>
+              <div className="chat-empty">还没有聊天消息</div>
             )}
             {chat.messages.map((message) => {
               const activity = !message.emoji && message.kind !== 'text' && message.kind !== 'image'
@@ -213,7 +191,33 @@ export function RoomChat({
               )
             })}
           </div>
+          {showLatest && (
+            <button
+              className="back-to-latest"
+              aria-label="回到最新消息"
+              title="回到最新消息"
+              onClick={() => {
+                if (list.current) list.current.scrollTop = list.current.scrollHeight
+                nearBottom.current = true
+                setShowLatest(false)
+              }}
+            >
+              <CircleArrowDown size={18} />
+            </button>
+          )}
           <ChatComposer
+            leadingTool={
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="一起听点赞"
+                title="为房间当前歌曲点赞"
+                disabled={likeDisabled}
+                onClick={onLike}
+              >
+                <ThumbsUp size={16} />
+              </button>
+            }
             composerRef={composer}
             key={`${uid}:${room.roomId}`}
             className="chat-compose"

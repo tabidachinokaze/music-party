@@ -1,3 +1,11 @@
+import {
+  SkipBack,
+  SkipForward,
+  Heart,
+  ListPlus,
+  SlidersHorizontal,
+  PanelsTopLeft,
+} from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
 import { Image, LoaderCircle, Music2, Play, RotateCcw, Search } from 'lucide-react'
 import type { Song } from '../../shared/types'
@@ -152,36 +160,27 @@ export function PlayerBackgroundSettings({
           onPointerCancel={() => (drag.current = null)}
         >
           <PlayerBackground background={draft} />
-          <div className="background-preview-app">
-            <aside className="background-preview-sidebar">
-              <strong>Music Party</strong>
-              <span>正在播放</span>
-              <span>我的歌单</span>
-              <span>私信</span>
-            </aside>
-            <div className="background-preview-workspace">
-              <div className="background-preview-header">
-                <span>正在播放</span>
-                <Search size={11} />
-              </div>
-              <div className="background-preview-main">
-                <div className="background-preview-copy">
-                  <div className="background-preview-cover">
-                    {song?.cover ? <img src={song.cover} alt="" /> : <Music2 size={24} />}
-                  </div>
-                  <strong>{song?.name || 'Music Party'}</strong>
-                  <span>{song?.artist || '让音乐陪伴此刻'}</span>
-                </div>
-                <div className="background-preview-lyrics">
-                  <span>歌词</span>
-                  <strong>让音乐陪伴此刻</strong>
-                  <span>清晰的文字与控件</span>
-                </div>
-              </div>
+          <div className="background-preview-player" aria-hidden="true">
+            <div className="background-preview-cover">
+              {song?.cover ? (
+                <img src={song.cover} alt="" />
+              ) : (
+                <div className="sleeve-placeholder" />
+              )}
             </div>
-            <div className="background-preview-footer">
-              <span>{song?.name || 'Music Party'}</span>
-              <Play size={12} />
+            <div className="background-preview-playhead">
+              <i />
+            </div>
+            <div className="background-preview-buttons">
+              <SkipBack size={12} />
+              <Play size={15} fill="currentColor" />
+              <SkipForward size={12} />
+            </div>
+            <div className="background-preview-tools">
+              <Heart />
+              <ListPlus />
+              <SlidersHorizontal />
+              <PanelsTopLeft />
             </div>
           </div>
         </div>

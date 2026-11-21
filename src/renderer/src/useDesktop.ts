@@ -103,6 +103,16 @@ export function useDesktop(
       const el = event.target as HTMLElement | null
       const editing =
         el?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName || '')
+      if (
+        event.key === 'Escape' &&
+        fullScreenState.current.fullScreen &&
+        !editing &&
+        !event.defaultPrevented
+      ) {
+        event.preventDefault()
+        void setFullScreen(false)
+        return
+      }
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
         event.preventDefault()
         latest.current.navigate('search')

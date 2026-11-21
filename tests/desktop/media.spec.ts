@@ -1,3 +1,4 @@
+import { settingsGroup, openTool, loginFixture, widenPanel } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -65,7 +66,8 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     },
   })
   try {
-    const page = await app.firstWindow()
+    const player = await app.firstWindow()
+    let page = player
     await app.evaluate(({ ipcMain, BrowserWindow }) => {
       const state = {
         calls: [] as any[],
@@ -84,11 +86,13 @@ test('private attachment previews, upload retry, recording, video and fixed reci
           size: request.file.data.length,
           duration: request.file.duration,
         })
-        BrowserWindow.getAllWindows()[0].webContents.send('media-progress', {
-          requestId: request.requestId,
-          phase: 'uploading',
-          percent: 25,
-        })
+        BrowserWindow.getAllWindows()
+          .find((w) => w.webContents.getURL() !== 'about:blank')!
+          .webContents.send('media-progress', {
+            requestId: request.requestId,
+            phase: 'uploading',
+            percent: 25,
+          })
         if (state.failNext) {
           state.failNext = false
           return { ok: false, error: '模拟上传失败', deliveryUnknown: false }
@@ -131,12 +135,14 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     })
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
-    await page.route('https://p1.music.126.net/media-test.png', (route) =>
-      route.fulfill({ contentType: 'image/png', body: png }),
-    )
-    await page.getByRole('button', { name: '扫码登录', exact: true }).click()
-    await expect(page.getByText('测试账户', { exact: true })).toBeVisible()
-    await page.locator('.sidebar').getByRole('button', { name: '私信', exact: true }).click()
+    await app
+      .context()
+      .route('https://p1.music.126.net/media-test.png', (route) =>
+        route.fulfill({ contentType: 'image/png', body: png }),
+      )
+    await loginFixture(app, player)
+    page = await openTool(app, player, 'private')
+    await widenPanel(app, page)
     await page
       .locator('.conversation-list')
       .getByRole('button', { name: /^Alice/ })
@@ -153,7 +159,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await expect(page.getByRole('dialog', { name: '发送附件' })).toHaveCount(0)
     await expect(page.getByRole('log', { name: '私信消息' })).toContainText('表情.png')
 
-    await page.evaluate(() => {
+    await player.evaluate(() => {
       const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)
       ;(window as any).__realGetMedia = original
       navigator.mediaDevices.getUserMedia = async () => {
@@ -163,7 +169,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await page.getByRole('button', { name: '录制语音' }).click()
     await expect(page.getByRole('alert')).toContainText('麦克风权限未开启')
     await page.keyboard.press('Escape')
-    await page.evaluate(() => {
+    await player.evaluate(() => {
       navigator.mediaDevices.getUserMedia = async (...args) => {
         const stream = await (window as any).__realGetMedia(...args)
         ;(window as any).__recordingStream = stream
@@ -182,7 +188,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await page.getByRole('button', { name: '待发送附件' }).click()
 
     expect(
-      await page.evaluate(() =>
+      await player.evaluate(() =>
         (window as any).__recordingStream
           .getTracks()
           .every((track: any) => track.readyState === 'ended'),
@@ -216,8 +222,9 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await expect(page.getByRole('dialog', { name: '发送附件' })).toContainText('Alice')
     await expect(page.getByRole('dialog', { name: '发送附件' })).toContainText('notes.txt')
     await page.getByRole('button', { name: '稍后发送', exact: true }).click()
-    await page.locator('.sidebar').getByRole('button', { name: '设置', exact: true }).click()
-    await page.locator('.sidebar').getByRole('button', { name: '私信', exact: true }).click()
+    page = await openTool(app, player, 'settings')
+    page = await openTool(app, player, 'private')
+    await widenPanel(app, page)
     await page
       .locator('.conversation-list')
       .getByRole('button', { name: /^Alice/ })
@@ -280,9 +287,12 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     ])
     expect(calls.at(-1).target).toEqual({ kind: 'private', uid: '789' })
     expect(calls[2].duration).toBeGreaterThan(300)
+    page = await openTool(app, player, 'settings')
+    await settingsGroup(page, '账号')
     await page.getByRole('button', { name: '退出账号', exact: true }).click()
-    await page.locator('.account').getByRole('button', { name: '扫码登录', exact: true }).click()
-    await expect(page.getByText('测试账户', { exact: true })).toBeVisible()
+    await loginFixture(app, player)
+    page = await openTool(app, player, 'private')
+    await widenPanel(app, page)
     await page
       .locator('.conversation-list')
       .getByRole('button', { name: /^Alice/ })

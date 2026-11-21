@@ -1,233 +1,208 @@
-import { useEffect, useEffectEvent, useRef, useState } from 'react'
-import {
-  ArrowLeft,
-  Disc3,
-  Headphones,
-  Heart,
-  Library,
-  LogOut,
-  Mail,
-  Music2,
-  Search,
-  Settings2,
-  X,
-  LoaderCircle,
-} from 'lucide-react'
-import type { MultiInvitation, Song } from '../../shared/types'
+import { useEffect, useRef, useState } from 'react'
+import { Headphones, LoaderCircle, Mail, MessageSquare } from 'lucide-react'
+import type { MultiInvitation, Song, Conversation } from '../../shared/types'
+import type { PanelId, PrivateMode } from '../../shared/panels'
 import { invitation } from '../../shared/protocol'
 import { useParty } from './useParty'
 import { useLibrary } from './useLibrary'
 import { useRoomChat } from './useRoomChat'
 import { usePrivateMessages } from './usePrivateMessages'
 import { useDesktop } from './useDesktop'
-import { MusicBrowser } from './MusicBrowser'
-import { BrowserSearch, type BrowserNavigationState } from './BrowserNavigation'
-import './browser-navigation.css'
+import { useDesktopPanels, DesktopPanel } from './windows/DesktopPanels'
+import { WindowDirectory, panelTitle, LibraryPanel, RoomPanel } from './windows/PanelPages'
+import { PortraitPlayer, PlaybackControls, useDisplayedPosition } from './player/PortraitPlayer'
+import { Lyrics } from './Lyrics'
 import { PrivateMessages } from './PrivateMessages'
-import { PrivateBubbles, PrivateConversationBubble } from './PrivateBubbles'
 import { RoomChat } from './RoomChat'
-import { usePlayerChrome } from './usePlayerChrome'
-import { PlayerBackground } from './PlayerBackground'
 import { Settings } from './Settings'
 import { Diagnostics } from './Diagnostics'
-import { PlayerView } from './player/PlayerView'
-import { PlayerBar } from './player/PlayerBar'
 import { QueueDrawer } from './player/QueueDrawer'
 import { RoomSetup } from './player/RoomSetup'
-import { Overlay } from './player/Overlay'
-import { usePresence } from './player/usePresence'
+import { MembersDrawer } from './player/MembersDrawer'
+import { AddToPlaylist } from './AddToPlaylist'
+import type { MusicSource } from './MusicBrowser'
 import { mediaDrafts } from './media-drafts'
+import './browser-navigation.css'
 
-type Page =
-  'player' | 'library' | 'albums' | 'liked' | 'search' | 'private' | 'settings' | 'diagnostics'
 export function App() {
-  const p = useParty()
-  const [tab, setTab] = useState<Page>('player')
-  const [expanded, setExpanded] = useState(false)
-  const closingPlayer = useRef(false)
-  const activePage = expanded ? 'player' : tab
-  const [queueOpen, setQueueOpen] = useState(false)
-  const queuePresence = usePresence(queueOpen)
-  const [setupOpen, setSetupOpen] = useState(false)
-  const [loginOpen, setLoginOpen] = useState(false)
-  const [confirmEnd, setConfirmEnd] = useState(false)
-  const [unlikeSong, setUnlikeSong] = useState<Song | null>(null)
-  const [unlikeError, setUnlikeError] = useState('')
-  const [updateAvailable, setUpdateAvailable] = useState(false)
-  const [bubbleOpen, setBubbleOpen] = useState(false)
-  const [browserNavigation, setBrowserNavigation] = useState<BrowserNavigationState | null>(null)
-  const [messageAlbum, setMessageAlbum] = useState<{
-    id: string
-    title: string
-    account: string | null
-  } | null>(null)
-  const chromeVisible = usePlayerChrome(
-    expanded && activePage === 'player',
-    queueOpen ||
-      setupOpen ||
-      loginOpen ||
-      bubbleOpen ||
-      !!messageAlbum ||
-      !!unlikeSong ||
-      confirmEnd,
-  )
-  const chat = useRoomChat(p.api, p.room, p.account)
+  const p = useParty(),
+    panels = useDesktopPanels()
   const uid = p.account ? String(p.account.userId) : null
-  useEffect(() => mediaDrafts.activateAccount(uid), [uid])
-  const library = useLibrary(p.api, uid)
-  const inbox = usePrivateMessages(p.api, p.account, activePage === 'private' || bubbleOpen)
-  const desktop = useDesktop(p, (page) => (page === 'lyrics' ? showPlayer() : navigate(page)))
-  const titles: Record<Page, string> = {
-    player: '正在播放',
-    library: '我的歌单',
-    albums: '收藏的专辑',
-    liked: '我喜欢的音乐',
-    search: '搜索',
-    private: '私信',
-    settings: '设置',
-    diagnostics: '观测记录',
+  const [privateMode, setPrivateMode] = useState<PrivateMode>('full')
+  const [sources, setSources] = useState<Partial<Record<PanelId, MusicSource>>>({})
+  const [adding, setAdding] = useState<{
+    song: Song
+    uid: string
+  } | null>(null)
+  const [confirm, setConfirm] = useState<{ kind: 'unlike'; song: Song } | { kind: 'leave' } | null>(
+    null,
+  )
+  const [confirmError, setConfirmError] = useState('')
+  const [confirmPending, setConfirmPending] = useState(false)
+  const [retry, setRetry] = useState<{
+    scope: string
+    label: string
+    task: () => Promise<void>
+  } | null>(null)
+  const playbackScope = [
+    uid,
+    p.room?.roomId,
+    p.roomPlayback?.song?.songBizId,
+    p.current?.id,
+    p.auditioning,
+    p.playing,
+  ].join(':')
+  function playbackAction(label: string, task: () => Promise<void>) {
+    return p.act(label, async () => {
+      setRetry(null)
+      try {
+        await task()
+      } catch (error) {
+        setRetry({ scope: playbackScope, label, task })
+        throw error
+      }
+    })
   }
-  const navigation = browserNavigation?.scope === `${uid}:${activePage}` ? browserNavigation : null
+  const [feedback, setFeedback] = useState('')
+  const [loginIntent, setLoginIntent] = useState<PanelId | null>(null)
+  const lastNotice = useRef('')
+  const chatShown = !!panels.statuses.chat?.visible
+  const privateShown = !!panels.statuses.private?.visible
+  const chat = useRoomChat(p.api, p.room, p.account, chatShown)
+  const library = useLibrary(p.api, uid)
+  const inbox = usePrivateMessages(
+    p.api,
+    p.account,
+    privateShown && privateMode !== 'notice',
+    panels.documentFor('private'),
+  )
+  const desktop = useDesktop(p, (id) => open(id))
+  const position = useDisplayedPosition(p)
+  useEffect(() => mediaDrafts.activateAccount(uid), [uid])
   useEffect(() => {
-    const accept = (state: import('../../shared/updates').UpdateState) =>
-      setUpdateAvailable(['available', 'downloaded'].includes(state.phase))
-    const stop = window.together.onUpdate(accept)
-    window.together
-      .updateState()
-      .then(accept)
-      .catch(() => {})
-    return stop
-  }, [])
+    chat.setVisible(chatShown && !!p.room)
+  }, [chatShown, p.room?.roomId])
   useEffect(() => {
-    if (!p.notice) return
-    const timer = setTimeout(() => p.setNotice(''), 4500)
-    return () => clearTimeout(timer)
-  }, [p.notice])
+    if (panels.statuses.login?.visible === false) p.cancelLogin()
+  }, [panels.statuses.login?.visible])
   useEffect(() => {
-    if (p.account) setLoginOpen(false)
-    setBubbleOpen(false)
-    setUnlikeSong(null)
-    setUnlikeError('')
-    setMessageAlbum(null)
-  }, [p.account?.userId])
+    setAdding(null)
+    setConfirm(null)
+    setSources({})
+    lastNotice.current = ''
+    for (const { id } of panels.entries)
+      if (id === 'add' || id === 'confirm' || id.startsWith('detail-')) panels.hide(id)
+    if (uid) {
+      panels.hide('login')
+      if (loginIntent && loginIntent !== 'login') open(loginIntent)
+      setLoginIntent(null)
+    }
+  }, [uid])
   useEffect(() => {
-    if (p.room) {
-      showPlayer()
-      setSetupOpen(false)
-    } else chat.setVisible(false)
+    if (p.room && panels.statuses.match?.visible) {
+      panels.hide('match')
+      panels.show('room')
+    }
   }, [p.room?.roomId])
   useEffect(() => {
-    if (chat.visible) setQueueOpen(false)
-  }, [chat.visible])
-  useEffect(() => {
-    if (desktop.info?.fullScreen && !closingPlayer.current) showPlayer()
-  }, [desktop.info?.fullScreen])
-  useEffect(() => {
-    if (!expanded) return
-    const previous = document.activeElement as HTMLElement | null
-    document.querySelector<HTMLButtonElement>('[aria-label="收起播放界面"]')?.focus()
-    return () => {
-      if (previous?.isConnected && previous.getClientRects().length) previous.focus()
-    }
-  }, [expanded])
-  const onEscape = useEffectEvent((event: KeyboardEvent) => {
+    if (!p.notice && !p.error) return
     if (
-      event.key !== 'Escape' ||
-      event.repeat ||
-      event.isComposing ||
-      event.defaultPrevented ||
-      document.querySelector('[aria-modal="true"]') ||
-      document.querySelector(':popover-open') ||
-      queueOpen ||
-      chat.visible
-    )
-      return
-    if (desktop.info?.fullScreen) {
-      event.preventDefault()
-      setFullScreen(false)
-    } else if (expanded) {
-      event.preventDefault()
-      collapsePlayer()
+      !p.error ||
+      (!panels.statuses.login?.visible &&
+        !panels.statuses.match?.visible &&
+        (!panels.statuses.room?.visible || !!p.room))
+    ) {
+      setFeedback(p.error || p.notice)
+      panels.show('feedback', { passive: true })
     }
-  })
+    const timer = setTimeout(() => {
+      p.setNotice('')
+      if (!p.error) panels.hide('feedback')
+    }, 4500)
+    return () => clearTimeout(timer)
+  }, [p.notice, p.error])
   useEffect(() => {
-    window.addEventListener('keydown', onEscape)
-    return () => window.removeEventListener('keydown', onEscape)
-  }, [])
-  function setFullScreen(value: boolean) {
-    desktop.setFullScreen(value)
-  }
-  function collapsePlayer() {
-    if (desktop.info?.fullScreen || desktop.fullScreenBusy) {
-      closingPlayer.current = true
-      desktop.setFullScreen(false).finally(() => {
-        closingPlayer.current = false
-      })
+    const peer = inbox.notificationInbox[0]
+    if (!peer) return
+    const key = [peer.uid, peer.time, peer.unread, peer.preview].join(':')
+    if (lastNotice.current === key) return
+    lastNotice.current = key
+    if (privateShown && privateMode !== 'notice') return
+    setPrivateMode('notice')
+    panels.show('private', {
+      privateMode: 'notice',
+      passive: true,
+      noticeRows: inbox.notificationInbox.length,
+    })
+  }, [inbox.notificationInbox])
+  useEffect(() => {
+    if (privateMode !== 'notice' || !privateShown) return
+    const timer = setTimeout(() => panels.hide('private'), 7000)
+    return () => clearTimeout(timer)
+  }, [privateMode, privateShown, inbox.notificationInbox])
+  function open(id: PanelId) {
+    if (!uid && ['room', 'members', 'chat', 'match', 'private', 'add'].includes(id)) {
+      login(id)
+      return
     }
-    setExpanded(false)
-  }
-  function navigate(page: Page) {
-    if (page === 'search' && tab === 'search') browserNavigation?.onBack?.()
-    setBubbleOpen(false)
-    collapsePlayer()
-    setTab(page)
-  }
-  function showChat() {
-    setQueueOpen(false)
-    chat.setVisible(!chat.visible)
-  }
-  function showQueue() {
-    chat.setVisible(false)
-    setQueueOpen((value) => !value)
-  }
-  function showPlayer() {
-    closingPlayer.current = false
-    setExpanded(true)
-  }
-  function login() {
-    setLoginOpen(true)
-    if (!p.qr) p.act('生成登录二维码', p.login)
-  }
-  function together() {
-    if (!p.account) login()
-    else {
-      p.setError('')
-      setSetupOpen(true)
+    if (id === 'login') {
+      login('login')
+      return
     }
+    if (id === 'chat' && !p.room) {
+      panels.show('room')
+      return
+    }
+    if (id === 'private') {
+      setPrivateMode('full')
+      panels.show(id, { privateMode: 'full' })
+      return
+    }
+    panels.show(id)
   }
-  function onPlay(song: Song, ids?: string[]) {
-    p.act(p.room ? '推送歌曲' : '播放歌曲', () => p.playSong(song, ids))
+  function login(intent: PanelId) {
+    setLoginIntent(intent)
+    panels.show('login')
+    if (!p.qr && !p.busy) void p.act('生成登录二维码', p.login)
   }
-  function onAlbum(id: string, title: string) {
-    setMessageAlbum({ id, title, account: uid })
+  function openSource(source: MusicSource) {
+    const id = ('detail-' + source.key.replace(':', '-')) as PanelId
+    setSources((old) => ({ ...old, [id]: source }))
+    panels.show(id)
   }
-  function onAudition(song: Song) {
-    p.auditionSong(song).catch((error) => p.setError(error.message))
+  function add(song: Song) {
+    if (!uid) {
+      login('library')
+      return
+    }
+    setAdding({ song, uid })
+    panels.show('add')
   }
-  function onMessageMediaPlay() {
-    if (p.audio.current) p.pauseForMedia().catch((error) => p.setError(error.message))
+  function ask(action: NonNullable<typeof confirm>) {
+    if (confirmPending) return
+    p.setError('')
+    setConfirmError('')
+    setConfirm(action)
+    panels.show('confirm')
   }
-  function onLike(song: Song) {
+  function like(song: Song) {
+    if (!uid) {
+      login('library')
+      return
+    }
     if (library.likes.has(song.id)) {
-      setUnlikeSong(song)
-      setUnlikeError('')
-    } else {
-      const captured = p.captureRoomSong()
-      library
-        .toggleLike(song, true)
-        .then(async (confirmed) => {
-          if (confirmed && captured && captured.songId === song.id) {
-            try {
-              await p.redHeartRoomSong(captured)
-            } catch (error: any) {
-              p.setNotice(`已收藏歌曲；${error.message || '房间红心动态未确认'}`)
-            }
-          }
-        })
-        .catch((error) => p.setError(error.message))
+      ask({ kind: 'unlike', song })
+      return
     }
+    const captured = p.captureRoomSong()
+    library
+      .toggleLike(song, true)
+      .then(async (ok) => {
+        if (ok && captured?.songId === song.id) await p.redHeartRoomSong(captured)
+      })
+      .catch((e) => p.setError(e.message))
   }
-  async function joinPrivateInvite(invite: MultiInvitation) {
+  async function join(invite: MultiInvitation) {
     await p.act('加入邀请房间', async () => {
       const preview = await p.api('multiPreview', {
         roomId: invite.roomId,
@@ -235,418 +210,353 @@ export function App() {
       })
       if (preview.data?.roomStatus !== 'AVAILABLE')
         throw new Error('邀请已失效或房间状态无法确认，请刷新后重试')
-      if (p.room?.roomId === invite.roomId) {
-        showPlayer()
-        return
+      if (p.room?.roomId !== invite.roomId) {
+        if (p.room) await p.leaveRoom()
+        await p.joinRoom(invitation({ ...invite, role: 'guest' }))
       }
-      if (p.room) await p.leaveRoom()
-      await p.joinRoom(invitation({ ...invite, role: 'guest' }))
-      showPlayer()
+      panels.show('room')
     })
   }
-  return (
-    <div
-      className={`app-shell music-shell ${desktop.info?.preferences.playerBackground.image ? 'has-custom-background' : ''} ${expanded ? 'player-expanded' : ''} ${!chromeVisible ? 'player-chrome-hidden' : ''}`}
-    >
-      {desktop.info && <PlayerBackground background={desktop.info.preferences.playerBackground} />}
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-icon">
-            <Headphones size={22} />
-          </span>
-          <div>
-            music party<small>好音乐，和你一起</small>
-          </div>
-        </div>
-        <div className="nav-caption">发现音乐</div>
-        <button className={`nav ${tab === 'player' ? 'active' : ''}`} onClick={showPlayer}>
-          <Music2 size={18} />
-          正在播放
-          {p.playing && (
-            <span className="nav-playing" aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-          )}
-        </button>
-        <button
-          className={`nav ${tab === 'search' ? 'active' : ''}`}
-          onClick={() => navigate('search')}
-        >
-          <Search size={18} />
-          搜索
-        </button>
-        <div className="nav-caption library-caption">我的音乐</div>
-        <button
-          className={`nav ${tab === 'liked' ? 'active' : ''}`}
-          onClick={() => navigate('liked')}
-        >
-          <Heart size={18} />
-          我喜欢的音乐
-        </button>
-        <button
-          className={`nav ${tab === 'library' ? 'active' : ''}`}
-          onClick={() => navigate('library')}
-        >
-          <Library size={18} />
-          我的歌单
-        </button>
-        <button
-          className={`nav ${tab === 'albums' ? 'active' : ''}`}
-          onClick={() => navigate('albums')}
-        >
-          <Disc3 size={18} />
-          收藏的专辑
-        </button>
-        <div className="sidebar-bottom">
-          <button
-            className={`nav ${tab === 'private' ? 'active' : ''}`}
-            onClick={() => navigate('private')}
-          >
-            <Mail size={18} />
-            私信
-            {inbox.unread > 0 && (
-              <span className="unread-count">{inbox.unread > 99 ? '99+' : inbox.unread}</span>
-            )}
-          </button>
-          <button
-            className={`nav ${tab === 'settings' || tab === 'diagnostics' ? 'active' : ''}`}
-            onClick={() => navigate('settings')}
-          >
-            <Settings2 size={18} />
-            设置{updateAvailable && <span className="unread-count">更新</span>}
-          </button>
-        </div>
-        <div className="account">
-          <button
-            className="account-profile"
-            aria-label={p.account ? '账户设置' : '扫码登录'}
-            onClick={p.account ? () => navigate('settings') : login}
-          >
-            <span className="avatar">
-              {p.account?.avatarUrl ? (
-                <img src={p.account.avatarUrl} alt="" />
-              ) : (
-                <Headphones size={18} />
-              )}
-            </span>
-            <span>
-              <strong>{p.account?.nickname || '登录网易云'}</strong>
-              <small>{p.account ? '让音乐陪伴此刻' : '同步歌单与好友'}</small>
-            </span>
-          </button>
-          {p.account && (
-            <button
-              aria-label="退出账号"
-              className="icon-btn"
-              disabled={!!p.busy || !!p.room}
-              title={p.room ? '请先离开一起听房间' : '退出账号'}
-              onClick={() => p.act('退出账号', p.logout)}
-            >
-              <LogOut size={15} />
-            </button>
-          )}
-        </div>
-      </aside>
-      <div className="workspace">
-        <header className="music-header">
-          <div className="page-location">
-            {activePage !== 'player' && (
-              <button
-                className="icon-btn"
-                aria-label={navigation?.onBack ? '返回' : '返回播放界面'}
-                title={navigation?.onBack ? `返回${titles[activePage]}` : '返回播放界面'}
-                onClick={navigation?.onBack || showPlayer}
-              >
-                <ArrowLeft size={17} />
-              </button>
-            )}
-            <span className="page-title" title={navigation?.title || titles[activePage]}>
-              {navigation?.title || titles[activePage]}
-            </span>
-          </div>
-          <div className="header-right">
-            {p.room && activePage !== 'player' && (
-              <button className="header-room-pill" onClick={showPlayer}>
-                <Headphones size={14} />
-                {p.onlineCount ?? '…'} 人一起听
-              </button>
-            )}
-            {navigation && <BrowserSearch navigation={navigation} />}
-            <span className="version">
-              <b>{p.version || '…'}</b>
-            </span>
-          </div>
-        </header>
-        <main
-          className={`music-main ${activePage === 'player' ? 'player-main' : activePage === 'private' ? 'private-main' : ''}`}
-        >
-          {!setupOpen && !loginOpen && p.error && (
-            <div className="alert error" role="alert">
-              {p.error}
-              <button aria-label="关闭错误提示" onClick={() => p.setError('')}>
-                <X size={16} />
-              </button>
-            </div>
-          )}
-          {p.notice && (
-            <div className="alert notice player-toast" role="status">
-              {p.notice}
-              <button aria-label="关闭通知" onClick={() => p.setNotice('')}>
-                <X size={16} />
-              </button>
-            </div>
-          )}
-          {activePage === 'player' && (
-            <PlayerView
-              expanded={expanded}
-              fullScreen={desktop.info?.fullScreen ?? false}
-              onExpand={showPlayer}
-              onCollapse={collapsePlayer}
-              onFullScreen={() => desktop.setFullScreen('toggle')}
-              fullScreenBusy={desktop.fullScreenBusy}
-              party={p}
-              library={library}
-              onLike={() => {
-                if (p.current) onLike(p.current)
-              }}
-              onTogether={together}
-              onChat={showChat}
-              unread={chat.unread}
-              onInvite={() => navigate('private')}
-              onLeave={() => setConfirmEnd(true)}
-              onBrowse={() => navigate('search')}
-            />
-          )}
-          <div className="browser-page" hidden={activePage === 'player'}>
-            {tab === 'player' ? null : tab === 'settings' ? (
-              <Settings desktop={desktop} party={p} onDiagnostics={() => navigate('diagnostics')} />
-            ) : tab === 'diagnostics' ? (
-              <Diagnostics traces={p.traces} onExport={() => p.act('导出记录', p.exportTrace)} />
-            ) : tab === 'private' ? (
-              <PrivateMessages
-                inbox={inbox}
-                account={p.account}
-                room={p.room}
-                api={p.api}
-                busy={!!p.busy}
-                onJoin={joinPrivateInvite}
-                onSong={onPlay}
-                onAlbum={onAlbum}
-                onAudition={onAudition}
-                onMediaPlay={onMessageMediaPlay}
-              />
-            ) : (
-              <MusicBrowser
-                key={`${uid}:${tab}`}
-                api={p.api}
-                uid={uid}
-                view={tab}
-                library={library}
-                room={!!p.room}
-                currentId={p.current?.id}
-                busy={!!p.busy}
-                onPlay={onPlay}
-                onLike={onLike}
-                onAudition={onAudition}
-                onNavigation={setBrowserNavigation}
-              />
-            )}
-          </div>
-        </main>
-      </div>
-      <PlayerBar
-        party={p}
-        library={library}
-        expanded={expanded}
-        onPlayer={expanded ? collapsePlayer : showPlayer}
-        onLike={() => {
-          if (p.current) onLike(p.current)
-        }}
-        onQueue={showQueue}
-        queueOpen={queueOpen}
-        onChat={showChat}
-        chatOpen={chat.visible}
-        unread={chat.unread}
-      />
-      {queuePresence.mounted && (
-        <QueueDrawer
-          closing={queuePresence.closing}
-          party={p}
-          onClose={() => setQueueOpen(false)}
-        />
-      )}
-      <RoomChat
-        members={p.members}
-        chat={chat}
-        room={p.room}
-        uid={uid || ''}
-        onlineCount={p.onlineCount}
-        onSong={onPlay}
-        onAlbum={onAlbum}
-        onAudition={onAudition}
-        onMediaPlay={onMessageMediaPlay}
-      />
-      <PrivateBubbles
-        peers={inbox.notificationInbox}
-        visible={chromeVisible}
-        enabled={activePage !== 'private' && !bubbleOpen && !loginOpen && !setupOpen}
-        onOpen={(peer) => {
-          inbox.select(peer)
-          setBubbleOpen(true)
-        }}
-        onDismiss={inbox.dismissNotification}
-      />
-      {bubbleOpen && p.account && (
-        <PrivateConversationBubble
-          title={`与 ${inbox.selected?.nickname || '好友'} 对话`}
-          onClose={() => setBubbleOpen(false)}
-        >
-          <PrivateMessages
-            compact
-            inbox={inbox}
-            account={p.account}
-            room={p.room}
-            api={p.api}
-            busy={!!p.busy}
-            onJoin={joinPrivateInvite}
-            onSong={onPlay}
-            onAlbum={onAlbum}
-            onAudition={onAudition}
-            onMediaPlay={onMessageMediaPlay}
-          />
-        </PrivateConversationBubble>
-      )}
-      {messageAlbum && messageAlbum.account === uid && (
-        <Overlay title={`专辑：${messageAlbum.title}`} wide onClose={() => setMessageAlbum(null)}>
-          <MusicBrowser
-            key={`${uid}:${messageAlbum.id}`}
-            api={p.api}
-            uid={uid}
-            view="albums"
-            initialSource={{
-              key: `album:${messageAlbum.id}`,
-              title: messageAlbum.title,
-              albumId: messageAlbum.id,
+  function reply(peer: Conversation) {
+    inbox.select(peer)
+    inbox.dismissNotification(peer.uid)
+    setPrivateMode('reply')
+    panels.show('private', { privateMode: 'reply' })
+  }
+  const onPlay = (song: Song, ids?: string[]) =>
+    p.act(p.room ? '推送歌曲' : '播放歌曲', () => p.playSong(song, ids))
+  const onAudition = (song: Song) => p.auditionSong(song).catch((e) => p.setError(e.message))
+  const onAlbum = (id: string, title: string) =>
+    openSource({ key: 'album:' + id, title, albumId: id })
+  const onMediaPlay = () => p.pauseForMedia().catch((e) => p.setError(e.message))
+  const messageActions = { onSong: onPlay, onAlbum, onAudition, onMediaPlay }
+  const browser = {
+    api: p.api,
+    uid,
+    library,
+    room: !!p.room,
+    currentId: p.current?.id,
+    busy: !!p.busy,
+    onPlay,
+    onLike: like,
+    onAudition,
+    onSource: openSource,
+    onLogin: () => login('library'),
+    onAdd: add,
+  }
+  function body(id: PanelId) {
+    switch (id) {
+      case 'windows':
+        return (
+          <WindowDirectory
+            open={(id) => {
+              panels.hide('windows')
+              open(id)
             }}
-            library={library}
-            room={!!p.room}
-            currentId={p.current?.id}
-            busy={!!p.busy}
-            onPlay={onPlay}
-            onLike={onLike}
-            onAudition={onAudition}
+            statuses={panels.statuses}
+            account={p.account}
+            unread={inbox.unread}
+            chatUnread={chat.unread}
           />
-        </Overlay>
-      )}
-      <audio ref={p.audio} {...p.audioEvents} />
-      {setupOpen && (
-        <RoomSetup
-          party={p}
-          onClose={() => setSetupOpen(false)}
-          onJoined={() => {
-            setSetupOpen(false)
-            showPlayer()
-          }}
-          onBrowse={() => {
-            setSetupOpen(false)
-            navigate('search')
-          }}
-        />
-      )}
-      {loginOpen && !p.account && (
-        <Overlay
-          title="连接网易云音乐"
-          onClose={() => {
-            setLoginOpen(false)
-            p.setQr(null)
-          }}
-        >
-          <div className="login-dialog">
-            <div className="login-symbol">
-              <Headphones size={30} />
+        )
+      case 'controls':
+        return (
+          <PlaybackControls
+            party={p}
+            position={position}
+            act={playbackAction}
+            retry={
+              retry?.scope === playbackScope
+                ? { label: retry.label, run: () => playbackAction(retry.label, retry.task) }
+                : undefined
+            }
+            fullScreen={!!desktop.info?.fullScreen}
+            toggleFullScreen={() => desktop.setFullScreen('toggle')}
+          />
+        )
+      case 'lyrics':
+        return (
+          <div className="lyric-reader">
+            <div className="song-identity">
+              <strong>{p.current?.name || '尚未选歌'}</strong>
+              <span>{p.current?.artist}</span>
             </div>
-            <p>
-              用网易云音乐 App 扫码
-              <br />
-              把歌单和朋友带到这里
-            </p>
+            <Lyrics
+              api={p.api}
+              songId={p.current?.id}
+              position={position}
+              seekable={!p.room || p.auditioning}
+              onSeek={(pos) => p.act('跳转歌词', () => p.seek(pos))}
+            />
+          </div>
+        )
+      case 'library':
+      case 'search':
+        return <LibraryPanel key={uid} {...browser} search={id === 'search'} />
+      case 'queue':
+        return <QueueDrawer party={p} closing={!panels.statuses.queue?.visible} />
+      case 'room':
+        if (p.room) return <RoomPanel party={p} open={open} leave={() => ask({ kind: 'leave' })} />
+      case 'match':
+        return p.account ? (
+          <RoomSetup
+            party={p}
+            onClose={() => panels.hide(id)}
+            onJoined={() => {
+              if (id === 'match') panels.hide(id)
+              panels.show('room')
+            }}
+            onBrowse={() => open('search')}
+          />
+        ) : (
+          signIn()
+        )
+      case 'members':
+        return p.room ? (
+          <MembersDrawer key={p.room.roomId} party={p} onClose={() => panels.hide(id)} />
+        ) : (
+          <button className="secondary" onClick={() => open('room')}>
+            加入一起听
+          </button>
+        )
+      case 'chat':
+        return p.room ? (
+          <RoomChat
+            key={p.room.roomId}
+            {...messageActions}
+            chat={chat}
+            room={p.room}
+            uid={uid || ''}
+            onlineCount={p.onlineCount}
+            members={p.members}
+            onLike={() => p.act('一起听点赞', p.likeRoomSong)}
+            likeDisabled={
+              !!p.busy ||
+              p.auditioning ||
+              !p.roomPlayback?.song ||
+              p.roomReaction.loading ||
+              p.roomReaction.bizId !== p.roomPlayback.song.songBizId
+            }
+          />
+        ) : (
+          <button className="secondary" onClick={() => open('room')}>
+            加入一起听
+          </button>
+        )
+      case 'private':
+        if (!p.account) return signIn()
+        if (privateMode === 'notice')
+          return (
+            <div className="notice-peers">
+              {inbox.notificationInbox.slice(0, 3).map((peer) => (
+                <button key={peer.uid} onClick={() => reply(peer)}>
+                  {peer.avatar ? <img src={peer.avatar} alt="" /> : <Mail />}
+                  <span>
+                    <strong>{peer.nickname}</strong>
+                    <small>{peer.preview || '新私信'}</small>
+                  </span>
+                  {peer.unread > 1 ? (
+                    <small className="notice-count" aria-label={peer.unread + ' 条未读'}>
+                      {peer.unread}
+                    </small>
+                  ) : (
+                    <MessageSquare size={15} />
+                  )}
+                </button>
+              ))}
+            </div>
+          )
+        return (
+          <div className="private-window-content">
+            {privateMode === 'reply' && (
+              <button className="text-btn expand-conversation" onClick={() => open('private')}>
+                打开完整对话
+              </button>
+            )}
+            <PrivateMessages
+              key={uid}
+              compact={privateMode === 'reply'}
+              inbox={inbox}
+              account={p.account}
+              room={p.room}
+              api={p.api}
+              busy={!!p.busy}
+              onJoin={join}
+              {...messageActions}
+            />
+          </div>
+        )
+      case 'settings':
+        return (
+          <Settings
+            desktop={desktop}
+            party={p}
+            onLogin={() => login('login')}
+            onDiagnostics={() => open('diagnostics')}
+          />
+        )
+      case 'diagnostics':
+        return <Diagnostics traces={p.traces} onExport={() => p.act('导出记录', p.exportTrace)} />
+      case 'login':
+        return (
+          <div className="login-dialog">
+            <Headphones size={27} />
+            <p>使用网易云音乐 App 扫码登录</p>
             {p.qr ? (
-              <img src={p.qr.qrimg} alt="网易云登录二维码" />
+              <img alt="网易云登录二维码" src={p.qr.qrimg} />
             ) : (
-              <div className="qr-placeholder">
-                <LoaderCircle size={28} className="spin" />
-              </div>
+              <div className="qr-placeholder">{p.busy && <LoaderCircle className="spin" />}</div>
             )}
             <small>
               {p.qr ? p.qrStatus : p.busy ? '正在生成二维码…' : '二维码已过期，请重新生成'}
             </small>
             {!p.qr && !p.busy && (
-              <button className="secondary" onClick={() => p.act('生成登录二维码', p.login)}>
+              <button className="primary" onClick={() => p.act('生成登录二维码', p.login)}>
                 重新生成二维码
               </button>
             )}
-            {p.error && (
-              <div className="alert error" role="alert">
-                {p.error}
-              </div>
-            )}
+            {p.error && <p role="alert">{p.error}</p>}
           </div>
-        </Overlay>
-      )}
-      {unlikeSong && (
-        <Overlay title="取消喜欢这首歌？" onClose={() => setUnlikeSong(null)}>
-          <p className="overlay-intro">确认将「{unlikeSong.name}」从我喜欢的音乐中移除？</p>
-          {unlikeError && (
-            <div className="alert error" role="alert">
-              {unlikeError}
+        )
+      case 'add':
+        return adding && uid === adding.uid ? (
+          <AddToPlaylist
+            key={uid + ':' + adding.song.id}
+            api={p.api}
+            song={adding.song}
+            uid={uid}
+            playlists={library.playlists}
+            loading={library.loading}
+            error={library.error}
+            onRefresh={library.refresh}
+            onClose={() => panels.hide(id)}
+            onAdded={(playlist, exists) => {
+              if (!exists) {
+                library.recordPlaylistAdded(playlist.id)
+              }
+              p.setNotice(
+                exists ? '歌曲已在“' + playlist.name + '”中' : '已添加到“' + playlist.name + '”',
+              )
+              panels.hide(id)
+              setAdding(null)
+            }}
+          />
+        ) : null
+      case 'confirm':
+        return (
+          confirm && (
+            <div
+              className="tool-stack"
+              role="dialog"
+              aria-label={confirm.kind === 'leave' ? '离开多人房间？' : '取消喜欢这首歌？'}
+            >
+              <p>
+                {confirm.kind === 'leave'
+                  ? '离开一起听房间？个人队列会保留。'
+                  : '将《' + confirm.song.name + '》从我喜欢的音乐中移除？'}
+              </p>
+              {confirmError && <p role="alert">{confirmError}</p>}
+              <div className="row-actions">
+                <button
+                  className="secondary"
+                  disabled={confirmPending}
+                  onClick={() => panels.hide(id)}
+                >
+                  取消
+                </button>
+                <button
+                  className="primary"
+                  disabled={
+                    confirmPending ||
+                    !!p.busy ||
+                    (confirm.kind === 'unlike' && library.likeBusy.has(confirm.song.id))
+                  }
+                  onClick={async () => {
+                    if (confirmPending) return
+                    setConfirmPending(true)
+                    try {
+                      if (confirm.kind === 'leave') await p.leaveRoom()
+                      else await library.toggleLike(confirm.song, false)
+                      panels.hide(id)
+                      setConfirm(null)
+                    } catch (e) {
+                      setConfirmError((e as Error).message)
+                    } finally {
+                      setConfirmPending(false)
+                    }
+                  }}
+                >
+                  {confirm.kind === 'leave' ? '确认离开' : '确认取消喜欢'}
+                </button>
+              </div>
             </div>
-          )}
-          <div className="row-actions">
-            <button className="secondary" onClick={() => setUnlikeSong(null)}>
-              保留喜欢
-            </button>
+          )
+        )
+      case 'feedback':
+        return (
+          <div className="tool-stack">
+            <p role={p.error ? 'alert' : 'status'}>{feedback}</p>
             <button
-              className="primary"
-              disabled={library.likeBusy.has(unlikeSong.id)}
-              onClick={async () => {
-                const song = unlikeSong
-                try {
-                  await library.toggleLike(song, false)
-                  setUnlikeSong((current) => (current?.id === song.id ? null : current))
-                } catch (error: any) {
-                  setUnlikeError(error.message)
-                }
+              className="text-btn"
+              onClick={() => {
+                panels.hide(id)
+                open('controls')
               }}
             >
-              确认取消喜欢
+              播放调节
             </button>
           </div>
-        </Overlay>
-      )}
-      {confirmEnd && (
-        <Overlay title="离开多人房间？" onClose={() => setConfirmEnd(false)}>
-          <p>退出一起听后，你的个人队列会保留，并暂停播放。</p>
-          <div className="row-actions">
-            <button className="secondary" onClick={() => setConfirmEnd(false)}>
-              取消
-            </button>
-            <button
-              className="primary"
-              disabled={!!p.busy}
-              onClick={() =>
-                p.act('离开房间', async () => {
-                  await p.leaveRoom()
-                  setConfirmEnd(false)
-                })
-              }
-            >
-              确认离开
-            </button>
-          </div>
-        </Overlay>
-      )}
-    </div>
+        )
+      default:
+        return sources[id] ? (
+          <LibraryPanel key={uid + ':' + id} {...browser} initialSource={sources[id]} />
+        ) : null
+    }
+  }
+  function signIn() {
+    return (
+      <button className="primary" onClick={() => login('login')}>
+        扫码登录
+      </button>
+    )
+  }
+  return (
+    <>
+      <PortraitPlayer
+        party={p}
+        position={position}
+        background={desktop.info?.preferences.playerBackground}
+        liked={!!p.current && library.likes.has(p.current.id)}
+        likeReady={
+          !uid || (!!p.current && library.likesReady && !library.likeBusy.has(p.current.id))
+        }
+        onLike={() => p.current && like(p.current)}
+        onAdd={() => p.current && add(p.current)}
+        act={playbackAction}
+        onControls={() => open('controls')}
+        onWindows={() => open('windows')}
+      />
+      <audio ref={p.audio} {...p.audioEvents} />
+      {panels.entries.map((entry) => (
+        <DesktopPanel
+          key={entry.id}
+          entry={entry}
+          panels={panels}
+          compact={entry.id === 'private' && privateMode === 'notice'}
+          title={
+            sources[entry.id]?.title ||
+            (entry.id === 'confirm' && confirm
+              ? confirm.kind === 'leave'
+                ? '离开多人房间？'
+                : '取消喜欢这首歌？'
+              : entry.id === 'private' && privateMode === 'notice'
+                ? '新私信'
+                : panelTitle(entry.id))
+          }
+        >
+          {body(entry.id)}
+        </DesktopPanel>
+      ))}
+    </>
   )
 }

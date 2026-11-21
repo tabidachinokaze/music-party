@@ -1,3 +1,4 @@
+import { useSurfaceDocument } from './windows/Surface'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Disc3, ExternalLink, FileText, Headphones, ImageOff, Music2, Play } from 'lucide-react'
@@ -17,7 +18,7 @@ const resourceLabels: Record<string, string> = {
   mv: 'MV',
 }
 
-function imageMenuPosition(bounds: DOMRect) {
+function imageMenuPosition(bounds: DOMRect, window: Window) {
   const below = bounds.bottom + 48 <= window.innerHeight - 12
   return {
     left: Math.max(12, Math.min(bounds.left, window.innerWidth - 256)),
@@ -42,6 +43,8 @@ function Attachment({
   api?: ApiCall
   accountKey?: string
 }) {
+  const document = useSurfaceDocument(),
+    view = document.defaultView!
   const [failed, setFailed] = useState(false)
   const [preview, setPreview] = useState(false)
   const [error, setError] = useState('')
@@ -68,26 +71,26 @@ function Attachment({
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape') close()
     }
-    window.addEventListener('click', close)
-    window.addEventListener('keydown', key)
-    window.addEventListener('resize', close)
+    view.addEventListener('click', close)
+    view.addEventListener('keydown', key)
+    view.addEventListener('resize', close)
     const reposition = () => {
       const bounds = menuAnchor.current?.getBoundingClientRect()
-      if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) {
+      if (!bounds || bounds.bottom <= 0 || bounds.top >= view.innerHeight) {
         close()
         return
       }
-      const next = imageMenuPosition(bounds)
+      const next = imageMenuPosition(bounds, view)
       setMenu((previous) =>
         previous && (previous.left !== next.left || previous.top !== next.top) ? next : previous,
       )
     }
-    window.addEventListener('scroll', reposition, true)
+    view.addEventListener('scroll', reposition, true)
     return () => {
-      window.removeEventListener('click', close)
-      window.removeEventListener('keydown', key)
-      window.removeEventListener('resize', close)
-      window.removeEventListener('scroll', reposition, true)
+      view.removeEventListener('click', close)
+      view.removeEventListener('keydown', key)
+      view.removeEventListener('resize', close)
+      view.removeEventListener('scroll', reposition, true)
     }
   }, [menu])
   async function saveSticker() {
@@ -163,7 +166,7 @@ function Attachment({
               stickerLibrary(accountKey, room ? 'room' : 'private')
               setSaved(isStickerSaved(accountKey, source))
               menuAnchor.current = event.currentTarget
-              setMenu(imageMenuPosition(event.currentTarget.getBoundingClientRect()))
+              setMenu(imageMenuPosition(event.currentTarget.getBoundingClientRect(), view))
             }}
           >
             <img

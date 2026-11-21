@@ -1,3 +1,5 @@
+import { useContext } from 'react'
+import { InlineDialog, useSurfaceDocument } from '../windows/Surface'
 import {
   useEffect,
   useEffectEvent,
@@ -10,19 +12,28 @@ import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import type { ReactNode } from 'react'
 
-export function Overlay({
-  title,
-  onClose,
-  children,
-  wide = false,
-  sideAnchor,
-}: {
+type OverlayProps = {
   title: string
   onClose(): void
   children: ReactNode
   wide?: boolean
   sideAnchor?: HTMLElement | null
-}) {
+}
+export function Overlay(props: OverlayProps) {
+  const inline = useContext(InlineDialog)
+  if (inline)
+    return (
+      <InlineDialog.Provider value={false}>
+        <section className="panel-form" role="dialog" aria-label={props.title}>
+          {props.children}
+        </section>
+      </InlineDialog.Provider>
+    )
+  return <FloatingOverlay {...props} />
+}
+function FloatingOverlay({ title, onClose, children, wide = false, sideAnchor }: OverlayProps) {
+  const document = useSurfaceDocument()
+  const window = document.defaultView!
   const root = useRef<HTMLDivElement>(null)
   const [closing, setClosing] = useState(false)
   const close = useEffectEvent(onClose)
@@ -36,22 +47,25 @@ export function Overlay({
         .closest('.chat-drawer,.private-conversation-bubble')
         ?.getBoundingClientRect()
       const margin = 20,
-        width = Math.min(360, innerWidth - margin * 2)
+        width = Math.min(360, window.innerWidth - margin * 2)
       const edge = panel || anchor
-      let left = edge.left < innerWidth / 2 ? edge.right + 12 : edge.left - width - 12
-      left = Math.max(margin, Math.min(left, innerWidth - width - margin))
+      let left = edge.left < window.innerWidth / 2 ? edge.right + 12 : edge.left - width - 12
+      left = Math.max(margin, Math.min(left, window.innerWidth - width - margin))
       const top = panel
         ? Math.max(margin, panel.top)
         : Math.max(
             margin,
-            Math.min(anchor.bottom - popup.offsetHeight, innerHeight - popup.offsetHeight - margin),
+            Math.min(
+              anchor.bottom - popup.offsetHeight,
+              window.innerHeight - popup.offsetHeight - margin,
+            ),
           )
       setPosition({
         position: 'fixed',
         left,
         top,
         width,
-        maxHeight: innerHeight - top - margin,
+        maxHeight: window.innerHeight - top - margin,
         margin: 0,
       })
     }

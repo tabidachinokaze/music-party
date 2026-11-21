@@ -65,7 +65,7 @@ export interface DesktopMediaState {
 }
 export const DEFAULT_PREFERENCES: Preferences = {
   closeToTray: true,
-  theme: 'dark',
+  theme: 'light',
   volume: 0.6,
   repeatMode: 'order',
   fontScale: 100,
@@ -196,14 +196,18 @@ export function restoreWindow(
             saved.y! + saved.height - 100 > a.y,
         ) || primary
       : primary
-  const width = Math.min(
-    area.width,
-    Math.max(Math.min(1000, area.width), Number.isFinite(saved?.width) ? saved!.width : 1280),
+  // Old installations saved a landscape workspace. Start their portrait player at its design size.
+  const portrait = saved && Math.abs(saved.width / saved.height - 9 / 16) < 0.025
+  const availableHeight = Math.max(1, area.height - 40)
+  const width = Math.max(
+    1,
+    Math.min(
+      area.width,
+      Math.floor((availableHeight * 9) / 16),
+      Math.max(288, portrait ? Math.round(saved.width) : 360),
+    ),
   )
-  const height = Math.min(
-    area.height,
-    Math.max(Math.min(720, area.height), Number.isFinite(saved?.height) ? saved!.height : 850),
-  )
+  const height = Math.round((width * 16) / 9)
   const x =
     saved && Number.isFinite(saved.x)
       ? Math.min(Math.max(saved.x!, area.x), area.x + area.width - width)
@@ -217,6 +221,6 @@ export function restoreWindow(
     y: Math.round(y),
     width: Math.round(width),
     height: Math.round(height),
-    maximized: saved?.maximized === true,
+    maximized: !!portrait && saved?.maximized === true,
   }
 }

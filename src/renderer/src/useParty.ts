@@ -34,6 +34,7 @@ export function useParty() {
   const accountRef = useRef<any>(null)
   const [session, setSession] = useState('')
   const [version, setVersion] = useState('')
+  const qrGeneration = useRef(0)
   const [qr, setQr] = useState<{ key: string; qrimg: string } | null>(null)
   const [qrStatus, setQrStatus] = useState('打开网易云音乐，扫描二维码')
   const [error, setError] = useState('')
@@ -841,7 +842,10 @@ export function useParty() {
     setSearched(true)
   }
   async function login() {
-    setQr(await api('qrCreate'))
+    const run = ++qrGeneration.current
+    const code = await api('qrCreate')
+    if (qrGeneration.current !== run) return
+    setQr(code)
     setQrStatus('打开网易云音乐，扫描二维码')
   }
   async function logout() {
@@ -907,7 +911,10 @@ export function useParty() {
     version,
     qr,
     qrStatus,
-    setQr,
+    cancelLogin: () => {
+      qrGeneration.current++
+      setQr(null)
+    },
     error,
     setError,
     notice,

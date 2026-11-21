@@ -23,3 +23,5 @@
 房间动态展示的两个模块保留插件对活动类型、完整用户名和歌曲名的解析方式，由本项目的 React 组件渲染为纯文字动态行。
 
 其他新增功能依据协议说明和本项目已有实现编写；上述声明保留移植模块的来源，不为本项目其余文件另行指定许可证。各 npm 依赖保留其自身许可证。
+
+播放器随应用提供 Geist 和 Archivo 的拉丁字形。两套字体使用 SIL Open Font License 1.1，许可文本位于 [Geist](licenses/geist-OFL.txt) 和 [Archivo](licenses/archivo-OFL.txt)。封面过渡使用 Anime.js，其许可见 [Anime.js MIT](licenses/animejs-MIT.txt)。

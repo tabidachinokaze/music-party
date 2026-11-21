@@ -1,3 +1,4 @@
+import { openTool, loginFixture, widenPanel, serveArtwork } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
@@ -109,7 +110,8 @@ test('self and peer pictures can be collected and clipboard pictures are preview
     },
   })
   try {
-    const page = await app.firstWindow()
+    const player = await app.firstWindow()
+    let page = player
     const errors: string[] = []
     page.on('pageerror', (error) => errors.push(error.message))
     await app.evaluate(({ ipcMain }, port) => {
@@ -133,12 +135,10 @@ test('self and peer pictures can be collected and clipboard pictures are preview
         }
       })
     }, port)
-    await page.route('https://p1.music.126.net/**', (route) =>
-      route.fulfill({ contentType: 'image/png', body: png }),
-    )
-    await page.getByRole('button', { name: '扫码登录', exact: true }).click()
-    await expect(page.getByText('图片测试账户', { exact: true })).toBeVisible()
-    await page.locator('.sidebar').getByRole('button', { name: '私信', exact: true }).click()
+    await serveArtwork(app, png, 'image/png')
+    await loginFixture(app, player)
+    page = await openTool(app, player, 'private')
+    await widenPanel(app, page)
     await page
       .locator('.conversation-list')
       .getByRole('button', { name: /^Alice/ })

@@ -14,6 +14,7 @@ export function useLibrary(api: ApiCall, uid: string | null) {
   const [error, setError] = useState('')
   const [complete, setComplete] = useState(false)
   const [revision, setRevision] = useState(0)
+  const [playlistChanges, setPlaylistChanges] = useState<Record<string, number>>({})
   const [likeBusy, setLikeBusy] = useState<Set<string>>(new Set())
   const likeLock = useRef(new Set<string>())
   const epoch = useRef(0)
@@ -21,6 +22,7 @@ export function useLibrary(api: ApiCall, uid: string | null) {
     const run = ++epoch.current
     const active = () => epoch.current === run
     setPlaylists([])
+    setPlaylistChanges({})
     setAlbums([])
     setAlbumsError('')
     setAlbumsComplete(false)
@@ -107,12 +109,15 @@ export function useLibrary(api: ApiCall, uid: string | null) {
     complete,
     likeBusy,
     toggleLike,
-    recordPlaylistAdded: (id: string) =>
+    playlistChanges,
+    recordPlaylistAdded: (id: string) => {
+      setPlaylistChanges((previous) => ({ ...previous, [id]: (previous[id] ?? 0) + 1 }))
       setPlaylists((items) =>
         items.map((playlist) =>
           playlist.id === id ? { ...playlist, count: playlist.count + 1 } : playlist,
         ),
-      ),
+      )
+    },
     refresh: () => setRevision((n) => n + 1),
   }
 }
@@ -127,6 +132,7 @@ export function useSongCollection(
     ids?: string[]
     artistId?: string
   } | null,
+  revision = 0,
 ) {
   const [songs, setSongs] = useState<Song[]>([])
   const [ids, setIds] = useState<string[]>([])
@@ -243,7 +249,7 @@ export function useSongCollection(
       epoch.current++
       busy.current = false
     }
-  }, [source?.key, retryRevision])
+  }, [source?.key, revision, retryRevision])
   return {
     songs,
     ids,

@@ -1,3 +1,4 @@
+import { useSurfaceDocument } from './windows/Surface'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ImagePlus, Mic, Paperclip, Square, Video } from 'lucide-react'
 import {
@@ -104,6 +105,7 @@ export function MediaComposer({
   onMediaPlay(): void
   accountKey?: string
 }) {
+  const document = useSurfaceDocument()
   const input = useRef<HTMLInputElement>(null),
     kind = useRef<MediaKind>('image')
   const trigger = useRef<HTMLButtonElement>(null)
@@ -277,8 +279,8 @@ export function MediaComposer({
         recording ||
         !form ||
         !form.getClientRects().length ||
-        !(event.target instanceof Node) ||
-        !form.contains(event.target) ||
+        !(event.target && 'nodeType' in event.target) ||
+        !form.contains(event.target as Node) ||
         document.querySelector('[aria-modal="true"]')
       )
         return
