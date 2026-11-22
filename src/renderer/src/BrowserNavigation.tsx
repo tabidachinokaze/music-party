@@ -62,7 +62,12 @@ export function BrowserSearch({ navigation }: { navigation: BrowserNavigationSta
             if (!event.repeat && !navigation.busy && event.currentTarget.value.trim())
               navigation.onSubmit(event.currentTarget.value)
           }
-          if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+          if (
+            event.key === 'Escape' &&
+            event.currentTarget.value &&
+            !event.nativeEvent.isComposing
+          ) {
+            event.preventDefault()
             event.stopPropagation()
             change('')
           }

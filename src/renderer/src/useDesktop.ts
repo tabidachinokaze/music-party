@@ -100,6 +100,12 @@ export function useDesktop(
         if (active) setError(e.message || '桌面设置读取失败')
       })
     const keyboard = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.isComposing ||
+        document.querySelector('[aria-modal="true"], :popover-open')
+      )
+        return
       const el = event.target as HTMLElement | null
       const editing =
         el?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName || '')
@@ -111,11 +117,6 @@ export function useDesktop(
       ) {
         event.preventDefault()
         void setFullScreen(false)
-        return
-      }
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
-        event.preventDefault()
-        latest.current.navigate('search')
         return
       }
       if (

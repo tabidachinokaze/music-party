@@ -7,10 +7,12 @@ export function Lyrics({
   position,
   seekable = false,
   onSeek,
+  heading = false,
 }: {
   api: ApiCall
   songId?: string
   position: number
+  heading?: boolean
   seekable?: boolean
   onSeek?(position: number): void
 }) {
@@ -19,7 +21,7 @@ export function Lyrics({
   const [message, setMessage] = useState('播放一首歌，让歌词在这里流动')
   const [follow, setFollow] = useState(true)
   const container = useRef<HTMLDivElement>(null)
-  const activeRef = useRef<HTMLElement | null>(null)
+  const [showTranslation, setShowTranslation] = useState(true)
   useEffect(() => {
     let active = true
     setLines([])
@@ -48,30 +50,64 @@ export function Lyrics({
   let activeIndex = -1
   for (let i = 0; i < lines.length && lines[i].time <= position; i++) activeIndex = i
   useEffect(() => {
-    const box = container.current,
-      line = activeRef.current
-    if (!box || !line || !follow) return
-    const top =
-      box.scrollTop +
-      line.getBoundingClientRect().top -
-      box.getBoundingClientRect().top -
-      box.clientHeight / 2 +
-      line.clientHeight / 2
-    box.scrollTo({
-      top: Math.max(0, top),
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches
-        ? 'instant'
-        : 'smooth',
+    const box = container.current
+    if (!box || !follow || !lines.length) return
+    const center = (smooth: boolean) => {
+      const line = box.querySelector<HTMLElement>('.lyric-active')
+      const top = line
+        ? box.scrollTop +
+          line.getBoundingClientRect().top -
+          box.getBoundingClientRect().top -
+          (box.clientHeight - line.clientHeight) / 2
+        : 0
+      box.scrollTo({
+        top,
+        behavior:
+          smooth && !window.matchMedia('(prefers-reduced-motion: reduce)').matches
+            ? 'smooth'
+            : 'instant',
+      })
+    }
+    center(true)
+    let height = box.clientHeight,
+      width = box.clientWidth
+    const observer = new ResizeObserver(() => {
+      if (box.clientHeight === height && box.clientWidth === width) return
+      height = box.clientHeight
+      width = box.clientWidth
+      center(false)
     })
-  }, [activeIndex, follow, lines])
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [activeIndex, follow, lines, showTranslation])
   return (
     <div className="lyrics-surface">
+      {(heading || translations.size > 0) && (
+        <div className="lyrics-toolbar">
+          {heading && <h2>歌词</h2>}
+          {translations.size > 0 && (
+            <button
+              className="translation-switch"
+              type="button"
+              aria-label="显示歌词翻译"
+              aria-pressed={showTranslation}
+              onClick={() => setShowTranslation((value) => !value)}
+            >
+              译
+            </button>
+          )}
+        </div>
+      )}
       <div
         className={`lyrics ${lines.length ? '' : 'lyrics-empty'}`}
         aria-label="当前歌曲歌词"
         ref={container}
         onWheel={() => setFollow(false)}
-        onTouchStart={() => setFollow(false)}
+        onTouchMove={() => setFollow(false)}
+        onKeyDown={(event) => {
+          if (['ArrowDown', 'ArrowUp', 'Home', 'End', 'PageDown', 'PageUp'].includes(event.key))
+            setFollow(false)
+        }}
       >
         {message ? (
           <div className="lyric-placeholder">
@@ -84,9 +120,7 @@ export function Lyrics({
               seekable && onSeek ? (
                 <button
                   key={`${line.time}-${i}`}
-                  ref={(node) => {
-                    if (i === activeIndex) activeRef.current = node
-                  }}
+                  aria-current={i === activeIndex ? 'true' : undefined}
                   className={`lyric-line ${i === activeIndex ? 'lyric-active' : ''}`}
                   aria-label={`跳转歌词：${line.text}`}
                   onClick={() => {
@@ -95,20 +129,18 @@ export function Lyrics({
                   }}
                 >
                   {line.text}
-                  {translations.get(line.time) && (
+                  {showTranslation && translations.get(line.time) && (
                     <small className="lyric-translation">{translations.get(line.time)}</small>
                   )}
                 </button>
               ) : (
                 <p
                   key={`${line.time}-${i}`}
-                  ref={(node) => {
-                    if (i === activeIndex) activeRef.current = node
-                  }}
+                  aria-current={i === activeIndex ? 'true' : undefined}
                   className={`lyric-line ${i === activeIndex ? 'lyric-active' : ''}`}
                 >
                   {line.text}
-                  {translations.get(line.time) && (
+                  {showTranslation && translations.get(line.time) && (
                     <small className="lyric-translation">{translations.get(line.time)}</small>
                   )}
                 </p>

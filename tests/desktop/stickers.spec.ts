@@ -149,7 +149,7 @@ test('official custom stickers load every page, upload to the library and send d
   })
   try {
     const player = await app.firstWindow()
-    let page = player
+    let page = player.locator('body')
     await app.evaluate(({ ipcMain }, port) => {
       ipcMain.removeHandler('media-send')
       ipcMain.handle('media-send', async (_event, request) => {
@@ -173,7 +173,7 @@ test('official custom stickers load every page, upload to the library and send d
       })
     }, port)
     const errors: string[] = []
-    page.on('pageerror', (error) => errors.push(error.message))
+    player.on('pageerror', (error) => errors.push(error.message))
     await serveArtwork(app, thumbnail, 'image/png')
     await loginFixture(app, player)
     page = await openTool(app, player, 'private')
@@ -274,12 +274,12 @@ test('official custom stickers load every page, upload to the library and send d
     expect(calls.filter((call) => call.route.endsWith('/groups/detail/page'))).toHaveLength(
       pagesBeforeReopen,
     )
-    const chooser = page.waitForEvent('filechooser')
+    const chooser = player.waitForEvent('filechooser')
     await page.getByRole('button', { name: '上传自定义表情', exact: true }).click()
     await (await chooser).setFiles({ name: '新增.gif', mimeType: 'image/gif', buffer: gif })
     await expect(page.getByRole('dialog', { name: '上传自定义表情', exact: true })).toBeVisible()
     expect(uploads).toBe(0)
-    await page.mouse.click(5, 5)
+    await player.mouse.click(5, 5)
     await expect(page.getByRole('dialog', { name: '上传自定义表情', exact: true })).toHaveCount(0)
     await expect(page.getByRole('dialog', { name: '表情', exact: true })).toBeVisible()
     await page.getByRole('button', { name: '待上传表情', exact: true }).click()
@@ -310,7 +310,7 @@ test('official custom stickers load every page, upload to the library and send d
     await expect(
       page.getByRole('button', { name: '发送自定义表情 收藏表情22', exact: true }),
     ).toBeAttached()
-    await page.screenshot({
+    await player.screenshot({
       path: 'test-results/music-party-custom-stickers.png',
       animations: 'disabled',
     })

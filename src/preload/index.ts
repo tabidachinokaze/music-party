@@ -5,16 +5,6 @@ import type { Bridge, Trace, AccountNotifications } from '../shared/types'
 import type { LtMemberUpdate } from '../shared/lt-members'
 import type { MediaProgress } from '../shared/media'
 const bridge: Bridge = {
-  panelAction: (id, action) => ipcRenderer.invoke('panel-action', id, action),
-  onPanelStatus(callback) {
-    const listener = (
-      _event: Electron.IpcRendererEvent,
-      id: import('../shared/panels').PanelId,
-      status: import('../shared/panels').PanelStatus,
-    ) => callback(id, status)
-    ipcRenderer.on('panel-status', listener)
-    return () => ipcRenderer.removeListener('panel-status', listener)
-  },
   call: (request) => ipcRenderer.invoke('api', request),
   onTrace(callback) {
     const listener = (_event: Electron.IpcRendererEvent, trace: Trace) => callback(trace)

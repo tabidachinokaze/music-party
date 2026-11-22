@@ -68,6 +68,15 @@ export function RoomChat({
       historyAnchor.current = null
     } else if (nearBottom.current) box.scrollTop = box.scrollHeight
   }, [chat.messages, chat.visible])
+  useLayoutEffect(() => {
+    const box = list.current
+    if (!box || !chat.visible) return
+    const observer = new ResizeObserver(() => {
+      if (nearBottom.current && box.clientHeight) box.scrollTop = box.scrollHeight
+    })
+    observer.observe(box)
+    return () => observer.disconnect()
+  }, [chat.visible, room?.roomId])
   async function older() {
     const anchor = list.current ? captureHistoryAnchor(list.current) : null
     historyAnchor.current = anchor
@@ -118,7 +127,7 @@ export function RoomChat({
             ref={list}
             onScroll={() => {
               const box = list.current
-              if (box) {
+              if (box?.clientHeight) {
                 nearBottom.current = box.scrollHeight - box.scrollTop - box.clientHeight < 30
                 setShowLatest(!nearBottom.current)
               }

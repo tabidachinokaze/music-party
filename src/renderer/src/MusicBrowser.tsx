@@ -142,8 +142,10 @@ export function MusicBrowser({
   onLike,
   onAudition,
   initialSource,
+  createdOnly = false,
   onSource,
   onLogin,
+  onSearch,
   onAdd,
   onNavigation,
 }: {
@@ -159,7 +161,9 @@ export function MusicBrowser({
   onAudition?(song: Song): void
   onSource(source: MusicSource): void
   onLogin(): void
+  onSearch(): void
   onAdd(song: Song): void
+  createdOnly?: boolean
   initialSource?: MusicSource
   onNavigation?(navigation: BrowserNavigationState): void
 }) {
@@ -435,8 +439,10 @@ export function MusicBrowser({
   const visiblePlaylists = library.playlists.filter(
     (item) =>
       matchesList(item.name) &&
-      (filter === 'all' ||
-        (filter === 'created' ? item.creatorId === uid : item.creatorId !== uid)),
+      (createdOnly
+        ? item.creatorId === uid
+        : filter === 'all' ||
+          (filter === 'created' ? item.creatorId === uid : item.creatorId !== uid)),
   )
   const visibleAlbums = library.albums.filter((album) => matchesList(album.name))
   const cards = (items: Playlist[]) => (
@@ -463,9 +469,15 @@ export function MusicBrowser({
       <div className="empty">
         <Library size={28} />
         <strong>登录后查看你的音乐库</strong>
-        <button className="primary" onClick={onLogin}>
-          扫码登录
-        </button>
+        <div className="row-actions">
+          <button className="primary" onClick={onLogin}>
+            扫码登录
+          </button>
+          <button className="secondary" onClick={onSearch}>
+            <Search size={15} />
+            全站搜索
+          </button>
+        </div>
       </div>
     )
   if (view === 'liked' && (!library.likesReady || (!library.complete && !library.error)))
@@ -627,7 +639,11 @@ export function MusicBrowser({
           <div className="section-title">
             <div>
               <p>
-                {library.complete ? '全部歌单' : '已加载歌单'} · {library.playlists.length} 个
+                {createdOnly ? '已创建' : library.complete ? '全部歌单' : '已加载歌单'} ·{' '}
+                {createdOnly
+                  ? library.playlists.filter((p) => p.creatorId === uid).length
+                  : library.playlists.length}{' '}
+                个
               </p>
             </div>
             <button className="secondary" disabled={library.loading} onClick={library.refresh}>
@@ -635,18 +651,20 @@ export function MusicBrowser({
               刷新音乐库
             </button>
           </div>
-          <div className="filter-tabs">
-            {(['all', 'created', 'collected'] as const).map((value, i) => (
-              <button
-                key={value}
-                className={filter === value ? 'selected' : ''}
-                aria-pressed={filter === value}
-                onClick={() => setFilter(value)}
-              >
-                {['全部', '我创建的', '我收藏的'][i]}
-              </button>
-            ))}
-          </div>
+          {!createdOnly && (
+            <div className="filter-tabs">
+              {(['all', 'created', 'collected'] as const).map((value, i) => (
+                <button
+                  key={value}
+                  className={filter === value ? 'selected' : ''}
+                  aria-pressed={filter === value}
+                  onClick={() => setFilter(value)}
+                >
+                  {['全部', '我创建的', '我收藏的'][i]}
+                </button>
+              ))}
+            </div>
+          )}
           {library.error && (
             <div className="alert error" role="alert">
               {library.error}

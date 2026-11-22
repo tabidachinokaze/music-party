@@ -130,17 +130,47 @@ it('relocates a disconnected-monitor window inside an available display', () => 
   expect(result.x! + result.width).toBeLessThanOrEqual(area.width)
   expect(result.y! + result.height).toBeLessThanOrEqual(area.height)
 })
-it('migrates the landscape workspace and fits the portrait player on small and negative-coordinate displays', () => {
-  expect(
-    restoreWindow({ x: -1800, y: 50, width: 1100, height: 760, maximized: true }, [
-      { x: 0, y: 0, width: 1920, height: 1080 },
-      { x: -1920, y: 0, width: 1920, height: 1080 },
-    ]),
-  ).toMatchObject({ x: -1800, y: 50, width: 360, height: 640, maximized: false })
-  expect(restoreWindow(undefined, [{ x: 0, y: 0, width: 800, height: 600 }])).toMatchObject({
-    width: 315,
-    height: 560,
+it('centers the initial desktop workspace and restores compact, intermediate and wide content sizes', () => {
+  const areas = [
+    { x: 0, y: 0, width: 1920, height: 1080 },
+    { x: -1920, y: 0, width: 1920, height: 1080 },
+  ]
+  expect(restoreWindow(undefined, areas)).toEqual({
+    x: 410,
+    y: 180,
+    width: 1100,
+    height: 720,
+    maximized: false,
   })
+  for (const [width, height] of [
+    [288, 512],
+    [360, 640],
+    [720, 520],
+    [1100, 760],
+  ]) {
+    const saved = { x: -1800, y: 50, width, height, maximized: true }
+    expect(restoreWindow(saved, areas)).toEqual(saved)
+  }
+})
+it('fits the entire frame inside a small display and keeps spanning windows on the monitor with the largest overlap', () => {
+  const tiny = { x: 25, y: 80, width: 270, height: 330 }
+  const frame = { width: 16, height: 39 }
+  expect(restoreWindow(undefined, [tiny], frame)).toEqual({
+    x: 25,
+    y: 80,
+    width: 254,
+    height: 291,
+    maximized: false,
+  })
+  const primary = { x: 0, y: 0, width: 1920, height: 1080 }
+  const other = { ...primary, x: -1920 }
+  expect(
+    restoreWindow(
+      { x: -650, y: 10, width: 750, height: 540, maximized: false },
+      [primary, other],
+      frame,
+    ),
+  ).toEqual({ x: -766, y: 10, width: 750, height: 540, maximized: false })
 })
 it('persists preferences independently of window geometry and recovers a corrupted file', () => {
   const directory = mkdtempSync(join(tmpdir(), 'music-party-settings-'))

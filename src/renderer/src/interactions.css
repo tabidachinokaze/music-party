@@ -261,6 +261,20 @@
 .modal-backdrop {
   animation: shade-in 160ms ease-out;
 }
+.modal-backdrop > .player-modal {
+  max-width: calc(100dvw - 20px);
+  max-height: calc(100dvh - 20px);
+  padding: clamp(14px, 3vw, 26px);
+  overscroll-behavior: contain;
+}
+.side-popup-backdrop > .player-modal {
+  position: fixed;
+  margin: 0;
+}
+.player-modal .row-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .modal-backdrop > .modal {
   animation: popup-in 180ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
@@ -294,7 +308,7 @@
 .playlist-card:hover {
   transform: translateY(-3px);
 }
-@media (max-width: 1100px) {
+@container tool (max-width: 599px) {
   .private-messages {
     padding-inline: 16px;
   }
@@ -307,6 +321,18 @@
   }
   .private-thread-heading .text-btn {
     font-size: calc(10px * var(--ui-font-scale, 1));
+  }
+}
+@container tool (max-width: 359px) {
+  .private-thread-heading {
+    padding-inline: 8px;
+    gap: 4px;
+  }
+  .private-thread-heading > .text-btn span {
+    display: none;
+  }
+  .private-thread-heading > .text-btn {
+    padding: 6px;
   }
 }
 @media (max-height: 780px) {

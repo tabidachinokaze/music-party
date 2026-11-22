@@ -41,9 +41,9 @@ test('members show complete recommendation counts, distinct played occurrences a
   })
   try {
     const player = await app.firstWindow()
-    let page = player,
+    let page = player.locator('body'),
       errors: string[] = []
-    page.on('pageerror', (error) => errors.push(error.message))
+    player.on('pageerror', (error) => errors.push(error.message))
     await app.evaluate(({ ipcMain }, url) => {
       const state = {
         calls: [] as any[],

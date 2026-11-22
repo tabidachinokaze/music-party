@@ -41,7 +41,7 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
   })
   try {
     const player = await app.firstWindow()
-    let page = player
+    let page = player.locator('body')
     // Isolate the renderer workflow; production service payload/permissions are unit-tested.
     await app.evaluate(({ ipcMain }, url) => {
       const state = {
@@ -153,7 +153,6 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
       })
     }, audioUrl)
     await player.reload()
-    const controls = await openTool(app, player, 'controls')
     page = await openTool(app, player, 'search')
     await page.getByLabel('搜索音乐库').fill('111')
     await page
@@ -161,7 +160,9 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
       .getByRole('button', { name: '搜索', exact: true })
       .click()
     await page.getByRole('button', { name: '播放 歌曲111' }).click()
-    await expect(controls.locator('.song-identity strong')).toHaveText('歌曲111')
+    await expect(
+      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+    ).toHaveText('歌曲111')
     page = await openTool(app, player, 'room')
     await page.getByLabel('搜索匹配用歌曲').fill('222')
     await page
@@ -178,7 +179,9 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
       .getByRole('button', { name: '搜索', exact: true })
       .click()
     await page.getByRole('button', { name: '播放 歌曲333' }).click()
-    await expect(controls.locator('.song-identity strong')).toHaveText('歌曲333')
+    await expect(
+      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+    ).toHaveText('歌曲333')
     page = await openTool(app, player, 'room')
     await expect(page.locator('.match-song-selected strong')).toHaveText('歌曲222')
     await page.getByLabel('允许陌生人匹配（公开好友房）').check()
@@ -230,7 +233,9 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
         .filter((call: any) => call.method === 'multiMatch')
         .map((call: any) => call.args.songId),
     ).toEqual(['222', '222'])
-    await expect(controls.locator('.song-identity strong')).toHaveText('歌曲222')
+    await expect(
+      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+    ).toHaveText('歌曲222')
     await player.getByRole('button', { name: '喜欢当前歌曲', exact: true }).click()
     await expect(player.getByRole('button', { name: '喜欢当前歌曲', exact: true })).toBeDisabled()
     calls = await app.evaluate(() => (globalThis as any).__roomSetup.calls)

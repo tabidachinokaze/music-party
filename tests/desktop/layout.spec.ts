@@ -197,15 +197,16 @@ test('application pages keep their controls and content inside small windows at 
   })
   try {
     const player = await app.firstWindow()
-    let page = player
+    let page = player.locator('body')
     const errors: string[] = []
-    page.on('pageerror', (error) => errors.push(error.message))
-    await page.locator('audio').evaluate((node: HTMLAudioElement) => (node.muted = true))
+    player.on('pageerror', (error) => errors.push(error.message))
+    await player.locator('audio').evaluate((node: HTMLAudioElement) => (node.muted = true))
     await loginFixture(app, player)
     page = await openTool(app, player, 'room')
     await page.getByRole('button', { name: '恢复当前房间', exact: true }).click()
-    const controls = await openTool(app, player, 'controls')
-    await expect(controls.locator('.song-identity strong')).toHaveText(songs[0].name)
+    await expect(
+      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+    ).toHaveText(songs[0].name)
     await player.evaluate(async () => {
       const canvas = document.createElement('canvas')
       canvas.width = 400
@@ -291,12 +292,16 @@ test('application pages keep their controls and content inside small windows at 
         (fontScale) => window.together.updatePreferences({ fontScale }),
         fontScale,
       )
-      const art = await player.locator('.sleeve').boundingBox()
+      const active = player.locator('[data-panel]:visible')
+      for (let depth = 0; depth < 6 && (await active.count()); depth++)
+        await player.keyboard.press('Escape')
+      const stage = player.locator('.portrait-stage')
+      const art = await stage.locator('.sleeve').boundingBox()
       expect(art!.width).toEqual(art!.height)
       for (const node of [
         player.locator('.sleeve'),
         player.locator('.playhead'),
-        ...(await player.locator('button').all()),
+        ...(await stage.locator('button:visible').all()),
       ])
         await insideWindow(node)
       page = await openTool(app, player, 'search')
@@ -315,6 +320,7 @@ test('application pages keep their controls and content inside small windows at 
       await songControls()
       page = await openTool(app, player, 'library')
       await page.getByRole('button', { name: '收藏的专辑', exact: true }).click()
+      page = await panelPage(app, 'albums')
       await page.locator('.album-grid .playlist-card').click()
       page = await panelPage(app, 'detail-album-50')
       await songControls()

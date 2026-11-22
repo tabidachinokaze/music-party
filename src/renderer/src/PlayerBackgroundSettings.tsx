@@ -1,14 +1,5 @@
-import {
-  SkipBack,
-  SkipForward,
-  Heart,
-  ListPlus,
-  SlidersHorizontal,
-  PanelsTopLeft,
-} from 'lucide-react'
 import { useEffect, useRef, useState, type PointerEvent } from 'react'
-import { Image, LoaderCircle, Music2, Play, RotateCcw, Search } from 'lucide-react'
-import type { Song } from '../../shared/types'
+import { Image, LoaderCircle, RotateCcw } from 'lucide-react'
 import { DEFAULT_PREFERENCES } from '../../shared/desktop'
 import type { useDesktop } from './useDesktop'
 import { Overlay } from './player/Overlay'
@@ -18,11 +9,9 @@ import { importPlayerBackground } from './background-import'
 const clamp = (value: number) => Math.max(0, Math.min(100, value))
 export function PlayerBackgroundSettings({
   desktop,
-  song,
   onClose,
 }: {
   desktop: ReturnType<typeof useDesktop>
-  song: Song | null
   onClose(): void
 }) {
   const [draft, setDraft] = useState<PlayerBackgroundValues>({
@@ -160,29 +149,7 @@ export function PlayerBackgroundSettings({
           onPointerCancel={() => (drag.current = null)}
         >
           <PlayerBackground background={draft} />
-          <div className="background-preview-player" aria-hidden="true">
-            <div className="background-preview-cover">
-              {song?.cover ? (
-                <img src={song.cover} alt="" />
-              ) : (
-                <div className="sleeve-placeholder" />
-              )}
-            </div>
-            <div className="background-preview-playhead">
-              <i />
-            </div>
-            <div className="background-preview-buttons">
-              <SkipBack size={12} />
-              <Play size={15} fill="currentColor" />
-              <SkipForward size={12} />
-            </div>
-            <div className="background-preview-tools">
-              <Heart />
-              <ListPlus />
-              <SlidersHorizontal />
-              <PanelsTopLeft />
-            </div>
-          </div>
+          {!draft.image && <Image aria-hidden="true" size={28} />}
         </div>
         <p className="background-preview-hint">
           {draft.image

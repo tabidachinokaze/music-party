@@ -1,11 +1,11 @@
-import { settingsGroup, openTool } from './windows'
+import { settingsGroup, openTool, widenPanel } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-test('player skin previews and saves images in portrait, keeps reading windows opaque, and survives restart', async () => {
+test('application skin previews and saves images, covers the whole window and survives restart', async () => {
   test.setTimeout(60000)
   const server = createServer((_request, response) => {
     response.setHeader('Content-Type', 'application/json')
@@ -34,10 +34,10 @@ test('player skin previews and saves images in portrait, keeps reading windows o
     let page = await openTool(app, player, 'settings')
     await settingsGroup(page, '外观')
     const errors: string[] = []
-    page.on('pageerror', (error) => errors.push(error.message))
+    player.on('pageerror', (error) => errors.push(error.message))
     await page.getByRole('button', { name: '自定义播放器背景', exact: true }).click()
     let popup = page.getByRole('dialog', { name: '自定义播放器背景', exact: true })
-    const fixture = await page.evaluate(() => {
+    const fixture = await player.evaluate(() => {
       const canvas = document.createElement('canvas')
       canvas.width = 1200
       canvas.height = 800
@@ -55,7 +55,7 @@ test('player skin previews and saves images in portrait, keeps reading windows o
       mimeType: 'image/png',
       buffer: Buffer.from(fixture, 'base64'),
     }
-    const codecs = await page.evaluate(() => {
+    const codecs = await player.evaluate(() => {
       const canvas = document.createElement('canvas')
       canvas.width = 80
       canvas.height = 40
@@ -154,20 +154,44 @@ test('player skin previews and saves images in portrait, keeps reading windows o
     await popup.getByLabel('背景透明度', { exact: true }).fill('25')
     await popup.getByLabel('背景模糊', { exact: true }).fill('6')
     const preview = popup.getByRole('group', { name: '背景位置预览', exact: true })
+    // The editor uses the exact crop of the main window, including when resized while open.
+    for (const [width, height] of [
+      [288, 512],
+      [800, 610],
+      [1100, 720],
+    ]) {
+      await widenPanel(app, player, width, height)
+      await expect
+        .poll(async () => {
+          const rect = await preview.boundingBox()
+          return rect ? rect.width / rect.height : 0
+        })
+        .toBeCloseTo(width / height, 1)
+      const fits = await popup.evaluate((node) => {
+        const rect = node.getBoundingClientRect()
+        return (
+          rect.left >= 0 &&
+          rect.right <= innerWidth &&
+          rect.top >= 0 &&
+          rect.bottom <= innerHeight &&
+          node.scrollWidth <= node.clientWidth
+        )
+      })
+      expect(fits).toBe(true)
+    }
     await preview.scrollIntoViewIfNeeded()
     const bounds = (await preview.boundingBox())!
-    expect(bounds.width / bounds.height).toBeCloseTo(9 / 16, 1)
-    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(bounds.x + bounds.width / 2 + 40, bounds.y + bounds.height / 2 + 25, {
+    await player.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2)
+    await player.mouse.down()
+    await player.mouse.move(bounds.x + bounds.width / 2 + 40, bounds.y + bounds.height / 2 + 25, {
       steps: 5,
     })
-    await page.mouse.up()
+    await player.mouse.up()
     const coordinates = await popup.getByLabel('背景水平位置', { exact: true }).inputValue()
     const vertical = await popup.getByLabel('背景垂直位置', { exact: true }).inputValue()
     expect(Number(coordinates)).toBeLessThan(50)
     expect(Number(vertical)).toBeLessThan(50)
-    await page.screenshot({
+    await player.screenshot({
       path: 'test-results/music-party-background-editor.png',
       animations: 'disabled',
     })
@@ -205,32 +229,23 @@ test('player skin previews and saves images in portrait, keeps reading windows o
             .playerBackground,
       )
       .toEqual(saved)
-    await expect(player.locator('.portrait-player > .player-background-layer img')).toBeVisible()
-    const reader = await openTool(app, player, 'lyrics')
-    const logo = player.getByRole('img', { name: '唱片封面占位图' })
+    await expect(player.locator('.adaptive-shell > .player-background-layer img')).toBeVisible()
     for (const [label, theme] of [
       ['深色', 'dark'],
       ['浅色', 'light'],
     ] as const) {
       await page.getByRole('button', { name: label, exact: true }).click()
-      await expect(reader.locator('html')).toHaveAttribute('data-theme', theme)
-      await expect(logo).toBeVisible()
-      await expect(reader.locator('.player-background-layer')).toHaveCount(0)
-      expect(
-        await reader
-          .locator('.desktop-panel')
-          .evaluate((node) => getComputedStyle(node).backgroundColor),
-      ).toMatch(/^rgb\(/)
-      const art = await logo.boundingBox(),
-        layer = await player.locator('.player-background-layer').boundingBox()
-      expect(art!.width).toEqual(art!.height)
-      expect(layer!.width / layer!.height).toBeCloseTo(9 / 16, 2)
+      await expect(player.locator('html')).toHaveAttribute('data-theme', theme)
+      const layer = await player.locator('.adaptive-shell > .player-background-layer').boundingBox()
+      const shell = await player.locator('.adaptive-shell').boundingBox()
+      expect(layer!.width).toBeCloseTo(shell!.width, 0)
+      expect(layer!.height).toBeCloseTo(shell!.height, 0)
       await expect(player.getByRole('slider', { name: '播放进度' })).toBeVisible()
     }
     await app.close()
     app = await launch()
     player = await app.firstWindow()
-    await expect(player.locator('.portrait-player > .player-background-layer img')).toBeVisible()
+    await expect(player.locator('.adaptive-shell > .player-background-layer img')).toBeVisible()
     page = await openTool(app, player, 'settings')
     await settingsGroup(page, '外观')
     await page.getByRole('button', { name: '自定义播放器背景', exact: true }).click()
@@ -261,7 +276,7 @@ test('player skin previews and saves images in portrait, keeps reading windows o
     expect(
       (await player.evaluate(() => window.together.desktopInfo())).preferences.playerBackground,
     ).toEqual({ image: null, zoom: 100, opacity: 35, blur: 0, x: 50, y: 50 })
-    await expect(player.locator('.portrait-player > .player-background-layer')).toHaveCount(0)
+    await expect(player.locator('.adaptive-shell > .player-background-layer')).toHaveCount(0)
     expect(errors).toEqual([])
   } finally {
     await app.close()

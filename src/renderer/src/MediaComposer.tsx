@@ -1,4 +1,4 @@
-import { useSurfaceDocument } from './windows/Surface'
+import { useSurfaceActive } from './windows/Surface'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ImagePlus, Mic, Paperclip, Square, Video } from 'lucide-react'
 import {
@@ -105,7 +105,7 @@ export function MediaComposer({
   onMediaPlay(): void
   accountKey?: string
 }) {
-  const document = useSurfaceDocument()
+  const active = useSurfaceActive()
   const input = useRef<HTMLInputElement>(null),
     kind = useRef<MediaKind>('image')
   const trigger = useRef<HTMLButtonElement>(null)
@@ -281,7 +281,8 @@ export function MediaComposer({
         !form.getClientRects().length ||
         !(event.target && 'nodeType' in event.target) ||
         !form.contains(event.target as Node) ||
-        document.querySelector('[aria-modal="true"]')
+        form.closest('[inert], [hidden]') ||
+        document.querySelector('.modal-backdrop')
       )
         return
       const file = clipboardImage(event.clipboardData)
@@ -354,6 +355,9 @@ export function MediaComposer({
       duration: result.duration,
     })
   }
+  useEffect(() => {
+    if (!active) close()
+  }, [active])
   function close() {
     preparingRecord.current = false
     if (!request.current && !mediaDrafts.get(accountKey, target)?.requestId) setBusy(false)
@@ -499,7 +503,7 @@ export function MediaComposer({
               : '附件提示'}
         </button>
       )}
-      {open && (
+      {open && active && (
         <Overlay
           title={recording ? '录制语音' : savingSticker ? '上传自定义表情' : '发送附件'}
           onClose={close}

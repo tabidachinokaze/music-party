@@ -28,10 +28,12 @@
   min-width: 0;
 }
 .background-preview {
-  height: clamp(180px, 40vh, 300px);
-  width: auto;
-  max-width: 100%;
-  aspect-ratio: 9 / 16;
+  --window-ratio: calc(100dvw / 100dvh);
+  width: min(100%, calc(min(40dvh, 300px) * var(--window-ratio)));
+  aspect-ratio: var(--window-ratio);
+  display: grid;
+  place-items: center;
+  color: var(--hf-ink-3);
   justify-self: center;
   position: relative;
   isolation: isolate;
@@ -47,61 +49,6 @@
 }
 .background-preview.has-image:active {
   cursor: grabbing;
-}
-.background-preview-player {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.background-preview-cover {
-  position: absolute;
-  left: 4.444%;
-  top: 11.25%;
-  width: 91.112%;
-  aspect-ratio: 1;
-  overflow: hidden;
-  border-radius: 4px;
-}
-.background-preview-playhead {
-  position: absolute;
-  top: 66.25%;
-  left: 7%;
-  width: 86%;
-  height: 2px;
-  background: var(--hf-line);
-}
-.background-preview-playhead i {
-  display: block;
-  width: 35%;
-  height: 100%;
-  background: var(--action);
-}
-.background-preview-buttons,
-.background-preview-tools {
-  position: absolute;
-  top: 74%;
-  left: 0;
-  right: 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 10%;
-  transform: translateY(-50%);
-}
-.background-preview-buttons svg:nth-child(2) {
-  box-sizing: content-box;
-  background: var(--action);
-  color: var(--on-action);
-  padding: 5px;
-  border-radius: 50%;
-}
-.background-preview-tools {
-  top: 86%;
-  gap: 8%;
-}
-.background-preview-tools svg {
-  width: 9px;
-  height: 9px;
 }
 .player-background-editor .background-preview-hint {
   margin: 0;

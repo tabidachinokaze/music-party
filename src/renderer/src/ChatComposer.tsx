@@ -13,7 +13,8 @@ import {
   type ReactNode,
   type Ref,
 } from 'react'
-import { useSurfaceDocument } from './windows/Surface'
+import { useSurfaceActive } from './windows/Surface'
+import { followChatAnchor } from './chat-popup'
 import { Smile } from 'lucide-react'
 import type { Member } from '../../shared/types'
 import { mountComposerSubmit } from './composer-submit'
@@ -59,8 +60,7 @@ export function ChatComposer({
   submitLabel?: string
   composerRef?: Ref<{ insertText(text: string): void }>
 }) {
-  const document = useSurfaceDocument(),
-    window = document.defaultView!
+  const surfaceActive = useSurfaceActive()
   const form = useRef<HTMLFormElement>(null),
     draft = useRef<HTMLTextAreaElement>(null),
     send = useRef<HTMLButtonElement>(null),
@@ -109,33 +109,14 @@ export function ChatComposer({
       trigger = menu === 'Emoji' ? emojiButton.current : kaomojiButton.current
     if (!menu || !node || !trigger) return
     if (!node.matches(':popover-open')) node.showPopover()
-    function position() {
-      if (!node || !trigger) return
-      const anchor = trigger.getBoundingClientRect(),
-        bounds = node.getBoundingClientRect(),
-        margin = 16,
-        gap = 8,
-        width = bounds.width,
-        height = bounds.height
-      let left = anchor.right + gap
-      if (left + width > window.innerWidth - margin) left = anchor.left - width - gap
-      if (left < margin)
-        left = Math.max(margin, Math.min(anchor.left, window.innerWidth - width - margin))
-      const top = Math.max(
-        margin,
-        Math.min(anchor.bottom - height, window.innerHeight - height - margin),
-      )
-      node.style.left = `${left}px`
-      node.style.top = `${top}px`
-    }
-    position()
-    window.addEventListener('resize', position)
-    document.addEventListener('scroll', position, true)
-    return () => {
-      window.removeEventListener('resize', position)
-      document.removeEventListener('scroll', position, true)
-    }
+    return followChatAnchor(node, trigger, 320, 340)
   }, [menu])
+  useLayoutEffect(() => {
+    if (surfaceActive) return
+    popup.current?.hidePopover()
+    setMenu(null)
+    setMention(null)
+  }, [surfaceActive])
   useEffect(() => {
     if (!mention) return
     const outside = (event: PointerEvent) => {

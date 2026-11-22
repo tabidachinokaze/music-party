@@ -3,6 +3,7 @@ import {
   AlignLeft,
   Check,
   ChevronRight,
+  Clock3,
   Headphones,
   Heart,
   Library,
@@ -16,7 +17,7 @@ import {
   SlidersHorizontal,
   Users,
 } from 'lucide-react'
-import type { PanelId, PanelStatus } from '../../../shared/panels'
+import type { PanelId } from '../../../shared/panels'
 import { roomTypeLabel } from '../../../shared/multiplayer'
 import type { useParty } from '../useParty'
 import { MusicBrowser } from '../MusicBrowser'
@@ -38,7 +39,11 @@ export const panelTitle = (id: PanelId) =>
   tools.find(([key]) => id === key)?.[1] ??
   (
     {
-      windows: '外挂窗口',
+      windows: '全部功能',
+      recent: '最近播放',
+      created: '创建的歌单',
+      liked: '我喜欢的音乐',
+      albums: '收藏的专辑',
       login: '扫码登录',
       members: '房间成员',
       match: '匹配房间',
@@ -52,19 +57,27 @@ export const panelTitle = (id: PanelId) =>
 
 export function WindowDirectory({
   open,
-  statuses,
+  current,
+  resume,
   unread,
   chatUnread,
   account,
 }: {
   open(id: PanelId): void
-  statuses: Partial<Record<PanelId, PanelStatus>>
+  current: PanelId | null
+  resume?: { title: string; run(): void }
   unread: number
   chatUnread: number
   account: ReturnType<typeof useParty>['account']
 }) {
   return (
-    <nav className="window-directory" aria-label="工具窗口">
+    <nav className="window-directory" aria-label="全部功能">
+      {resume && (
+        <button className="directory-resume" onClick={resume.run}>
+          <ChevronRight size={18} />
+          <span>继续{resume.title}</span>
+        </button>
+      )}
       {tools.map(([id, title, Icon]) => {
         const count = id === 'private' ? unread : id === 'chat' ? chatUnread : 0
         return (
@@ -72,7 +85,7 @@ export function WindowDirectory({
             key={id}
             aria-label={title}
             aria-description={
-              [statuses[id]?.visible && '已打开', count > 0 && count + ' 条未读']
+              [id === current && '已打开', count > 0 && count + ' 条未读']
                 .filter(Boolean)
                 .join('，') || undefined
             }
@@ -81,11 +94,7 @@ export function WindowDirectory({
             <Icon size={18} />
             <span>{title}</span>
             {count > 0 && <small>{Math.min(count, 99)}</small>}
-            {statuses[id]?.visible ? (
-              <Check size={14} aria-label="已打开" />
-            ) : (
-              <ChevronRight size={14} />
-            )}
+            {id === current ? <Check size={14} aria-label="已打开" /> : <ChevronRight size={14} />}
           </button>
         )
       })}
@@ -100,11 +109,16 @@ export function WindowDirectory({
 
 export function LibraryPanel({
   search = false,
+  category: view = 'library',
+  onSection,
   ...props
-}: Omit<React.ComponentProps<typeof MusicBrowser>, 'view'> & { search?: boolean }) {
-  const [view, setView] = useState<'library' | 'liked' | 'albums'>('library')
+}: Omit<React.ComponentProps<typeof MusicBrowser>, 'view'> & {
+  search?: boolean
+  onSection?(id: PanelId): void
+  category?: 'library' | 'liked' | 'albums'
+}) {
   const [nav, setNav] = useState<BrowserNavigationState | null>(null)
-  const browse = !search && !props.initialSource
+  const browse = !search && !props.initialSource && !props.createdOnly
   return (
     <div className="catalog">
       {nav && (
@@ -118,12 +132,38 @@ export function LibraryPanel({
             [
               ['library', '歌单', Library],
               ['liked', '我喜欢', Heart],
+              ['recent', '最近播放', Clock3],
               ['albums', '收藏的专辑', Music2],
             ] as const
           ).map(([key, name, Icon]) => (
-            <button key={key} aria-pressed={view === key} onClick={() => setView(key)}>
+            <button key={key} aria-pressed={view === key} onClick={() => onSection?.(key)}>
               <Icon size={14} />
               {name}
+            </button>
+          ))}
+        </div>
+      )}
+      {browse && view === 'library' && props.uid && onSection && !nav?.query && (
+        <div className="library-shelves" aria-label="音乐收藏">
+          {(
+            [
+              ['liked', '我喜欢的音乐', Heart, props.library.likedPlaylist?.cover],
+              ['recent', '最近播放', Clock3, undefined],
+              [
+                'created',
+                '创建的歌单',
+                ListMusic,
+                props.library.playlists.find(
+                  (p) => p.creatorId === props.uid && p.id !== props.library.likedPlaylist?.id,
+                )?.cover,
+              ],
+              ['albums', '收藏的专辑', Music2, props.library.albums[0]?.cover],
+            ] as const
+          ).map(([id, label, Icon, art]) => (
+            <button key={id} className={'library-shelf shelf-' + id} onClick={() => onSection(id)}>
+              {art && <img alt="" src={art} />}
+              <Icon aria-hidden="true" size={26} />
+              <strong>{label}</strong>
             </button>
           ))}
         </div>

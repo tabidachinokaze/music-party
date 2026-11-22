@@ -181,46 +181,46 @@ export function validateMediaState(value: unknown): DesktopMediaState {
     roomId: v.roomId as string | null,
   }
 }
+export const MIN_WINDOW_SIZE = { width: 288, height: 350 } as const
 export function restoreWindow(
   saved: WindowGeometry | undefined,
   areas: { x: number; y: number; width: number; height: number }[],
-): WindowGeometry {
-  const primary = areas[0] || { x: 0, y: 0, width: 1280, height: 850 }
-  const area =
-    saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)
-      ? areas.find(
-          (a) =>
-            saved.x! + 160 < a.x + a.width &&
-            saved.x! + saved.width - 160 > a.x &&
-            saved.y! + 100 < a.y + a.height &&
-            saved.y! + saved.height - 100 > a.y,
-        ) || primary
-      : primary
-  // Old installations saved a landscape workspace. Start their portrait player at its design size.
-  const portrait = saved && Math.abs(saved.width / saved.height - 9 / 16) < 0.025
-  const availableHeight = Math.max(1, area.height - 40)
-  const width = Math.max(
-    1,
-    Math.min(
-      area.width,
-      Math.floor((availableHeight * 9) / 16),
-      Math.max(288, portrait ? Math.round(saved.width) : 360),
-    ),
-  )
-  const height = Math.round((width * 16) / 9)
-  const x =
-    saved && Number.isFinite(saved.x)
-      ? Math.min(Math.max(saved.x!, area.x), area.x + area.width - width)
-      : area.x + Math.round((area.width - width) / 2)
-  const y =
-    saved && Number.isFinite(saved.y)
-      ? Math.min(Math.max(saved.y!, area.y), area.y + area.height - height)
-      : area.y + Math.round((area.height - height) / 2)
-  return {
-    x: Math.round(x),
-    y: Math.round(y),
-    width: Math.round(width),
-    height: Math.round(height),
-    maximized: !!portrait && saved?.maximized === true,
+  frame = { width: 0, height: 0 },
+): Required<WindowGeometry> {
+  let area = areas[0] || { x: 0, y: 0, width: 1280, height: 850 }
+  const desiredWidth =
+    saved && Number.isFinite(saved.width) && saved.width > 0 ? Math.round(saved.width) : 1100
+  const desiredHeight =
+    saved && Number.isFinite(saved.height) && saved.height > 0 ? Math.round(saved.height) : 720
+  const left = saved?.x,
+    top = saved?.y
+  const placed =
+    left !== undefined && top !== undefined && Number.isFinite(left) && Number.isFinite(top)
+  let bestOverlap = 0
+  if (placed) {
+    for (const display of areas) {
+      const horizontal =
+        Math.min(left + desiredWidth + frame.width, display.x + display.width) -
+        Math.max(left, display.x)
+      const vertical =
+        Math.min(top + desiredHeight + frame.height, display.y + display.height) -
+        Math.max(top, display.y)
+      const overlap = Math.max(0, horizontal) * Math.max(0, vertical)
+      if (overlap > bestOverlap) {
+        bestOverlap = overlap
+        area = display
+      }
+    }
   }
+  const availableWidth = Math.max(1, area.width - frame.width)
+  const availableHeight = Math.max(1, area.height - frame.height)
+  const width = Math.min(Math.max(MIN_WINDOW_SIZE.width, desiredWidth), availableWidth)
+  const height = Math.min(Math.max(MIN_WINDOW_SIZE.height, desiredHeight), availableHeight)
+  const roomX = availableWidth - width,
+    roomY = availableHeight - height
+  const x =
+    placed && bestOverlap ? Math.max(area.x, Math.min(left, area.x + roomX)) : area.x + roomX / 2
+  const y =
+    placed && bestOverlap ? Math.max(area.y, Math.min(top, area.y + roomY)) : area.y + roomY / 2
+  return { x: Math.round(x), y: Math.round(y), width, height, maximized: saved?.maximized === true }
 }

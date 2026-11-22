@@ -318,11 +318,7 @@ export function Settings({
         </div>
       </div>
       {backgroundOpen && info && (
-        <PlayerBackgroundSettings
-          desktop={desktop}
-          song={party.current}
-          onClose={() => setBackgroundOpen(false)}
-        />
+        <PlayerBackgroundSettings desktop={desktop} onClose={() => setBackgroundOpen(false)} />
       )}
     </section>
   )

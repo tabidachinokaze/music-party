@@ -1,4 +1,4 @@
-import { useSurfaceDocument } from './windows/Surface'
+import { useSurfaceActive } from './windows/Surface'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Disc3, ExternalLink, FileText, Headphones, ImageOff, Music2, Play } from 'lucide-react'
@@ -43,8 +43,7 @@ function Attachment({
   api?: ApiCall
   accountKey?: string
 }) {
-  const document = useSurfaceDocument(),
-    view = document.defaultView!
+  const active = useSurfaceActive()
   const [failed, setFailed] = useState(false)
   const [preview, setPreview] = useState(false)
   const [error, setError] = useState('')
@@ -69,28 +68,32 @@ function Attachment({
     if (!menu) return
     const close = () => setMenu(null)
     const key = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') close()
+      if (event.key !== 'Escape' || event.isComposing) return
+      event.preventDefault()
+      event.stopPropagation()
+      close()
+      menuAnchor.current?.focus({ preventScroll: true })
     }
-    view.addEventListener('click', close)
-    view.addEventListener('keydown', key)
-    view.addEventListener('resize', close)
+    window.addEventListener('click', close)
+    window.addEventListener('keydown', key, true)
+    window.addEventListener('resize', close)
     const reposition = () => {
       const bounds = menuAnchor.current?.getBoundingClientRect()
-      if (!bounds || bounds.bottom <= 0 || bounds.top >= view.innerHeight) {
+      if (!bounds || bounds.bottom <= 0 || bounds.top >= window.innerHeight) {
         close()
         return
       }
-      const next = imageMenuPosition(bounds, view)
+      const next = imageMenuPosition(bounds, window)
       setMenu((previous) =>
         previous && (previous.left !== next.left || previous.top !== next.top) ? next : previous,
       )
     }
-    view.addEventListener('scroll', reposition, true)
+    window.addEventListener('scroll', reposition, true)
     return () => {
-      view.removeEventListener('click', close)
-      view.removeEventListener('keydown', key)
-      view.removeEventListener('resize', close)
-      view.removeEventListener('scroll', reposition, true)
+      window.removeEventListener('click', close)
+      window.removeEventListener('keydown', key, true)
+      window.removeEventListener('resize', close)
+      window.removeEventListener('scroll', reposition, true)
     }
   }, [menu])
   async function saveSticker() {
@@ -134,6 +137,13 @@ function Attachment({
     const players = [audio.current, video.current]
     return () => players.forEach((player) => player?.pause())
   }, [item.url])
+  useEffect(() => {
+    if (active) return
+    audio.current?.pause()
+    video.current?.pause()
+    setMenu(null)
+    setPreview(false)
+  }, [active])
   const target = attachmentMusicResource(item)
   const playableSong = target?.type === 'song'
   const internalAlbum = target?.type === 'album'
@@ -166,7 +176,7 @@ function Attachment({
               stickerLibrary(accountKey, room ? 'room' : 'private')
               setSaved(isStickerSaved(accountKey, source))
               menuAnchor.current = event.currentTarget
-              setMenu(imageMenuPosition(event.currentTarget.getBoundingClientRect(), view))
+              setMenu(imageMenuPosition(event.currentTarget.getBoundingClientRect(), window))
             }}
           >
             <img

@@ -1,7 +1,10 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
-import { animate } from 'animejs'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { AlbumArtwork } from './AlbumArtwork'
 import {
   AppWindow,
+  Captions,
+  ChevronUp,
+  ListMusic,
   Heart,
   ListPlus,
   PanelsTopLeft,
@@ -16,7 +19,9 @@ import {
 import { targetPosition } from '../../../shared/multiplayer'
 import type { Preferences } from '../../../shared/desktop'
 import type { useParty } from '../useParty'
-import { PlayerBackground } from '../PlayerBackground'
+import type { Song } from '../../../shared/types'
+import './adaptive-transport.css'
+export { ImmersivePlayer } from './ImmersivePlayer'
 import { useVolumeWheel } from '../useVolumeWheel'
 
 type Party = ReturnType<typeof useParty>
@@ -46,9 +51,10 @@ export function Playhead({
   const duration =
     (p.room && !p.auditioning ? p.roomPlayback?.duration : 0) || p.current?.duration || 0
   const disabled = !duration || !p.current || !!p.busy || (!!p.room && !p.auditioning)
-  const dragging = useRef(false)
+  const trackKey = [p.current?.id, p.room?.roomId, p.auditioning].join(':')
+  const dragging = useRef<string | null>(null)
   const [preview, setPreview] = useState<number | null>(null)
-  useEffect(() => setPreview(null), [p.current?.id, disabled, p.auditioning])
+  useEffect(() => setPreview(null), [trackKey, disabled])
   const value = Math.max(0, Math.min(duration, preview ?? position))
   const commit = (raw: string) => {
     setPreview(null)
@@ -75,16 +81,20 @@ export function Playhead({
             : commit(e.currentTarget.value)
         }
         onPointerDown={(e) => {
-          dragging.current = true
+          dragging.current = trackKey
           e.currentTarget.setPointerCapture(e.pointerId)
         }}
         onPointerCancel={() => {
-          dragging.current = false
+          dragging.current = null
           setPreview(null)
         }}
         onPointerUp={(e) => {
-          if (dragging.current) commit(e.currentTarget.value)
-          dragging.current = false
+          if (dragging.current === trackKey) commit(e.currentTarget.value)
+          dragging.current = null
+        }}
+        onLostPointerCapture={() => {
+          dragging.current = null
+          setPreview(null)
         }}
         onBlur={() => setPreview(null)}
         onKeyDown={(e) => {
@@ -107,52 +117,24 @@ export function Playhead({
     </div>
   )
 }
-export function PortraitPlayer({
-  party: p,
-  position,
-  background,
-  liked,
-  likeReady,
-  onLike,
-  onAdd,
-  onControls,
-  onWindows,
-  act,
-}: {
+interface TransportProps {
   party: Party
-  position: number
-  background?: Preferences['playerBackground']
+  act: Party['act']
+}
+
+interface SongActions {
   liked: boolean
   likeReady: boolean
   onLike(): void
   onAdd(): void
+}
+
+interface PlayerProps extends TransportProps, SongActions {
+  position: number
   onControls(): void
-  onWindows(): void
-  act: Party['act']
-}) {
-  const [broken, setBroken] = useState('')
-  const artwork = p.current?.cover && p.current.cover !== broken ? p.current.cover : ''
-  const lastArtwork = useRef(artwork)
-  const [outgoing, setOutgoing] = useState<string | null>(null)
-  const previousLayer = useRef<HTMLDivElement>(null)
-  useLayoutEffect(() => {
-    const before = lastArtwork.current
-    lastArtwork.current = artwork
-    if (before !== artwork)
-      setOutgoing(window.matchMedia('(prefers-reduced-motion: reduce)').matches ? null : before)
-  }, [artwork])
-  useEffect(() => {
-    if (outgoing === null || !previousLayer.current) return
-    const animation = animate(previousLayer.current, {
-      opacity: [1, 0],
-      duration: 220,
-      ease: 'outQuad',
-      onComplete: () => setOutgoing(null),
-    })
-    return () => {
-      animation.revert()
-    }
-  }, [outgoing])
+}
+
+function Transport({ party: p, act }: TransportProps) {
   const transport = p.auditioning
     ? '停止试听'
     : p.playing
@@ -163,105 +145,194 @@ export function PortraitPlayer({
         ? '恢复同听'
         : '播放'
   return (
-    <main className="portrait-stage" aria-label="播放界面">
-      <div className="portrait-player">
-        {background?.image ? (
-          <PlayerBackground background={background} />
+    <>
+      <button
+        className="icon-btn"
+        title={p.auditioning ? '重播试听' : '上一首'}
+        aria-label={p.auditioning ? '重播试听' : '上一首'}
+        disabled={(!p.auditioning && (!!p.room || !p.personalQueue.length)) || !!p.busy}
+        onClick={() => act('上一首', () => (p.auditioning ? p.seek(0) : p.nextLocal(-1)))}
+      >
+        <SkipBack />
+      </button>
+      <button
+        className="primary-play"
+        title={transport}
+        aria-label={transport}
+        disabled={!p.current || !!p.busy}
+        onClick={() => act(transport, p.togglePlay)}
+      >
+        {p.auditioning ? (
+          <Square fill="currentColor" />
+        ) : p.playing ? (
+          <Pause fill="currentColor" />
         ) : (
-          p.current?.cover &&
-          broken !== p.current.cover && (
-            <div className="cover-tint" aria-hidden="true">
-              <img src={p.current.cover} alt="" draggable={false} referrerPolicy="no-referrer" />
-            </div>
-          )
+          <Play fill="currentColor" />
         )}
-        <div className="sleeve">
-          {p.current && artwork ? (
-            <img
-              src={artwork}
-              referrerPolicy="no-referrer"
-              alt={p.current.name + ' 专辑封面'}
-              draggable={false}
-              onError={() => setBroken(artwork)}
-            />
-          ) : (
-            <div className="sleeve-placeholder" role="img" aria-label="唱片封面占位图" />
-          )}
-          {outgoing !== null && (
-            <div className="previous-cover" aria-hidden="true" ref={previousLayer}>
-              {outgoing ? (
-                <img alt="" draggable={false} src={outgoing} referrerPolicy="no-referrer" />
-              ) : (
-                <div className="sleeve-placeholder" />
-              )}
-            </div>
-          )}
-        </div>
+      </button>
+      <button
+        className="icon-btn"
+        title={p.auditioning ? '返回房间当前歌曲' : p.room ? '请求房间下一首' : '下一首'}
+        aria-label={p.auditioning ? '返回房间当前歌曲' : '下一首'}
+        disabled={!p.current || !!p.busy}
+        onClick={() => act('下一首', () => (p.room ? p.nextSong() : p.nextLocal(1)))}
+      >
+        <SkipForward />
+      </button>
+    </>
+  )
+}
+
+function TrackActions({
+  liked,
+  likeReady,
+  onLike,
+  onAdd,
+  current,
+}: SongActions & { current: Song | null }) {
+  return (
+    <>
+      <button
+        className="icon-btn"
+        title={liked ? '取消喜欢当前歌曲' : '喜欢当前歌曲'}
+        aria-label={liked ? '取消喜欢当前歌曲' : '喜欢当前歌曲'}
+        aria-pressed={liked}
+        disabled={!current || !likeReady}
+        onClick={onLike}
+      >
+        <Heart fill={liked ? 'currentColor' : 'none'} />
+      </button>
+      <button
+        className="icon-btn"
+        title="添加当前歌曲到歌单"
+        aria-label="添加当前歌曲到歌单"
+        disabled={!current}
+        onClick={onAdd}
+      >
+        <ListPlus />
+      </button>
+    </>
+  )
+}
+
+export function PortraitPlayer({
+  party: p,
+  position,
+  background,
+  layout = 'compact',
+  onControls,
+  onWindows,
+  act,
+  ...actions
+}: PlayerProps & {
+  background?: Preferences['playerBackground']
+  layout?: 'compact' | 'medium'
+  onWindows(): void
+}) {
+  return (
+    <section className="portrait-stage adaptive-stage" data-layout={layout} aria-label="播放界面">
+      <div className="portrait-player">
+        {!background?.image && p.current?.cover && (
+          <div className="cover-tint" aria-hidden="true">
+            <img src={p.current.cover} alt="" draggable={false} referrerPolicy="no-referrer" />
+          </div>
+        )}
+        <AlbumArtwork song={p.current} className="sleeve" />
+        {layout === 'medium' && (
+          <div className="portrait-identity">
+            <strong title={p.current?.name}>{p.current?.name || '尚未选歌'}</strong>
+            <small>{p.auditioning ? '本机试听' : p.current?.artist}</small>
+          </div>
+        )}
         <Playhead party={p} position={position} act={act} />
         <div className="portrait-transport">
-          <button
-            className="icon-btn"
-            title={p.auditioning ? '重播试听' : '上一首'}
-            aria-label={p.auditioning ? '重播试听' : '上一首'}
-            disabled={(!p.auditioning && (!!p.room || !p.personalQueue.length)) || !!p.busy}
-            onClick={() => act('上一首', () => (p.auditioning ? p.seek(0) : p.nextLocal(-1)))}
-          >
-            <SkipBack />
-          </button>
-          <button
-            className="primary-play"
-            title={transport}
-            aria-label={transport}
-            disabled={!p.current || !!p.busy}
-            onClick={() => act(transport, p.togglePlay)}
-          >
-            {p.auditioning ? (
-              <Square fill="currentColor" />
-            ) : p.playing ? (
-              <Pause fill="currentColor" />
-            ) : (
-              <Play fill="currentColor" />
-            )}
-          </button>
-          <button
-            className="icon-btn"
-            title={p.room ? '请求房间下一首' : '下一首'}
-            aria-label={p.auditioning ? '返回房间当前歌曲' : '下一首'}
-            disabled={!p.current || !!p.busy}
-            onClick={() => act('下一首', () => (p.room ? p.nextSong() : p.nextLocal(1)))}
-          >
-            <SkipForward />
-          </button>
+          <Transport party={p} act={act} />
         </div>
         <div className="portrait-tools">
-          <button
-            className="icon-btn"
-            title={liked ? '取消喜欢当前歌曲' : '喜欢当前歌曲'}
-            aria-label={liked ? '取消喜欢当前歌曲' : '喜欢当前歌曲'}
-            aria-pressed={liked}
-            disabled={!p.current || !likeReady}
-            onClick={onLike}
-          >
-            <Heart fill={liked ? 'currentColor' : 'none'} />
-          </button>
-          <button
-            className="icon-btn"
-            title="添加当前歌曲到歌单"
-            aria-label="添加当前歌曲到歌单"
-            disabled={!p.current}
-            onClick={onAdd}
-          >
-            <ListPlus />
-          </button>
+          <TrackActions current={p.current} {...actions} />
           <button className="icon-btn" title="播放调节" aria-label="播放调节" onClick={onControls}>
             <SlidersHorizontal />
           </button>
-          <button className="icon-btn" title="外挂窗口" aria-label="外挂窗口" onClick={onWindows}>
+          <button className="icon-btn" title="打开内容" aria-label="打开内容" onClick={onWindows}>
             <PanelsTopLeft />
           </button>
         </div>
       </div>
-    </main>
+    </section>
+  )
+}
+
+export function PlayerFooter({
+  party: p,
+  position,
+  onControls,
+  onNow,
+  onQueue,
+  nowOpen,
+  queueOpen,
+  act,
+  ...actions
+}: PlayerProps & {
+  onNow(): void
+  onQueue(): void
+  nowOpen: boolean
+  queueOpen: boolean
+}) {
+  const ref = useVolumeWheel<HTMLButtonElement>(p.volume, p.setVolume)
+  const nowLabel = nowOpen ? '收起正在播放' : '展开正在播放'
+  return (
+    <footer className="adaptive-player-bar" aria-label="底部播放栏">
+      <button
+        className="footer-track"
+        aria-label={nowLabel}
+        title={nowLabel}
+        aria-expanded={nowOpen}
+        onClick={onNow}
+      >
+        <span className="footer-thumb">
+          <AlbumArtwork song={p.current} className="footer-art" />
+          <ChevronUp size={17} />
+        </span>
+        <span className="footer-track-copy">
+          <strong>{p.current?.name || '尚未选歌'}</strong>
+          <small>{p.auditioning ? '本机试听' : p.current?.artist}</small>
+        </span>
+      </button>
+      <div className="footer-transport">
+        <Transport party={p} act={act} />
+      </div>
+      <div className="footer-actions">
+        <Playhead party={p} position={position} act={act} />
+        <TrackActions current={p.current} {...actions} />
+        <button
+          className="icon-btn footer-lyrics"
+          aria-label="歌词"
+          title="歌词"
+          aria-expanded={nowOpen}
+          onClick={onNow}
+        >
+          <Captions />
+        </button>
+        <button
+          className="icon-btn footer-queue"
+          aria-label="播放队列"
+          title="播放队列"
+          aria-expanded={queueOpen}
+          onClick={onQueue}
+        >
+          <ListMusic />
+        </button>
+        <button
+          ref={ref}
+          className="icon-btn footer-volume"
+          aria-label="播放调节"
+          title={'音量 ' + Math.round(p.volume * 100) + '% · 播放调节'}
+          onClick={onControls}
+        >
+          <Volume2 />
+        </button>
+      </div>
+    </footer>
   )
 }
 

@@ -1,20 +1,16 @@
-import { expect, type ElectronApplication, type Page } from '@playwright/test'
+import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
 import type { PanelId } from '../../src/shared/panels'
+// Domain surfaces share one document. Composer popovers and image previews portal to its body.
+function surface(player: Page, id: PanelId) {
+  return player.locator(
+    `[data-panel="${id}"], body > .modal-backdrop, body > .sticker-context-menu`,
+  )
+}
+
 export async function panelPage(app: ElectronApplication, id: PanelId) {
-  let result: Page | undefined
-  await expect
-    .poll(async () => {
-      for (const p of app.windows()) {
-        if (p.isClosed()) continue
-        if (await p.locator('.desktop-panel[data-panel="' + id + '"]').count()) {
-          result = p
-          return true
-        }
-      }
-      return false
-    })
-    .toBe(true)
-  return result!
+  const player = await app.firstWindow()
+  await expect(player.locator(`[data-panel="${id}"]`)).toBeVisible()
+  return surface(player, id)
 }
 export async function openTool(
   app: ElectronApplication,
@@ -43,28 +39,54 @@ export async function openTool(
     settings: '设置',
     login: '扫码登录',
   }
-  if (id === 'controls') await player.getByRole('button', { name: names[id], exact: true }).click()
-  else {
-    await player.getByRole('button', { name: '外挂窗口', exact: true }).click()
-    const nav = await panelPage(app, 'windows')
-    await nav.getByRole('button', { name: names[id], exact: true }).click()
+  await expect(player.locator('.adaptive-shell')).toBeVisible()
+  const target = player.locator(`[data-panel="${id}"]:not([inert])`)
+  const directory = player.getByRole('button', { name: /^(全部功能|打开内容)$/ }).first()
+  const catalog = player.locator('[data-panel="windows"]')
+  for (let depth = 0; depth < 8; depth++) {
+    if (await catalog.isVisible()) break
+    if (
+      (await target.isVisible()) &&
+      (await player.locator('[aria-modal="true"]:visible').count()) === 0
+    )
+      return surface(player, id)
+    if (await directory.isVisible()) {
+      try {
+        await directory.click({ trial: true, timeout: 300 })
+        await directory.click()
+        break
+      } catch {
+        // A modal or drawer is covering the persistent directory control.
+      }
+    }
+    await player.keyboard.press('Escape')
   }
+  await expect(catalog).toBeVisible()
+  await catalog.getByRole('button', { name: names[id], exact: true }).click()
   return panelPage(app, id)
 }
 
 export async function loginFixture(app: ElectronApplication, player: Page) {
-  const login = await openTool(app, player, 'login')
-  const win = await app.browserWindow(login)
-  await expect.poll(() => win.evaluate((w) => w.isVisible())).toBe(false)
+  await openTool(app, player, 'login')
+  await expect(player.locator('[data-panel="login"]')).toBeHidden()
 }
-export async function widenPanel(app: ElectronApplication, page: Page, width = 760, height = 610) {
+export async function widenPanel(
+  app: ElectronApplication,
+  target: Locator | Page,
+  width = 760,
+  height = 610,
+) {
+  const page = 'page' in target ? target.page() : target
   const win = await app.browserWindow(page)
   await win.evaluate((w, size) => w.setContentSize(size.width, size.height), { width, height })
   await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width)
+  await expect(page.locator('.adaptive-shell')).toHaveAttribute(
+    'data-layout',
+    width >= 960 ? 'wide' : width >= 560 ? 'medium' : 'compact',
+  )
 }
 
-// An about:blank satellite shares its opener's renderer. Stub the Electron session so
-// artwork requests from either document are served by the same deterministic fixture.
+// Serve deterministic artwork to both <img> elements and background images.
 export async function serveArtwork(app: ElectronApplication, bytes: Buffer, contentType: string) {
   await app.evaluate(
     ({ session, net }, data) => {
@@ -80,8 +102,13 @@ export async function serveArtwork(app: ElectronApplication, bytes: Buffer, cont
   )
 }
 
+export async function showPrivateList(panel: Locator) {
+  const back = panel.getByRole('button', { name: '返回私信列表', exact: true })
+  if (await back.isVisible()) await back.click()
+}
+
 export async function settingsGroup(
-  page: Page,
+  page: Locator,
   title: '外观' | '播放与桌面' | '账号' | '更新与帮助',
 ) {
   const nav = page.getByRole('navigation', { name: '设置分类' })

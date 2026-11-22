@@ -1,15 +1,9 @@
 import { useContext } from 'react'
-import { InlineDialog, useSurfaceDocument } from '../windows/Surface'
-import {
-  useEffect,
-  useEffectEvent,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from 'react'
+import { InlineDialog, useSurfaceActive } from '../windows/Surface'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import { followChatAnchor } from '../chat-popup'
 import type { ReactNode } from 'react'
 
 type OverlayProps = {
@@ -32,54 +26,16 @@ export function Overlay(props: OverlayProps) {
   return <FloatingOverlay {...props} />
 }
 function FloatingOverlay({ title, onClose, children, wide = false, sideAnchor }: OverlayProps) {
-  const document = useSurfaceDocument()
-  const window = document.defaultView!
+  const active = useSurfaceActive()
   const root = useRef<HTMLDivElement>(null)
   const [closing, setClosing] = useState(false)
   const close = useEffectEvent(onClose)
-  const [position, setPosition] = useState<CSSProperties>({})
   useLayoutEffect(() => {
-    if (!sideAnchor || !root.current) return
-    const popup = root.current
-    const place = () => {
-      const anchor = sideAnchor.getBoundingClientRect()
-      const panel = sideAnchor
-        .closest('.chat-drawer,.private-conversation-bubble')
-        ?.getBoundingClientRect()
-      const margin = 20,
-        width = Math.min(360, window.innerWidth - margin * 2)
-      const edge = panel || anchor
-      let left = edge.left < window.innerWidth / 2 ? edge.right + 12 : edge.left - width - 12
-      left = Math.max(margin, Math.min(left, window.innerWidth - width - margin))
-      const top = panel
-        ? Math.max(margin, panel.top)
-        : Math.max(
-            margin,
-            Math.min(
-              anchor.bottom - popup.offsetHeight,
-              window.innerHeight - popup.offsetHeight - margin,
-            ),
-          )
-      setPosition({
-        position: 'fixed',
-        left,
-        top,
-        width,
-        maxHeight: window.innerHeight - top - margin,
-        margin: 0,
-      })
-    }
-    const resize = new ResizeObserver(place)
-    resize.observe(popup)
-    window.addEventListener('resize', place)
-    document.addEventListener('scroll', place, true)
-    place()
-    return () => {
-      resize.disconnect()
-      window.removeEventListener('resize', place)
-      document.removeEventListener('scroll', place, true)
-    }
-  }, [sideAnchor])
+    if (sideAnchor && root.current) return followChatAnchor(root.current, sideAnchor, 360)
+  }, [sideAnchor, active])
+  useLayoutEffect(() => {
+    if (!active) close()
+  }, [active])
   useEffect(() => {
     if (!closing) return
     const timer = setTimeout(
@@ -89,12 +45,14 @@ function FloatingOverlay({ title, onClose, children, wide = false, sideAnchor }:
     return () => clearTimeout(timer)
   }, [closing])
   useEffect(() => {
+    if (!active) return
     const previous = document.activeElement as HTMLElement | null
-    const focusable = () => [
-      ...(root.current?.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]',
-      ) || []),
-    ]
+    const focusable = () =>
+      [
+        ...(root.current?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex="0"]',
+        ) || []),
+      ].filter((element) => element.getClientRects().length && !element.closest('[inert]'))
     focusable()[0]?.focus()
     const key = (event: KeyboardEvent) => {
       const dialogs = [...document.querySelectorAll<HTMLElement>('[aria-modal="true"]')].filter(
@@ -121,9 +79,11 @@ function FloatingOverlay({ title, onClose, children, wide = false, sideAnchor }:
     document.addEventListener('keydown', key)
     return () => {
       document.removeEventListener('keydown', key)
-      if (previous?.isConnected) previous.focus()
+      if (previous?.getClientRects().length && !previous.closest('[inert]'))
+        previous.focus({ preventScroll: true })
     }
-  }, [])
+  }, [active])
+  if (!active) return null
   return createPortal(
     <div
       className={`modal-backdrop ${sideAnchor ? 'side-popup-backdrop' : ''}`}
@@ -136,7 +96,6 @@ function FloatingOverlay({ title, onClose, children, wide = false, sideAnchor }:
         ref={root}
         inert={closing}
         className={`modal player-modal ${wide ? 'player-modal-wide' : ''}`}
-        style={position}
         role="dialog"
         aria-modal="true"
         aria-label={title}

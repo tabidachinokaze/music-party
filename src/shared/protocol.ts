@@ -47,12 +47,15 @@ export function invitation(room: Room): string {
 }
 
 export function toSong(song: any): Song {
+  const album = song.al || song.album
+  const albumId = String(album?.id || '')
   return {
     id: String(song.id),
     name: song.name || '未知歌曲',
     artist: (song.ar || song.artists || []).map((a: any) => a.name).join(' / '),
-    album: (song.al || song.album)?.name || '',
-    cover: (song.al || song.album)?.picUrl || '',
+    album: album?.name || '',
+    ...(/^[1-9]\d*$/.test(albumId) ? { albumId } : {}),
+    cover: album?.picUrl || '',
     duration: song.dt || song.duration || 0,
   }
 }

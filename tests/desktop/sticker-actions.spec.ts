@@ -111,9 +111,9 @@ test('self and peer pictures can be collected and clipboard pictures are preview
   })
   try {
     const player = await app.firstWindow()
-    let page = player
+    let page = player.locator('body')
     const errors: string[] = []
-    page.on('pageerror', (error) => errors.push(error.message))
+    player.on('pageerror', (error) => errors.push(error.message))
     await app.evaluate(({ ipcMain }, port) => {
       ipcMain.removeHandler('sticker-image')
       ipcMain.handle('sticker-image', async (_event, request) => {
@@ -158,7 +158,7 @@ test('self and peer pictures can be collected and clipboard pictures are preview
         )
         .toBe(true)
       await button.click({ button: 'right' })
-      const menu = page.getByRole('menu')
+      const menu = player.getByRole('menu')
       await expect(menu).toBeVisible()
       const menuBounds = await menu.boundingBox()
       expect(menuBounds!.x).toBeGreaterThanOrEqual(0)
@@ -201,7 +201,7 @@ test('self and peer pictures can be collected and clipboard pictures are preview
     await expect(page.getByRole('dialog', { name: '发送附件', exact: true })).toHaveCount(0)
     await expect(page.getByLabel('私信内容')).toHaveValue('保留草稿')
     expect(errors).toEqual([])
-    await page.screenshot({
+    await player.screenshot({
       path: 'test-results/music-party-sticker-actions.png',
       animations: 'disabled',
     })

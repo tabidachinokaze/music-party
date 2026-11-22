@@ -214,18 +214,6 @@ textarea:focus-visible {
   border: 1px solid var(--hf-line);
   background: var(--hf-bg);
 }
-.desktop-panel[data-snap='left'] {
-  border-right: 2px solid var(--action);
-}
-.desktop-panel[data-snap='right'] {
-  border-left: 2px solid var(--action);
-}
-.desktop-panel[data-snap='top'] {
-  border-bottom: 2px solid var(--action);
-}
-.desktop-panel[data-snap='bottom'] {
-  border-top: 2px solid var(--action);
-}
 .panel-titlebar {
   flex: none;
   min-height: 44px;
@@ -667,7 +655,7 @@ textarea:focus-visible {
   height: auto;
   aspect-ratio: 1;
 }
-@media (max-width: 599px) {
+@container tool (max-width: 599px) {
   .private-window-content > .private-layout {
     display: flex;
   }
@@ -797,7 +785,7 @@ textarea:focus-visible {
 .settings-section[hidden] {
   display: none;
 }
-@media (max-width: 599px) {
+@container tool (max-width: 599px) {
   .panel-window .settings-page {
     display: block;
     overflow: auto;
@@ -825,7 +813,7 @@ textarea:focus-visible {
     margin: 0 0 10px;
   }
 }
-@media (max-width: 400px) {
+@container tool (max-width: 400px) {
   .panel-window .song-row {
     grid-template-columns: minmax(0, 1fr) auto;
   }

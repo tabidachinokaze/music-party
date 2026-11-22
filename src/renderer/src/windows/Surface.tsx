@@ -1,8 +1,8 @@
 import { createPortal } from 'react-dom'
 import { createContext, useContext, type ReactNode } from 'react'
-export const SurfaceDocument = createContext<Document | null>(null)
-export function useSurfaceDocument() {
-  return useContext(SurfaceDocument) ?? document
+export const SurfaceActive = createContext(true)
+export function useSurfaceActive() {
+  return useContext(SurfaceActive)
 }
 
 export const PanelHeaderTarget = createContext<HTMLElement | null>(null)

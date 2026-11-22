@@ -167,7 +167,7 @@ export function PrivateMessages({
     onLoad: () => inbox.loadContacts(true),
   })
   const [showLatest, setShowLatest] = useState(false)
-  const readingKey = `${compact ? 'bubble' : 'inbox'}:${inbox.selected?.uid}`
+  const readingKey = String(inbox.selected?.uid || '')
   useLayoutEffect(() => {
     privateViewAccount(String(account?.userId || ''))
     const saved = privateViewPosition(readingKey)
@@ -360,6 +360,8 @@ export function PrivateMessages({
               </div>
               <button
                 className="text-btn"
+                aria-label="邀请到当前房间"
+                title="邀请到当前房间"
                 disabled={!room || inbox.sending}
                 onClick={() => {
                   if (room && inbox.selected)
@@ -371,7 +373,7 @@ export function PrivateMessages({
                 }}
               >
                 <Headphones size={15} />
-                邀请到当前房间
+                <span>邀请到当前房间</span>
               </button>
               <button
                 className="icon-btn"
@@ -403,7 +405,7 @@ export function PrivateMessages({
               aria-live="polite"
               onScroll={() => {
                 const box = log.current
-                if (box) {
+                if (box?.clientHeight) {
                   stick.current = box.scrollHeight - box.scrollTop - box.clientHeight < 70
                   if (inbox.messages.length) setShowLatest(!stick.current)
                   savePrivateView(readingKey, stick.current, captureHistoryAnchor(box))

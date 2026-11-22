@@ -3,9 +3,9 @@ import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { openTool } from './windows'
+import { openTool, widenPanel } from './windows'
 
-test('portrait player keeps its transport and playhead while real satellites follow, detach and reattach', async () => {
+test('one window preserves browsing and playback across compact, split and desktop layouts', async () => {
   const server = createServer((_req, res) => {
     res.setHeader('content-type', 'application/json')
     res.end(JSON.stringify({ code: 200, data: { code: 200, profile: null } }))
@@ -23,77 +23,60 @@ test('portrait player keeps its transport and playhead while real satellites fol
   })
   try {
     const player = await app.firstWindow()
-    const playhead = player.getByRole('slider', { name: '播放进度' })
-    await expect(playhead).toBeVisible()
-    await expect(player.locator('button')).toHaveCount(7)
-    const geometry = () =>
-      player.evaluate(() => {
-        const bounds = (selector: string) => {
-          const b = document.querySelector(selector)!.getBoundingClientRect()
-          return [b.x, b.y, b.width, b.height, b.bottom]
-        }
-        return {
-          stage: bounds('.portrait-player'),
-          cover: bounds('.sleeve'),
-          progress: bounds('.playhead'),
-          buttons: bounds('.portrait-transport'),
-          overflow:
-            document.documentElement.scrollWidth > innerWidth ||
-            document.documentElement.scrollHeight > innerHeight,
-        }
-      })
-    const initial = await geometry()
-    expect(initial.stage[2] / initial.stage[3]).toBeCloseTo(9 / 16, 2)
-    expect(initial.cover[4]).toBeLessThan(initial.progress[1])
-    expect(initial.progress[4]).toBeLessThan(initial.buttons[1])
-    expect(initial.overflow).toBe(false)
-    const lyrics = await openTool(app, player, 'lyrics')
-    await expect(lyrics.getByLabel('当前歌曲歌词')).toBeVisible()
-    const controls = await openTool(app, player, 'controls')
-    await expect(controls.getByRole('slider', { name: '音量' })).toBeVisible()
-    await expect(player.locator('.desktop-panel,.lyrics-surface,.private-layout')).toHaveCount(0)
-    const positions = () =>
-      app.evaluate(({ BrowserWindow }) =>
-        Object.fromEntries(
-          BrowserWindow.getAllWindows().map((w) => [w.getTitle().split(' · ')[0], w.getBounds()]),
-        ),
-      )
-    const home = await app.browserWindow(player)
-    const before = await positions()
-    await home.evaluate((w) => {
-      const [x, y] = w.getPosition()
-      w.setPosition(x + 50, y + 35)
-    })
-    await expect.poll(async () => (await positions())['歌词'].x).toBe(before['歌词'].x + 50)
-    expect((await positions())['播放调节'].y).toBe(before['播放调节'].y + 35)
-    const header = await controls.locator('.panel-titlebar h1').boundingBox()
-    const x = header!.x + 20,
-      y = header!.y + 8
-    await controls.mouse.move(x, y)
-    await controls.mouse.down()
-    await controls.mouse.move(x + 80, y + 10)
-    await controls.mouse.up()
-    await expect(controls.getByRole('button', { name: '贴靠到播放器' })).toBeVisible()
-    const detached = (await positions())['播放调节']
-    await home.evaluate((w) => {
-      const [x, y] = w.getPosition()
-      w.setPosition(x - 38, y + 9)
-    })
-    await expect.poll(async () => (await positions())['歌词'].x).toBe(before['歌词'].x + 12)
-    expect((await positions())['播放调节']).toEqual(detached)
-    await controls.getByRole('button', { name: '贴靠到播放器' }).click()
-    await expect(controls.getByRole('button', { name: '解除贴靠' })).toBeVisible()
-    const after = await geometry()
-    expect(after).toEqual(initial)
+    const shell = player.locator('.adaptive-shell')
+    const audio = await player.locator('audio').elementHandle()
+    await widenPanel(app, player, 288, 512)
+    await expect(shell).toHaveAttribute('data-layout', 'compact')
+    const cover = player.locator('.sleeve:visible')
+    const progress = player.getByRole('slider', { name: '播放进度' })
+    await expect(cover).toBeVisible()
+    await expect(progress).toBeInViewport()
+    const coverRect = (await cover.boundingBox())!
+    expect(coverRect.width).toBeCloseTo(coverRect.height, 0)
+    expect(coverRect.y + coverRect.height).toBeLessThan((await progress.boundingBox())!.y)
+    await expect(player.locator('.main-sidebar')).toBeHidden()
+    await player.screenshot({ path: test.info().outputPath('compact.png'), animations: 'disabled' })
+
+    const search = await openTool(app, player, 'search')
+    await search.getByLabel('搜索音乐库').fill('保留搜索内容')
+    await widenPanel(app, player, 740, 590)
+    await expect(shell).toHaveAttribute('data-layout', 'medium')
+    await expect(search.getByLabel('搜索音乐库')).toHaveValue('保留搜索内容')
+    await expect(progress).toBeInViewport()
+    await expect(cover).toBeInViewport()
+    await player.screenshot({ path: test.info().outputPath('medium.png'), animations: 'disabled' })
+
+    await widenPanel(app, player, 1120, 720)
+    await expect(shell).toHaveAttribute('data-layout', 'wide')
+    await expect(player.locator('.main-sidebar')).toBeVisible()
+    await expect(
+      player.locator('.main-sidebar').getByRole('button', { name: /歌词|播放队列/ }),
+    ).toHaveCount(0)
+    await expect(search.getByLabel('搜索音乐库')).toHaveValue('保留搜索内容')
+    const footer = player.locator('.adaptive-player-bar')
+    await footer.getByRole('button', { name: '展开正在播放', exact: true }).click()
+    const nowPlaying = player.locator('[data-panel="lyrics"]')
+    await expect(nowPlaying.getByLabel('当前歌曲歌词')).toBeVisible()
+    await footer.getByRole('button', { name: /播放队列/ }).click()
+    const queue = player.locator('[data-panel="queue"]')
+    await expect(queue).toBeInViewport()
+    const rect = (await queue.boundingBox())!
+    expect(rect.x).toBeGreaterThan(400)
+    await player.keyboard.press('Escape')
+    await expect(queue).toBeHidden()
+    await expect(nowPlaying.getByLabel('当前歌曲歌词')).toBeVisible()
+    await expect(nowPlaying).toHaveCSS('opacity', '1')
     await player.screenshot({
-      path: test.info().outputPath('portrait.png'),
+      path: test.info().outputPath('now-playing.png'),
       animations: 'disabled',
     })
-    await lyrics.screenshot({ path: test.info().outputPath('lyrics.png'), animations: 'disabled' })
-    await controls.getByRole('button', { name: '关闭播放调节' }).click()
-    expect(await openTool(app, player, 'controls')).toBe(controls)
+    await nowPlaying.getByRole('button', { name: '返回浏览' }).click()
+    await expect(search.getByLabel('搜索音乐库')).toHaveValue('保留搜索内容')
+    await expect(search.getByLabel('搜索音乐库')).toBeVisible()
+    await player.screenshot({ path: test.info().outputPath('wide.png'), animations: 'disabled' })
+    expect(app.windows()).toHaveLength(1)
     await expect(player.locator('audio')).toHaveCount(1)
-    await expect(controls.locator('audio')).toHaveCount(0)
+    expect(await audio!.evaluate((element) => element.isConnected)).toBe(true)
   } finally {
     await app.close()
     await new Promise<void>((r) => server.close(() => r()))

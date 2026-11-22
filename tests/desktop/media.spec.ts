@@ -1,4 +1,4 @@
-import { settingsGroup, openTool, loginFixture, widenPanel } from './windows'
+import { showPrivateList, settingsGroup, openTool, loginFixture, widenPanel } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -67,7 +67,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
   })
   try {
     const player = await app.firstWindow()
-    let page = player
+    let page = player.locator('body')
     await app.evaluate(({ ipcMain, BrowserWindow }) => {
       const state = {
         calls: [] as any[],
@@ -134,7 +134,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
       ipcMain.handle('media-cancel', () => state.pending?.())
     })
     const errors: string[] = []
-    page.on('pageerror', (error) => errors.push(error.message))
+    player.on('pageerror', (error) => errors.push(error.message))
     await app
       .context()
       .route('https://p1.music.126.net/media-test.png', (route) =>
@@ -143,6 +143,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await loginFixture(app, player)
     page = await openTool(app, player, 'private')
     await widenPanel(app, page)
+    await showPrivateList(page)
     await page
       .locator('.conversation-list')
       .getByRole('button', { name: /^Alice/ })
@@ -168,7 +169,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     })
     await page.getByRole('button', { name: '录制语音' }).click()
     await expect(page.getByRole('alert')).toContainText('麦克风权限未开启')
-    await page.keyboard.press('Escape')
+    await player.keyboard.press('Escape')
     await player.evaluate(() => {
       navigator.mediaDevices.getUserMedia = async (...args) => {
         const stream = await (window as any).__realGetMedia(...args)
@@ -182,7 +183,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await expect(page.getByLabel('录音预览')).toBeVisible()
     const previewAudio = await page.getByLabel('录音预览').elementHandle()
     await previewAudio!.evaluate((element: HTMLAudioElement) => element.play())
-    await page.keyboard.press('Escape')
+    await player.keyboard.press('Escape')
     await expect(page.getByRole('dialog', { name: '发送附件' })).toHaveCount(0)
     expect(await previewAudio!.evaluate((element: HTMLAudioElement) => element.paused)).toBe(true)
     await page.getByRole('button', { name: '待发送附件' }).click()
@@ -197,23 +198,25 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await page.getByRole('button', { name: '确认发送附件' }).click()
     await expect(page.getByRole('dialog', { name: '发送附件' })).toHaveCount(0)
 
-    const videoChooser = page.waitForEvent('filechooser')
+    const videoChooser = player.waitForEvent('filechooser')
     await page.getByRole('button', { name: '发送视频' }).click()
     await (await videoChooser).setFiles(join(process.cwd(), 'tests/fixtures/message-video.mp4'))
     await expect(page.getByLabel('视频预览')).toBeVisible()
     await page.getByRole('button', { name: '确认发送附件' }).click()
     await expect(page.getByRole('dialog', { name: '发送附件' })).toHaveCount(0)
 
-    const fileChooser = page.waitForEvent('filechooser')
+    const fileChooser = player.waitForEvent('filechooser')
     await page.getByRole('button', { name: '发送本地文件' }).click()
     await (
       await fileChooser
     ).setFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('notes') })
     await expect(page.getByRole('dialog', { name: '发送附件' })).toContainText('下载链接')
-    await page.mouse.click(5, 5)
+    await player.mouse.click(5, 5)
     await expect(page.getByRole('button', { name: '待发送附件' })).toBeVisible()
+    await showPrivateList(page)
     await page.locator('.conversation-list').getByRole('button', { name: /^Bob/ }).click()
     await expect(page.getByRole('button', { name: '待发送附件' })).toHaveCount(0)
+    await showPrivateList(page)
     await page
       .locator('.conversation-list')
       .getByRole('button', { name: /^Alice/ })
@@ -225,6 +228,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     page = await openTool(app, player, 'settings')
     page = await openTool(app, player, 'private')
     await widenPanel(app, page)
+    await showPrivateList(page)
     await page
       .locator('.conversation-list')
       .getByRole('button', { name: /^Alice/ })
@@ -232,9 +236,10 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await page.getByRole('button', { name: '待发送附件' }).click()
     await expect(page.getByRole('dialog', { name: '发送附件' })).toContainText('notes.txt')
     await page.getByRole('button', { name: '稍后发送', exact: true }).click()
+    await showPrivateList(page)
     await page.locator('.conversation-list').getByRole('button', { name: /^Bob/ }).click()
     await expect(page.getByRole('button', { name: '待发送附件' })).toHaveCount(0)
-    const nextChooser = page.waitForEvent('filechooser')
+    const nextChooser = player.waitForEvent('filechooser')
     await page.getByRole('button', { name: '发送本地文件' }).click()
     await (
       await nextChooser
@@ -248,7 +253,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await expect(page.getByRole('alert')).toContainText('上传已取消')
     await page.getByRole('button', { name: '重试发送附件' }).click()
     await expect(page.getByRole('dialog', { name: '发送附件' })).toHaveCount(0)
-    const uncertainChooser = page.waitForEvent('filechooser')
+    const uncertainChooser = player.waitForEvent('filechooser')
     await page.getByRole('button', { name: '发送本地文件' }).click()
     await (
       await uncertainChooser
@@ -263,10 +268,12 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await page.getByRole('button', { name: '确认发送附件' }).click()
     await expect(page.getByRole('alert')).toContainText('请先刷新会话')
     await page.getByRole('button', { name: '稍后发送', exact: true }).click()
+    await showPrivateList(page)
     await page
       .locator('.conversation-list')
       .getByRole('button', { name: /^Alice/ })
       .click()
+    await showPrivateList(page)
     await page.locator('.conversation-list').getByRole('button', { name: /^Bob/ }).click()
     await page.getByRole('button', { name: '待发送附件' }).click()
     await expect(
@@ -293,13 +300,14 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await loginFixture(app, player)
     page = await openTool(app, player, 'private')
     await widenPanel(app, page)
+    await showPrivateList(page)
     await page
       .locator('.conversation-list')
       .getByRole('button', { name: /^Alice/ })
       .click()
     await expect(page.getByRole('button', { name: '待发送附件' })).toHaveCount(0)
     expect(errors).toEqual([])
-    await page.screenshot({ path: 'test-results/music-party-media.png', animations: 'disabled' })
+    await player.screenshot({ path: 'test-results/music-party-media.png', animations: 'disabled' })
   } finally {
     await app.close()
     await new Promise<void>((resolve) => server.close(() => resolve()))

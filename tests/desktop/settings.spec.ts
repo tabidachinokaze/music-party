@@ -32,11 +32,11 @@ test('desktop settings survive restart and close-to-tray retains the same render
   let app = await launch()
   try {
     let player = await app.firstWindow()
-    let page = player
+    let page = player.locator('body')
     page = await openTool(app, player, 'settings')
     await settingsGroup(page, '外观')
     await page.getByRole('button', { name: '浅色', exact: true }).click()
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+    await expect(player.locator('html')).toHaveAttribute('data-theme', 'light')
     const defaultFont = await page
       .locator('.settings-group h2')
       .first()
@@ -50,7 +50,9 @@ test('desktop settings survive restart and close-to-tray retains the same render
           .evaluate((node) => parseFloat(getComputedStyle(node).fontSize)),
       )
       .toBeCloseTo(defaultFont * 1.5, 2)
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+    expect(await player.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    )
     expect(
       await page
         .locator('.panel-titlebar')
@@ -59,22 +61,22 @@ test('desktop settings survive restart and close-to-tray retains the same render
     await page.getByLabel('界面字体大小', { exact: true }).fill('130')
     await page.getByLabel('主题颜色', { exact: true }).fill('#448aff')
     await expect(page.getByLabel('当前主题色')).toHaveText('#448aff')
-    await expect(page.locator('html')).toHaveAttribute('data-custom-accent', 'true')
-    const lightAccent = await page
+    await expect(player.locator('html')).toHaveAttribute('data-custom-accent', 'true')
+    const lightAccent = await player
       .locator('html')
       .evaluate((node) => getComputedStyle(node).getPropertyValue('--pink'))
-    const controls = await openTool(app, player, 'controls')
     await settingsGroup(page, '播放与桌面')
     await page.getByLabel('默认音量').fill('0.23')
-    await expect(controls.getByRole('status')).toHaveText('23%')
     await page.getByLabel('默认音量').hover()
-    await page.mouse.wheel(0, -100)
+    await player.mouse.wheel(0, -100)
     await expect(page.getByLabel('默认音量')).toHaveValue('0.28')
+    const controls = await openTool(app, player, 'controls')
     await expect(controls.getByRole('status')).toHaveText('28%')
     await controls.getByLabel('音量', { exact: true }).hover()
-    await controls.mouse.wheel(0, 100)
-    await expect(page.getByLabel('默认音量')).toHaveValue('0.23')
+    await player.mouse.wheel(0, 100)
     await expect(controls.getByLabel('音量', { exact: true })).toHaveValue('0.23')
+    await controls.getByRole('button', { name: '关闭播放调节' }).click()
+    await expect(page.getByLabel('默认音量')).toHaveValue('0.23')
     await page.getByLabel('默认播放模式').selectOption('loop')
     await expect
       .poll(
@@ -82,7 +84,7 @@ test('desktop settings survive restart and close-to-tray retains the same render
           JSON.parse(await readFile(join(profile, 'settings.json'), 'utf8')).preferences.volume,
       )
       .toBe(0.23)
-    await page.screenshot({ path: 'test-results/music-party-settings-light.png' })
+    await player.screenshot({ path: 'test-results/music-party-settings-light.png' })
     const info = await player.evaluate(() => window.together.desktopInfo())
     expect(info.trayAvailable).toBe(true)
     const rendererPid = await app.evaluate(({ BrowserWindow }) =>
@@ -177,10 +179,10 @@ test('desktop settings survive restart and close-to-tray retains the same render
     await app.close()
     app = await launch()
     player = await app.firstWindow()
-    page = player
-    await expect(page).toHaveTitle(`Music Party ${packageInfo.version} · 官方多人一起听`)
+    page = player.locator('body')
+    await expect(player).toHaveTitle(`Music Party ${packageInfo.version} · 官方多人一起听`)
     page = await openTool(app, player, 'settings')
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+    await expect(player.locator('html')).toHaveAttribute('data-theme', 'light')
     await settingsGroup(page, '播放与桌面')
     await expect(page.getByLabel('默认音量')).toHaveValue('0.23')
     await expect(page.getByLabel('默认播放模式')).toHaveValue('loop')
@@ -200,17 +202,19 @@ test('desktop settings survive restart and close-to-tray retains the same render
     ).toBe(405)
     await settingsGroup(page, '外观')
     await page.getByRole('button', { name: '深色', exact: true }).click()
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+    await expect(player.locator('html')).toHaveAttribute('data-theme', 'dark')
     await expect
       .poll(() =>
-        page.locator('html').evaluate((node) => getComputedStyle(node).getPropertyValue('--pink')),
+        player
+          .locator('html')
+          .evaluate((node) => getComputedStyle(node).getPropertyValue('--pink')),
       )
       .not.toBe(lightAccent)
     await expect(page.getByRole('button', { name: '深色', exact: true })).toHaveAttribute(
       'aria-pressed',
       'true',
     )
-    const darkContainer = await page.locator('html').evaluate((node) => {
+    const darkContainer = await player.locator('html').evaluate((node) => {
       const hex = getComputedStyle(node).getPropertyValue('--accent-container').trim()
       return `rgb(${hex
         .slice(1)
@@ -226,11 +230,11 @@ test('desktop settings survive restart and close-to-tray retains the same render
       )
       .toBe(darkContainer)
     await page.locator('.settings-group h2').first().scrollIntoViewIfNeeded()
-    await page.screenshot({ path: 'test-results/music-party-settings-dark.png' })
+    await player.screenshot({ path: 'test-results/music-party-settings-dark.png' })
     await page.getByRole('button', { name: '默认字号', exact: true }).click()
     await page.getByRole('button', { name: '默认主题色', exact: true }).click()
     await expect(page.getByLabel('界面字体大小', { exact: true })).toHaveValue('100')
-    await expect(page.locator('html')).not.toHaveAttribute('data-custom-accent', 'true')
+    await expect(player.locator('html')).not.toHaveAttribute('data-custom-accent', 'true')
     const exited = app.waitForEvent('close')
     await app.evaluate(({ BrowserWindow }) => {
       setTimeout(

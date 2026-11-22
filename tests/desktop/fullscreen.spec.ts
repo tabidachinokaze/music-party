@@ -39,24 +39,29 @@ test('immersive playback and native fullscreen preserve navigation, focus and no
         width,
       )
       await expect.poll(() => player.evaluate(() => innerWidth)).toBe(width)
-      const bounds = await player.locator('.sleeve').boundingBox()
-      expect(Math.abs(bounds!.width - bounds!.height)).toBeLessThan(1)
-      await expect(player.getByLabel('播放进度')).toBeVisible()
+      await expect(player.locator('.adaptive-shell')).toHaveAttribute('data-layout', 'compact')
+      await expect(search.getByLabel('搜索音乐库')).toHaveValue('保留搜索内容')
     }
     const controls = await openTool(app, player, 'controls')
     await controls.getByRole('button', { name: '进入系统全屏' }).click()
     await expect.poll(() => native.evaluate((w) => w.isFullScreen())).toBe(true)
     await expect
       .poll(() =>
-        player
-          .locator('.portrait-player')
-          .evaluate((n) => Math.round((100 * n.clientWidth) / n.clientHeight)),
+        player.evaluate(() => {
+          const expected = matchMedia('(min-width: 960px)').matches
+            ? 'wide'
+            : matchMedia('(min-width: 560px)').matches
+              ? 'medium'
+              : 'compact'
+          return document.querySelector('.adaptive-shell')?.getAttribute('data-layout') === expected
+        }),
       )
-      .toBe(56)
+      .toBe(true)
+    expect(app.windows()).toHaveLength(1)
     await player.screenshot({ path: test.info().outputPath('fullscreen.png') })
-    await player.bringToFront()
-    await player.keyboard.press('Escape')
+    await controls.getByRole('button', { name: '退出系统全屏' }).click()
     await expect.poll(() => native.evaluate((w) => w.isFullScreen())).toBe(false)
+    await openTool(app, player, 'search')
     await expect(search.getByLabel('搜索音乐库')).toHaveValue('保留搜索内容')
     await expect(
       player.evaluate(() => window.together.setFullScreen('true' as any)),
