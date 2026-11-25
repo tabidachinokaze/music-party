@@ -23,4 +23,4 @@ git push origin "v$version"
 
 - 从 0.7.0 起，客户端在启动 30 秒后及之后每 6 小时检查 [GitHub Releases](https://github.com/tabidachinokaze/music-party/releases)，也可在设置页手动检查。用户选择下载、确认安装后重启。更早版本需先手动安装一次。
 - Windows NSIS 安装包目前未签名。Linux 原位更新要求从可写目录启动 AppImage；解包或开发环境使用发布页手动更新。macOS 应用内安装尚未开放。更新包由 `electron-updater` 按清单校验 SHA-512。
-- 安装时按当前运行版本处理房间。0.13.0 会尝试退房，最多等 3 秒。从 `0.13.1-adaptive.16` 起，客户端保留房间记录；同一账号重启后由官方状态确认能否接回。[单窗口开发版回归](VALIDATION.md#单窗口开发版回归)
+- 安装时按当前运行版本处理房间。从 0.13.0 安装更新会尝试退房，最多等 3 秒。从 0.13.1 安装后续更新会保留房间记录，同一账号重启后由官方状态确认能否接回。[单窗口播放器使用说明](ADAPTIVE-PLAYER.md#一起听)

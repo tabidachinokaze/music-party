@@ -1,6 +1,6 @@
 # Music Party 单窗口界面规范
 
-适用于 `redesign/adaptive-player` 的浏览页、正在播放页和两者共用的弹层。以下尺寸均为应用显示比例生效后的 CSS 像素。用户操作见[使用说明](ADAPTIVE-PLAYER.md)，组件所需字段和状态见 [UI 数据交接](ui-data/README.md)。
+适用于 Music Party 0.13.1 的浏览页、正在播放页和两者共用的弹层。以下尺寸均为应用显示比例生效后的 CSS 像素。用户操作见[使用说明](ADAPTIVE-PLAYER.md)，组件所需字段和状态见 [UI 数据交接](ui-data/README.md)。
 
 ## 窗口与导航
 

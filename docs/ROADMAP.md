@@ -9,4 +9,4 @@ Music Party 使用网易云官方多人房间，桌面端内置 API 与运行时
 | 私信、匹配与附件 | 验证后台连续收信、跨设备已读、联系人在线变化、取消匹配后的迟到通知；在手机端核对房间消息、图片、语音、视频、文件链接及自定义表情收藏。详情见[适配说明](PROTOCOL-GUIDE.md)。 |
 | 桌面平台         | 在 Windows 实机复核安装、全屏、托盘和媒体键；在不同桌面环境复核长期后台播放。macOS 签名构建与桌面代码签名仍待推进。                                                         |
 
-房间成员已接入云信推送。房间歌曲和聊天的完整即时推送、自身在线上报仍待实现与验证。现行同步方式见[多人协议](OFFICIAL-MULTIPLAYER.md)和[成员同步](LT-IM.md)。发布与界面范围分别见 [0.13.0 发布说明](RELEASE-NOTES.md)和[单窗口界面规范](UI-GUIDELINES.md)。
+房间成员已接入云信推送。房间歌曲和聊天的完整即时推送、自身在线上报仍待实现与验证。现行同步方式见[多人协议](OFFICIAL-MULTIPLAYER.md)和[成员同步](LT-IM.md)。发布与界面范围分别见 [0.13.0 发布说明](https://github.com/tabidachinokaze/music-party/releases/tag/v0.13.0)和[单窗口界面规范](UI-GUIDELINES.md)。
