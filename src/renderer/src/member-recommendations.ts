@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 // SPDX-License-Identifier: AGPL-3.0-only
 // Adapted from folium-mod-music-party/src/client/member-recommendations.ts and room-data.ts
 // at b01525f. See THIRD_PARTY_NOTICES.md.
@@ -32,7 +32,7 @@ export function currentMemberRecommendation(
     track: known?.track ||
       song || {
         id: current.songId,
-        name: ui('正在读取房间歌曲…', 'Loading room song…'),
+        name: t('memberRecommendations.loadingRoomSong'),
         artist: '',
         album: '',
         cover: '',
@@ -57,8 +57,8 @@ export function currentRecommendationOwner(
       uid: current.songRcmdUid,
       nickname:
         current.songRcmdUid === '0'
-          ? ui('系统推荐', 'System recommendation')
-          : current.recommender || ui('听友', 'Listener'),
+          ? t('common.systemRecommendation')
+          : current.recommender || t('common.listener'),
       avatar: '',
     }
   )

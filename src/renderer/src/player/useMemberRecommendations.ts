@@ -1,4 +1,4 @@
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import { useEffect, useRef, useState } from 'react'
 import type { RoomQueueEntry } from '../../../shared/types'
 import type { ApiCall } from '../music-data'
@@ -43,10 +43,7 @@ export function useMemberRecommendations(
       })
       .catch((failure) => {
         if (current())
-          setError(
-            failure.message ||
-              ui('推荐记录读取失败，请重试', "Couldn't load recommendations. Try again."),
-          )
+          setError(failure.message || t('memberRecommendations.couldntLoadRecommendationsTryAgain'))
       })
       .finally(() => {
         if (current()) setLoading(false)

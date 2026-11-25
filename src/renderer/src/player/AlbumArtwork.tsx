@@ -1,4 +1,4 @@
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { animate } from 'animejs'
 import { Disc3 } from 'lucide-react'
@@ -32,10 +32,10 @@ export function AlbumArtwork({ song, className }: { song: Song | null; className
     <div
       className="record-placeholder"
       role="img"
-      aria-label={ui('唱片封面占位图', 'Record cover placeholder')}
+      aria-label={t('albumArtwork.recordCoverPlaceholder')}
     >
       <Disc3 aria-hidden="true" />
-      {className === 'sleeve' && <small>{ui('暂无封面', 'No cover')}</small>}
+      {className === 'sleeve' && <small>{t('albumArtwork.noCover')}</small>}
     </div>
   )
   return (
@@ -44,7 +44,7 @@ export function AlbumArtwork({ song, className }: { song: Song | null; className
         <img
           src={artwork}
           referrerPolicy="no-referrer"
-          alt={song.name + ui(' 专辑封面', ' album cover')}
+          alt={t('albumArtwork.albumCover', { track: song.name })}
           draggable={false}
           onError={() => setBroken(artwork)}
         />

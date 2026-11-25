@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t, type StaticMessageKey } from '../../shared/ui-language'
 import { useEffect, useState } from 'react'
 import {
   CircleCheck,
@@ -11,11 +11,11 @@ import {
   RotateCw,
 } from 'lucide-react'
 import { Overlay } from './player/Overlay'
-import { localizedUpdateMessage, type UpdateState } from '../../shared/updates'
+import type { UpdateState } from '../../shared/updates'
 
 export function Updates() {
   const [state, setState] = useState<UpdateState | null>(null)
-  const [error, setError] = useState('')
+  const [error, setError] = useState<StaticMessageKey | null>(null)
   const [confirmInstall, setConfirmInstall] = useState(false)
   useEffect(() => {
     let active = true
@@ -28,7 +28,7 @@ export function Updates() {
         if (active) setState(next)
       })
       .catch(() => {
-        if (active) setError(ui('更新信息读取失败', 'Could not load update information.'))
+        if (active) setError('updates.couldNotLoadUpdateInformation')
       })
     return () => {
       active = false
@@ -36,19 +36,19 @@ export function Updates() {
     }
   }, [])
   async function action(kind: 'check' | 'download' | 'install') {
-    setError('')
+    setError(null)
     try {
       setState(await window.together.updateAction(kind))
     } catch {
-      setError(ui('更新操作失败，请稍后重试', 'The update action failed. Try again later.'))
+      setError('updates.theUpdateActionFailedTryAgainLater')
     }
   }
   return (
     <div className="settings-group update-settings">
       <div className="section-title">
-        <h2>{ui('应用更新', 'App updates')}</h2>
+        <h2>{t('updates.appUpdates')}</h2>
         {state?.version && (
-          <span className="phase">{ui('新版本 {0}', 'New version {0}', state.version)}</span>
+          <span className="phase">{t('updates.newVersion', { version: state.version })}</span>
         )}
       </div>
       <div role="status" className="update-status" data-phase={error ? 'error' : state?.phase}>
@@ -62,16 +62,14 @@ export function Updates() {
           <Info size={17} />
         )}
         <span>
-          {error ||
-            (state?.message
-              ? localizedUpdateMessage(state.message)
-              : ui('正在读取更新状态…', 'Loading update status…'))}
+          {(error && t(error)) ||
+            (state?.message ? t(state.message) : t('updates.loadingUpdateStatus'))}
         </span>
       </div>
       {state?.phase === 'downloading' && (
         <div className="update-progress">
           <progress
-            aria-label={ui('更新下载进度', 'Update download progress')}
+            aria-label={t('updates.updateDownloadProgress')}
             max={100}
             value={state.percent || 0}
           />
@@ -80,14 +78,14 @@ export function Updates() {
       )}
       {state?.releaseNotes && (
         <details>
-          <summary>{ui('版本说明', 'Release notes')}</summary>
+          <summary>{t('updates.releaseNotes')}</summary>
           <pre>{state.releaseNotes}</pre>
         </details>
       )}
       <div className="row-actions update-actions">
         <button className="secondary" onClick={() => window.together.openProject('releases')}>
           <ExternalLink size={15} />
-          {ui('GitHub 发布页', 'GitHub releases')}
+          {t('updates.githubReleases')}
         </button>
         {state && ['idle', 'current', 'error', 'checking'].includes(state.phase) && (
           <button
@@ -96,39 +94,31 @@ export function Updates() {
             onClick={() => action('check')}
           >
             <RefreshCw size={15} />
-            {state.phase === 'checking'
-              ? ui('检查中…', 'Checking…')
-              : ui('检查更新', 'Check for updates')}
+            {state.phase === 'checking' ? t('updates.checking') : t('updates.checkForUpdates')}
           </button>
         )}
         {state?.phase === 'available' && (
           <button className="primary" onClick={() => action('download')}>
             <Download size={15} />
-            {ui('下载更新', 'Download update')}
+            {t('updates.downloadUpdate')}
           </button>
         )}
         {state?.phase === 'downloaded' && (
           <button className="primary" onClick={() => setConfirmInstall(true)}>
             <RotateCw size={15} />
-            {ui('安装并重启', 'Install and restart')}
+            {t('updates.installAndRestart')}
           </button>
         )}
       </div>
-      {confirmInstall && (
+      {confirmInstall && state?.phase === 'downloaded' && state.version && (
         <Overlay
-          title={ui('安装更新并重启？', 'Install the update and restart?')}
+          title={t('updates.installTheUpdateAndRestart')}
           onClose={() => setConfirmInstall(false)}
         >
-          <p>
-            {ui(
-              '将停止本机播放并安装 {0}。重启后，如果账号仍在原房间，将自动接回一起听。',
-              'Playback will stop while version {0} is installed. The player will reconnect on restart if your account is still in the room.',
-              state?.version,
-            )}
-          </p>
+          <p>{t('updates.confirmInstallVersion', { version: state.version })}</p>
           <div className="row-actions">
             <button className="secondary" onClick={() => setConfirmInstall(false)}>
-              {ui('稍后安装', 'Install later')}
+              {t('updates.installLater')}
             </button>
             <button
               className="primary"
@@ -137,7 +127,7 @@ export function Updates() {
                 action('install')
               }}
             >
-              {ui('确认安装并重启', 'Install and restart')}
+              {t('updates.confirmInstallAndRestart')}
             </button>
           </div>
         </Overlay>

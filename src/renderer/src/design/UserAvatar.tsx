@@ -1,4 +1,4 @@
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 const avatarColors = ['#5e4fa2', '#3a7d6c', '#8c5a3c', '#6d54b5']
 
 // Display the name fallback underneath the photo so a broken or slow avatar
@@ -17,9 +17,9 @@ export function UserAvatar({
   const status =
     presence &&
     {
-      online: ui('在线', 'Online'),
-      offline: ui('离线', 'Offline'),
-      unknown: ui('在线状态未知', 'Presence unknown'),
+      online: t('common.online'),
+      offline: t('common.offline'),
+      unknown: t('common.presenceUnknown'),
     }[presence]
   const initial = Array.from(name.trim())[0] || '♪'
   const backgroundColor = avatarColors[initial.codePointAt(0)! % avatarColors.length]

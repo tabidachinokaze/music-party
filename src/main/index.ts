@@ -1,4 +1,4 @@
-import { ui } from '../shared/ui-language'
+import { getUiLanguage, t } from '../shared/ui-language'
 import {
   app,
   BrowserWindow,
@@ -129,7 +129,7 @@ function canPersist() {
 }
 function assertSender(event: Electron.IpcMainInvokeEvent) {
   if (!win || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame)
-    throw new Error(ui('拒绝非应用窗口请求', 'This request must come from the application window'))
+    throw new Error(t('index.thisRequestMustComeFromTheApplicationWindow'))
 }
 function startWorker() {
   const temp = join(app.getPath('userData'), 'api-runtime')
@@ -144,7 +144,7 @@ function startWorker() {
       TMP: temp,
       TEMP: temp,
       NETEASE_COOKIE: '',
-      MUSIC_PARTY_LANGUAGE: store.preferences.language,
+      MUSIC_PARTY_LANGUAGE: getUiLanguage(),
       MUSIC_PARTY_IM_DEBUG: process.env.MUSIC_PARTY_IM_DEBUG ?? (app.isPackaged ? '0' : '1'),
     },
   })
@@ -222,10 +222,7 @@ function startWorker() {
       clearTimeout(task.timer)
       task.resolve({
         ok: false,
-        error: ui(
-          'API 进程已退出，请刷新会话确认附件状态',
-          'The API process stopped. Refresh the conversation to check the attachment.',
-        ),
+        error: t('index.theApiProcessStoppedRefreshTheConversationTo'),
         deliveryUnknown: task.phase === 'sending',
       })
     }
@@ -235,7 +232,7 @@ function startWorker() {
       clearTimeout(task.timer)
       task.resolve({
         ok: false,
-        error: ui('API 进程已退出，请重启应用', 'The API process stopped. Restart Music Party.'),
+        error: t('index.theApiProcessStoppedRestartMusicParty'),
       })
     }
     pending.clear()
@@ -249,10 +246,7 @@ function callWorker(message: Record<string, unknown>, deliveryUnknown = false): 
   if (!child)
     return Promise.resolve({
       ok: false,
-      error: ui(
-        'API 进程不可用，请重启应用',
-        'The API process is unavailable. Restart Music Party.',
-      ),
+      error: t('common.theApiProcessIsUnavailableRestartMusicParty'),
     })
   return new Promise<Reply>((resolve) => {
     const id = ++nextId
@@ -260,10 +254,7 @@ function callWorker(message: Record<string, unknown>, deliveryUnknown = false): 
       pending.delete(id)
       resolve({
         ok: false,
-        error: ui(
-          '请求超时，结果未知。请刷新房间状态后再操作',
-          'The request timed out. Check the room status before trying again.',
-        ),
+        error: t('index.theRequestTimedOutCheckTheRoomStatus'),
         deliveryUnknown,
       })
     }, 45000)
@@ -274,9 +265,7 @@ function callWorker(message: Record<string, unknown>, deliveryUnknown = false): 
 async function workerResult(message: Record<string, unknown>) {
   const reply = await callWorker(message)
   if (!reply.ok)
-    throw new Error(
-      reply.error || ui('通知连接暂不可用', 'The notification service is temporarily unavailable'),
-    )
+    throw new Error(reply.error || t('index.theNotificationServiceIsTemporarilyUnavailable'))
   return reply.data
 }
 
@@ -299,6 +288,7 @@ app.whenReady().then(() => {
     store,
     () => win,
     () => app.quit(),
+    (language) => child?.postMessage({ type: 'ui-language', language }),
   )
   desktop.setup()
   startWorker()
@@ -335,24 +325,19 @@ app.whenReady().then(() => {
   ipcMain.handle('project-open', async (event, key: unknown) => {
     assertSender(event)
     if (typeof key !== 'string' || !Object.hasOwn(PROJECT_LINKS, key))
-      throw new Error(ui('不支持的项目链接', 'Unsupported project link'))
+      throw new Error(t('index.unsupportedProjectLink'))
     await shell.openExternal(PROJECT_LINKS[key as ProjectLink])
   })
   ipcMain.handle('message-link-open', async (event, value: unknown) => {
     assertSender(event)
     const url = musicMessageLink(value) || neteaseAssetUrl(value)
-    if (!url)
-      throw new Error(
-        ui('消息没有可用的网易云链接', "This message doesn't contain a NetEase Cloud Music link"),
-      )
+    if (!url) throw new Error(t('index.thisMessageDoesntContainANeteaseCloudMusic'))
     await shell.openExternal(url)
   })
   ipcMain.handle('microphone-request', async (event) => {
     assertSender(event)
     if (process.platform === 'darwin' && !(await systemPreferences.askForMediaAccess('microphone')))
-      throw new Error(
-        ui('请在系统设置中允许麦克风访问', 'Allow microphone access in your system settings'),
-      )
+      throw new Error(t('index.allowMicrophoneAccessInYourSystemSettings'))
     microphoneUntil = Date.now() + 10000
   })
   ipcMain.handle('media-cancel', (event, requestId: unknown) => {
@@ -371,15 +356,12 @@ app.whenReady().then(() => {
     if (!child)
       return {
         ok: false,
-        error: ui(
-          'API 进程不可用，请重启应用',
-          'The API process is unavailable. Restart Music Party.',
-        ),
+        error: t('common.theApiProcessIsUnavailableRestartMusicParty'),
       }
     if (mediaPending.size)
       return {
         ok: false,
-        error: ui('请等待当前附件完成', 'Wait for the current attachment to finish'),
+        error: t('common.waitForTheCurrentAttachmentToFinish'),
       }
     return new Promise<MediaReply>((resolve) => {
       const id = ++nextId
@@ -391,10 +373,7 @@ app.whenReady().then(() => {
           child?.postMessage({ type: 'media-cancel', requestId })
           resolve({
             ok: false,
-            error: ui(
-              '附件请求超时，请刷新会话确认结果',
-              'The attachment request timed out. Refresh the conversation to check the result.',
-            ),
+            error: t('index.theAttachmentRequestTimedOutRefreshTheConversation'),
             deliveryUnknown: task?.phase === 'sending',
           })
         },
@@ -425,19 +404,16 @@ app.whenReady().then(() => {
       image?.kind !== 'image' ||
       !messageStickerSource(image)
     )
-      return { ok: false, error: ui('图片信息无效', 'Invalid image details') }
+      return { ok: false, error: t('index.invalidImageDetails') }
     if (!child)
       return {
         ok: false,
-        error: ui(
-          'API 进程不可用，请重启应用',
-          'The API process is unavailable. Restart Music Party.',
-        ),
+        error: t('common.theApiProcessIsUnavailableRestartMusicParty'),
       }
     if (mediaPending.size)
       return {
         ok: false,
-        error: ui('请等待当前附件完成', 'Wait for the current attachment to finish'),
+        error: t('common.waitForTheCurrentAttachmentToFinish'),
       }
     return new Promise<MediaReply>((resolve) => {
       const id = ++nextId
@@ -447,10 +423,7 @@ app.whenReady().then(() => {
         child?.postMessage({ type: 'media-cancel', requestId })
         resolve({
           ok: false,
-          error: ui(
-            '添加图片结果未确认，请刷新表情库',
-            "Couldn't confirm that the image was added. Refresh your sticker library.",
-          ),
+          error: t('index.couldntConfirmThatTheImageWasAddedRefresh'),
           deliveryUnknown: true,
         })
       }, 120000)
@@ -479,13 +452,13 @@ app.whenReady().then(() => {
       Number(cursor) < 0 ||
       (session !== undefined && (typeof session !== 'string' || session.length > 128))
     )
-      throw new Error(ui('通知游标无效', 'Invalid notification cursor'))
+      throw new Error(t('index.invalidNotificationCursor'))
     return workerResult({ type: 'notifications', cursor, session })
   })
   ipcMain.handle('join-im-chatroom', (event, chatroomId: unknown) => {
     assertSender(event)
     if (typeof chatroomId !== 'string' || !/^[1-9]\d{0,23}$/.test(chatroomId))
-      throw new Error(ui('聊天室 ID 无效', 'Invalid chat room ID'))
+      throw new Error(t('index.invalidChatRoomId'))
     child?.postMessage({ type: 'join-chatroom', chatroomId })
   })
   ipcMain.handle('leave-im-chatroom', (event) => {
@@ -499,7 +472,7 @@ app.whenReady().then(() => {
         !(type === 'match-close' && attemptId === undefined) &&
         (typeof attemptId !== 'string' || !/^[0-9a-f-]{36}$/i.test(attemptId))
       )
-        throw new Error(ui('匹配标识无效', 'Invalid match ID'))
+        throw new Error(t('index.invalidMatchId'))
       return workerResult({ type, attemptId })
     })
   ipcMain.handle('update-state', (event) => {
@@ -511,7 +484,7 @@ app.whenReady().then(() => {
     if (action === 'check') return updates!.check()
     if (action === 'download') return updates!.download()
     if (action === 'install') return updates!.install()
-    throw new Error(ui('不支持的更新操作', 'Unsupported update action'))
+    throw new Error(t('index.unsupportedUpdateAction'))
   })
   powerMonitor.on('suspend', () => win?.webContents.send('lifecycle', 'suspend'))
   powerMonitor.on('resume', () => win?.webContents.send('lifecycle', 'resume'))
@@ -536,12 +509,12 @@ app.whenReady().then(() => {
       if (win.isMaximized()) win.unmaximize()
       else win.maximize()
     } else if (action === 'close') win.close()
-    else throw new Error(ui('窗口操作无效', 'Invalid window action'))
+    else throw new Error(t('index.invalidWindowAction'))
   })
   ipcMain.handle('desktop-fullscreen', async (event, value: unknown) => {
     assertSender(event)
     if (typeof value !== 'boolean' && value !== 'toggle')
-      throw new Error(ui('全屏状态无效', 'Invalid full-screen state'))
+      throw new Error(t('index.invalidFullScreenState'))
     saveBounds()
     await desktop!.fullscreen!.set(value)
     return desktop!.info()
@@ -554,10 +527,7 @@ app.whenReady().then(() => {
       background.image = normalizeStoredPlayerBackground(background.image, (bytes) =>
         nativeImage.createFromBuffer(bytes),
       )
-    const info = desktop!.updatePreferences(preferences)
-    if (preferences.language)
-      child?.postMessage({ type: 'ui-language', language: info.preferences.language })
-    return info
+    return desktop!.updatePreferences(preferences)
   })
   ipcMain.handle('player-background-image', (event, bytes: unknown) => {
     assertSender(event)
@@ -578,19 +548,10 @@ app.whenReady().then(() => {
       version: app.getVersion(),
       persistent: canPersist() && !sessionSaveFailed,
       reason: sessionSaveFailed
-        ? ui(
-            '保存登录态失败，本次登录仍可继续使用',
-            "Couldn't save sign-in details. You can stay signed in for this session.",
-          )
+        ? t('index.couldntSaveSignInDetailsYouCanStay')
         : canPersist()
-          ? ui(
-              '登录态由系统密钥环加密保存',
-              'Sign-in details are encrypted with the system keychain.',
-            )
-          : ui(
-              '系统密钥环不可用，登录态仅保留到关闭应用',
-              "The system keychain is unavailable. You'll stay signed in until you quit.",
-            ),
+          ? t('index.signInDetailsAreEncryptedWithTheSystem')
+          : t('index.theSystemKeychainIsUnavailableYoullStaySigned'),
     }
   })
   ipcMain.handle('copy', (event, text: string) => {
@@ -611,10 +572,7 @@ app.whenReady().then(() => {
           app: 'music-party',
           stage: 'protocol-probe',
           exportedAt: new Date().toISOString(),
-          note: ui(
-            '凭据和链接已隐藏；房间、用户及歌曲 ID 保留用于诊断。',
-            'Credentials and links are hidden. Room, user, and track IDs are included for diagnostics.',
-          ),
+          note: t('index.credentialsAndLinksAreHiddenRoomUserAnd'),
           traces,
         },
         null,

@@ -1,4 +1,4 @@
-import { ui, type UiLanguage } from './ui-language'
+import { isUiLanguage, t, type LanguagePreference, type UiLanguage } from './ui-language'
 import { imageFormat } from './image-format'
 
 export interface PlayerBackground {
@@ -13,6 +13,14 @@ export interface PlayerBackground {
   x: number
   y: number
 }
+const transparencyFields = [
+  'layoutTransparency',
+  'componentTransparency',
+  'popupTransparency',
+] as const
+export type BackgroundTransparency = Pick<PlayerBackground, (typeof transparencyFields)[number]>
+type Wallpaper = Omit<PlayerBackground, keyof BackgroundTransparency>
+
 export interface PreparedPlayerBackground {
   image: string
   width: number
@@ -36,7 +44,7 @@ export const DEFAULT_PLAYER_BACKGROUND: PlayerBackground = {
 }
 
 export interface Preferences {
-  language: UiLanguage
+  language: LanguagePreference
   closeToTray: boolean
   mediaKeys: boolean
   theme: 'dark' | 'light' | 'system'
@@ -47,6 +55,10 @@ export interface Preferences {
   accentColor: string | null
   playerBackground: PlayerBackground
 }
+export type PreferencesUpdate = Omit<Partial<Preferences>, 'playerBackground'> & {
+  playerBackground?: Wallpaper | Partial<BackgroundTransparency> | PlayerBackground
+}
+
 export interface WindowGeometry {
   x?: number
   y?: number
@@ -62,6 +74,7 @@ export interface DesktopInfo {
   trayAvailable: boolean
   fullScreen: boolean
   fullScreenRevision: number
+  resolvedLanguage: UiLanguage
   resolvedTheme: 'dark' | 'light'
   platform: string
   persistenceError: string
@@ -78,7 +91,7 @@ export interface DesktopMediaState {
   roomId: string | null
 }
 export const DEFAULT_PREFERENCES: Preferences = {
-  language: 'zh-CN',
+  language: 'system',
   closeToTray: true,
   mediaKeys: true,
   theme: 'light',
@@ -90,12 +103,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
 }
 export function validatePlayerBackgroundImage(value: unknown): string {
   if (typeof value !== 'string' || !value.startsWith('data:image/png;base64,'))
-    throw new Error(
-      ui(
-        '播放器背景必须是经过处理的 PNG 图片',
-        'The player background must be a processed PNG image.',
-      ),
-    )
+    throw new Error(t('desktop.thePlayerBackgroundMustBeAProcessedPng'))
   const encoded = value.slice('data:image/png;base64,'.length)
   if (
     encoded.length < 44 ||
@@ -103,50 +111,45 @@ export function validatePlayerBackgroundImage(value: unknown): string {
     encoded.length % 4 !== 0 ||
     !/^[A-Za-z0-9+/]*={0,2}$/.test(encoded)
   )
-    throw new Error(
-      ui(
-        '播放器背景图片为空、格式无效或超过 2 MiB',
-        'The background image is empty, invalid or larger than 2 MiB.',
-      ),
-    )
+    throw new Error(t('desktop.theBackgroundImageIsEmptyInvalidOrLarger'))
   const padding = encoded.endsWith('==') ? 2 : encoded.endsWith('=') ? 1 : 0
   if ((encoded.length / 4) * 3 - padding > PLAYER_BACKGROUND_LIMITS.storedBytes)
-    throw new Error(ui('播放器背景图片超过 2 MiB', 'The background image exceeds 2 MiB.'))
+    throw new Error(t('desktop.theBackgroundImageExceeds2Mib'))
   if (btoa(atob(encoded.slice(-4))) !== encoded.slice(-4))
-    throw new Error(ui('播放器背景图片编码无效', 'Invalid background image encoding.'))
+    throw new Error(t('desktop.invalidBackgroundImageEncoding'))
   const header = Uint8Array.from(atob(encoded.slice(0, 44)), (character) => character.charCodeAt(0))
   if (imageFormat(header)?.mime !== 'image/png')
-    throw new Error(ui('播放器背景不是 PNG 图片', 'The background is not a PNG image.'))
+    throw new Error(t('desktop.theBackgroundIsNotAPngImage'))
   const ending = Uint8Array.from(atob(encoded.slice(-24)), (character) =>
     character.charCodeAt(0),
   ).slice(-12)
   if (
     ![0, 0, 0, 0, 73, 69, 78, 68, 174, 66, 96, 130].every((byte, index) => ending[index] === byte)
   )
-    throw new Error(ui('播放器背景 PNG 图片不完整', 'The background PNG is incomplete.'))
+    throw new Error(t('desktop.theBackgroundPngIsIncomplete'))
   const bytes = new DataView(header.buffer),
     width = bytes.getUint32(16),
     height = bytes.getUint32(20)
   if (!width || !height || Math.max(width, height) > PLAYER_BACKGROUND_LIMITS.storedDimension)
-    throw new Error(
-      ui(
-        '播放器背景图片尺寸无效，请重新选择图片',
-        'Invalid background dimensions. Choose another image.',
-      ),
-    )
+    throw new Error(t('desktop.invalidBackgroundDimensionsChooseAnotherImage'))
   return value
 }
 export function validatePlayerBackground(
   value: unknown,
-  previous = DEFAULT_PLAYER_BACKGROUND,
+  previous?: PlayerBackground,
 ): PlayerBackground {
   if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error(ui('播放器背景设置格式无效', 'Invalid background settings.'))
-  // Preserve surface preferences when migrating an older wallpaper profile.
+    throw new Error(t('desktop.invalidBackgroundSettings'))
+  const keys = Object.keys(value)
+  const surfacesOnly =
+    previous &&
+    keys.length > 0 &&
+    keys.every((key) => transparencyFields.some((field) => key === field))
+  // The appearance sliders and wallpaper editor own different fields. Merge at save time.
+  const { layoutTransparency, componentTransparency, popupTransparency } =
+    previous ?? DEFAULT_PLAYER_BACKGROUND
   const background: Record<string, unknown> = {
-    layoutTransparency: previous.layoutTransparency,
-    componentTransparency: previous.componentTransparency,
-    popupTransparency: previous.popupTransparency,
+    ...(surfacesOnly ? previous : { layoutTransparency, componentTransparency, popupTransparency }),
     ...value,
   }
   const limits = {
@@ -160,19 +163,12 @@ export function validatePlayerBackground(
     y: [0, 100],
   }
   if (Object.keys(background).some((key) => key !== 'image' && !Object.hasOwn(limits, key)))
-    throw new Error(
-      ui(
-        '播放器背景设置不完整或含未知字段',
-        'Background settings are incomplete or contain unknown fields.',
-      ),
-    )
+    throw new Error(t('settings.background.invalidFields'))
   const image = background.image === null ? null : validatePlayerBackgroundImage(background.image)
   for (const [key, [minimum, maximum]] of Object.entries(limits)) {
     const item = background[key]
     if (typeof item !== 'number' || !Number.isFinite(item) || item < minimum || item > maximum)
-      throw new Error(
-        ui('播放器背景设置超出范围：{0}', 'Background setting out of range: {0}', key),
-      )
+      throw new Error(t('desktop.backgroundSettingOutOfRange', { key }))
   }
   return {
     image,
@@ -191,12 +187,12 @@ export function validatePreferences(
   previousBackground?: PlayerBackground,
 ): Partial<Preferences> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
-    throw new Error(ui('设置格式无效', 'Invalid settings format.'))
+    throw new Error(t('desktop.invalidSettingsFormat'))
   const result: Partial<Preferences> = {}
   for (const [key, item] of Object.entries(value)) {
     if ((key === 'closeToTray' || key === 'mediaKeys') && typeof item === 'boolean')
       result[key] = item
-    else if (key === 'language' && (item === 'zh-CN' || item === 'en')) result.language = item
+    else if (key === 'language' && (item === 'system' || isUiLanguage(item))) result.language = item
     else if (key === 'theme' && ['dark', 'light', 'system'].includes(String(item)))
       result.theme = item as Preferences['theme']
     else if (
@@ -222,21 +218,20 @@ export function validatePreferences(
       result.accentColor = item.toLowerCase()
     else if (key === 'playerBackground')
       result.playerBackground = validatePlayerBackground(item, previousBackground)
-    else throw new Error(ui('不支持或无效的设置：{0}', 'Unsupported or invalid setting: {0}', key))
+    else throw new Error(t('desktop.unsupportedOrInvalidSetting', { key }))
   }
   return result
 }
 export function validateMediaState(value: unknown): DesktopMediaState {
-  if (!value || typeof value !== 'object')
-    throw new Error(ui('播放信息无效', 'Invalid playback information.'))
+  if (!value || typeof value !== 'object') throw new Error(t('desktop.invalidPlaybackInformation'))
   const v = value as Record<string, unknown>
   for (const key of ['title', 'artist'])
     if (typeof v[key] !== 'string' || (v[key] as string).length > 300)
-      throw new Error(ui('歌曲信息无效', 'Invalid track information.'))
+      throw new Error(t('desktop.invalidTrackInformation'))
   for (const key of ['playing', 'canToggle', 'canNext', 'canPrevious'])
-    if (typeof v[key] !== 'boolean') throw new Error(ui('播放状态无效', 'Invalid playback state.'))
+    if (typeof v[key] !== 'boolean') throw new Error(t('desktop.invalidPlaybackState'))
   if (v.roomId !== null && (typeof v.roomId !== 'string' || !/^[\w-]{1,128}$/.test(v.roomId)))
-    throw new Error(ui('房间信息无效', 'Invalid room information.'))
+    throw new Error(t('desktop.invalidRoomInformation'))
   return {
     title: v.title as string,
     artist: v.artist as string,

@@ -1,16 +1,23 @@
-import { useEffect, useRef, useState } from 'react'
-import type { DesktopInfo, PlayerCommand, Preferences } from '../../shared/desktop'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type {
+  DesktopInfo,
+  PlayerCommand,
+  Preferences,
+  PreferencesUpdate,
+} from '../../shared/desktop'
 import type { useParty } from './useParty'
 import { applyAppearance } from './appearance'
-import { getUiLanguage, setUiLanguage, ui } from '../../shared/ui-language'
+import { setUiLanguage, t } from '../../shared/ui-language'
 
 type Party = ReturnType<typeof useParty>
 export function useDesktop(
   party: Party,
   navigate: (tab: 'settings' | 'lyrics' | 'search') => void,
+  receivedInfo: DesktopInfo | null,
+  startupError?: string,
 ) {
-  const [info, setInfo] = useState<DesktopInfo | null>(null)
-  const [error, setError] = useState('')
+  const [info, setInfo] = useState<DesktopInfo | null>(receivedInfo)
+  const [error, setError] = useState(startupError ?? '')
   const [ready, setReady] = useState(false)
   const latest = useRef({ party, navigate })
   latest.current = { party, navigate }
@@ -21,8 +28,8 @@ export function useDesktop(
   const [fullScreenBusy, setFullScreenBusy] = useState(false)
   const fullScreenLock = useRef(false)
   function applyInfo(next: DesktopInfo) {
-    setUiLanguage(next.preferences.language)
-    document.documentElement.lang = getUiLanguage()
+    setUiLanguage(next.resolvedLanguage)
+    document.documentElement.lang = next.resolvedLanguage
     if (next.fullScreenRevision >= fullScreenState.current.fullScreenRevision)
       fullScreenState.current = {
         fullScreen: next.fullScreen,
@@ -40,20 +47,29 @@ export function useDesktop(
     try {
       applyInfo(await window.together.setFullScreen(value))
     } catch (error: any) {
-      latest.current.party.setError(
-        error.message || ui('全屏切换失败', 'Could not switch fullscreen mode'),
-      )
+      latest.current.party.setError(error.message || t('desktop.couldNotSwitchFullscreenMode'))
     } finally {
       fullScreenLock.current = false
       setFullScreenBusy(false)
     }
   }
-  async function update(value: Partial<Preferences>) {
+  async function update(value: PreferencesUpdate) {
     const run = ++requestEpoch.current
     const previous = info
-    setInfo((current) =>
-      current ? { ...current, preferences: { ...current.preferences, ...value } } : current,
-    )
+    setInfo((current) => {
+      if (!current) return current
+      const { playerBackground, ...fields } = value
+      return {
+        ...current,
+        preferences: {
+          ...current.preferences,
+          ...fields,
+          playerBackground: playerBackground
+            ? { ...current.preferences.playerBackground, ...playerBackground }
+            : current.preferences.playerBackground,
+        },
+      }
+    })
     try {
       const next = await window.together.updatePreferences(value)
       if (run === requestEpoch.current) {
@@ -64,7 +80,7 @@ export function useDesktop(
     } catch (e: any) {
       if (run === requestEpoch.current) {
         if (previous) applyInfo(previous)
-        setError(e.message || ui('设置保存失败', 'Could not save settings'))
+        setError(e.message || t('desktop.couldNotSaveSettings'))
       }
     }
     return false
@@ -76,38 +92,27 @@ export function useDesktop(
       return
     }
     if (!p.current) return
-    if (command === 'toggle') p.act(ui('播放控制', 'Playback controls'), p.togglePlay)
-    else if (command === 'play' && p.audio.current?.paused) p.act(ui('播放', 'Play'), p.togglePlay)
-    else if (command === 'pause' && !p.audio.current?.paused)
-      p.act(ui('暂停', 'Pause'), p.togglePlay)
+    if (command === 'toggle') p.act(t('desktop.playbackControls'), p.togglePlay)
+    else if (command === 'play' && p.audio.current?.paused) p.act(t('common.play'), p.togglePlay)
+    else if (command === 'pause' && !p.audio.current?.paused) p.act(t('common.pause'), p.togglePlay)
     else if (command === 'next')
-      p.act(ui('下一首', 'Next'), () => (p.room ? p.nextSong() : p.nextLocal(1)))
+      p.act(t('common.next'), () => (p.room ? p.nextSong() : p.nextLocal(1)))
     else if (command === 'previous' && p.auditioning)
-      p.act(ui('重播试听', 'Replay preview'), () => p.seek(0))
-    else if (command === 'previous' && !p.room)
-      p.act(ui('上一首', 'Previous'), () => p.nextLocal(-1))
+      p.act(t('common.replayPreview'), () => p.seek(0))
+    else if (command === 'previous' && !p.room) p.act(t('common.previous'), () => p.nextLocal(-1))
   }
+  useLayoutEffect(() => {
+    if (!receivedInfo) return
+    applyInfo(receivedInfo)
+    if (!hydrated.current) {
+      hydrated.current = true
+      latest.current.party.setVolume(receivedInfo.preferences.volume)
+      latest.current.party.changeRepeat(receivedInfo.preferences.repeatMode)
+      setReady(true)
+    }
+  }, [receivedInfo])
   useEffect(() => {
-    let active = true
-    const stopInfo = window.together.onDesktopInfo((next) => {
-      if (active) applyInfo(next)
-    })
     const stopCommands = window.together.onPlayerCommand(command)
-    window.together
-      .desktopInfo()
-      .then((next) => {
-        if (!active) return
-        applyInfo(next)
-        if (!hydrated.current) {
-          hydrated.current = true
-          latest.current.party.setVolume(next.preferences.volume)
-          latest.current.party.changeRepeat(next.preferences.repeatMode)
-        }
-        setReady(true)
-      })
-      .catch((e: any) => {
-        if (active) setError(e.message || ui('桌面设置读取失败', 'Could not load desktop settings'))
-      })
     const keyboard = (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
@@ -143,8 +148,6 @@ export function useDesktop(
     }
     window.addEventListener('keydown', keyboard)
     return () => {
-      active = false
-      stopInfo()
       stopCommands()
       window.removeEventListener('keydown', keyboard)
     }
@@ -233,7 +236,7 @@ export function useDesktop(
     const seek = (position: number) => {
       const p = latest.current.party
       if (!p.room || p.auditioning)
-        p.act(ui('调整进度', 'Seek'), () =>
+        p.act(t('desktop.seek'), () =>
           p.seek(Math.max(0, Math.min(position, p.current?.duration || 0))),
         )
     }

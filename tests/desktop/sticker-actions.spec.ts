@@ -1,8 +1,7 @@
-import { openTool, loginFixture, widenPanel, serveArtwork } from './windows'
+import { createChineseProfile, openTool, loginFixture, widenPanel, serveArtwork } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
 test('self and peer pictures can be collected and clipboard pictures are previewed before sending', async () => {
@@ -95,7 +94,7 @@ test('self and peer pictures can be collected and clipboard pictures are preview
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = (server.address() as any).port,
-    profile = await mkdtemp(join(tmpdir(), 'music-party-sticker-actions-'))
+    profile = await createChineseProfile('music-party-sticker-actions-')
   const app = await electron.launch({
     args: [
       '.',

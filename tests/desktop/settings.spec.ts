@@ -1,8 +1,7 @@
-import { mouseSide, openTool, settingsGroup, widenPanel } from './windows'
+import { createChineseProfile, mouseSide, openTool, settingsGroup, widenPanel } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import packageInfo from '../../package.json'
@@ -14,7 +13,7 @@ test('desktop settings survive restart and close-to-tray retains the same render
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = (server.address() as any).port
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-desktop-'))
+  const profile = await createChineseProfile('music-party-desktop-')
   const launch = () =>
     electron.launch({
       args: [

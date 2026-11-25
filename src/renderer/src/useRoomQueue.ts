@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RoomQueueEntry } from '../../shared/types'
 import type { ApiCall } from './music-data'
@@ -51,9 +51,7 @@ export function useRoomQueue(
         }
       } catch (cause) {
         if (active)
-          setError(
-            cause instanceof Error ? cause.message : ui('列表读取失败', "Couldn't load the list"),
-          )
+          setError(cause instanceof Error ? cause.message : t('roomQueue.couldntLoadTheList'))
       } finally {
         if (active) setLoading(false)
       }

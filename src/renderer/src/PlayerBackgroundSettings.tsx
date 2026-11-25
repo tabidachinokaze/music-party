@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import {
   useEffect,
   useLayoutEffect,
@@ -18,11 +18,11 @@ import { importPlayerBackground } from './background-import'
 
 const clamp = (value: number) => Math.max(0, Math.min(100, value))
 const crops = [
-  { label: ['当前窗口', 'Current window'], width: 0, height: 0 },
-  { label: ['竖屏', 'Portrait'], width: 321, height: 682 },
-  { label: ['中窗 740', 'Medium 740'], width: 740, height: 590 },
-  { label: ['中窗 900', 'Medium 900'], width: 900, height: 722 },
-  { label: ['宽窗', 'Wide'], width: 1159, height: 750 },
+  { label: 'playerBackgroundSettings.currentWindow', width: 0, height: 0 },
+  { label: 'playerBackgroundSettings.portrait', width: 321, height: 682 },
+  { label: 'playerBackgroundSettings.medium740', width: 740, height: 590 },
+  { label: 'playerBackgroundSettings.medium900', width: 900, height: 722 },
+  { label: 'playerBackgroundSettings.wide', width: 1159, height: 750 },
 ] as const
 
 export function PlayerBackgroundSettings({
@@ -40,7 +40,7 @@ export function PlayerBackgroundSettings({
     ...desktop.info!.preferences.playerBackground,
   })
   // Interface fills are owned by Settings. A desktop preference update can
-  // arrive while a wallpaper draft is open; preview and save the current fills.
+  // arrive while a wallpaper draft is open; preview those fills without saving over them.
   const { layoutTransparency, componentTransparency, popupTransparency } =
     desktop.info!.preferences.playerBackground
   const previewSkin = useMemo(
@@ -86,8 +86,7 @@ export function PlayerBackgroundSettings({
     } catch (error: any) {
       if (run === generation.current)
         setFailure(
-          error.message ||
-            ui('图片读取失败，请重新选择', 'Could not read the image. Choose another file.'),
+          error.message || t('playerBackgroundSettings.couldNotReadTheImageChooseAnotherFile'),
         )
     } finally {
       if (run === generation.current) setPreparing(false)
@@ -136,11 +135,12 @@ export function PlayerBackgroundSettings({
     const run = generation.current
     setSaving(true)
     setFailure('')
-    const success = await desktop.update({ playerBackground: previewSkin })
+    const { image, zoom, opacity, blur, x, y } = draft
+    const success = await desktop.update({ playerBackground: { image, zoom, opacity, blur, x, y } })
     if (run !== generation.current) return
     if (success) onClose()
     else {
-      setFailure(ui('背景未保存，请重试。', 'Could not save the background. Try again.'))
+      setFailure(t('playerBackgroundSettings.couldNotSaveTheBackgroundTryAgain'))
       setSaving(false)
       saveLock.current = false
     }
@@ -197,7 +197,7 @@ export function PlayerBackgroundSettings({
   }
   return (
     <Overlay
-      title={ui('自定义播放器背景', 'Customize player background')}
+      title={t('playerBackgroundSettings.customizePlayerBackground')}
       wide
       dismissible={!saving}
       onClose={onClose}
@@ -207,7 +207,7 @@ export function PlayerBackgroundSettings({
           <div
             className="background-crops"
             role="group"
-            aria-label={ui('预览画幅', 'Preview size')}
+            aria-label={t('playerBackgroundSettings.previewSize')}
           >
             {crops.map((item) => (
               <button
@@ -216,18 +216,20 @@ export function PlayerBackgroundSettings({
                 aria-pressed={item === crop}
                 onClick={() => setCrop(item)}
               >
-                {ui(item.label[0], item.label[1])}
+                {t(item.label)}
               </button>
             ))}
             <button
               type="button"
               className="focal-toggle"
-              aria-label={ui('显示焦点', 'Show focal point')}
+              aria-label={t('common.showFocalPoint')}
               aria-pressed={showFocal}
               disabled={!draft.image}
               onClick={() => setShowFocal(!showFocal)}
               title={
-                showFocal ? ui('隐藏焦点', 'Hide focal point') : ui('显示焦点', 'Show focal point')
+                showFocal
+                  ? t('playerBackgroundSettings.hideFocalPoint')
+                  : t('common.showFocalPoint')
               }
             >
               <Crosshair size={15} />
@@ -246,7 +248,7 @@ export function PlayerBackgroundSettings({
                   : undefined
               }
               role="group"
-              aria-label={ui('背景位置预览', 'Background position preview')}
+              aria-label={t('playerBackgroundSettings.backgroundPositionPreview')}
               onPointerDown={startDrag}
               onPointerMove={moveDrag}
               onPointerUp={() => (drag.current = null)}
@@ -276,32 +278,26 @@ export function PlayerBackgroundSettings({
           </div>
           <p className="background-preview-hint">
             {draft.image
-              ? ui(
-                  '焦点 ({0}%, {1}%) · 缩放 {2}% · 拖动调整焦点，滚轮缩放。',
-                  'Focus ({0}%, {1}%) · Zoom {2}% · Drag to reposition. Scroll to zoom.',
-                  Math.round(draft.x),
-                  Math.round(draft.y),
-                  draft.zoom,
-                )
-              : ui('默认使用播放器主题背景。', 'The player currently uses the theme background.')}
+              ? t('background.focusSummary', {
+                  x: Math.round(draft.x),
+                  y: Math.round(draft.y),
+                  zoom: draft.zoom,
+                })
+              : t('playerBackgroundSettings.thePlayerCurrentlyUsesTheThemeBackground')}
           </p>
           <div className="background-image-sources">
             <label
-              title={
-                draft.image
-                  ? ui('更换图片', 'Change image')
-                  : ui('选择本地图片', 'Choose local image')
-              }
+              title={draft.image ? t('common.changeImage') : t('common.chooseLocalImage')}
               className={`background-image-picker secondary ${busy ? 'disabled' : ''}`}
             >
               {preparing ? <LoaderCircle size={16} className="spin" /> : <Image size={16} />}
               {preparing
-                ? ui('正在读取图片…', 'Reading image…')
+                ? t('playerBackgroundSettings.readingImage')
                 : draft.image
-                  ? ui('更换图片', 'Change image')
-                  : ui('选择本地图片', 'Choose local image')}
+                  ? t('common.changeImage')
+                  : t('common.chooseLocalImage')}
               <input
-                aria-label={ui('选择播放器背景图片', 'Choose player background image')}
+                aria-label={t('playerBackgroundSettings.choosePlayerBackgroundImage')}
                 type="file"
                 accept="image/png,image/jpeg,image/gif,image/webp"
                 disabled={busy}
@@ -319,11 +315,11 @@ export function PlayerBackgroundSettings({
             </div>
           )}
           <div className="background-setting-controls">
-            {slider('opacity', ui('图片透明度', 'Image transparency'), 0, 100)}
-            {slider('zoom', ui('背景缩放', 'Zoom'), 100, 300)}
-            {slider('blur', ui('背景模糊', 'Blur'), 0, 30, ' px')}
-            {slider('x', ui('背景水平位置', 'Horizontal position'), 0, 100)}
-            {slider('y', ui('背景垂直位置', 'Vertical position'), 0, 100)}
+            {slider('opacity', t('playerBackgroundSettings.imageTransparency'), 0, 100)}
+            {slider('zoom', t('playerBackgroundSettings.zoom'), 100, 300)}
+            {slider('blur', t('playerBackgroundSettings.blur'), 0, 30, ' px')}
+            {slider('x', t('playerBackgroundSettings.horizontalPosition'), 0, 100)}
+            {slider('y', t('playerBackgroundSettings.verticalPosition'), 0, 100)}
           </div>
           <div className="background-editor-reset">
             <button
@@ -332,7 +328,7 @@ export function PlayerBackgroundSettings({
               onClick={() => setDraft((previous) => ({ ...previous, x: 50, y: 50 }))}
             >
               <RotateCcw size={14} />
-              {ui('重置位置', 'Reset position')}
+              {t('playerBackgroundSettings.resetPosition')}
             </button>
             <button
               className="text-btn"
@@ -347,17 +343,19 @@ export function PlayerBackgroundSettings({
                 setFailure('')
               }}
             >
-              {ui('恢复默认背景', 'Restore theme background')}
+              {t('playerBackgroundSettings.restoreThemeBackground')}
             </button>
           </div>
         </div>
         <div className="background-editor-actions">
           <button className="secondary" disabled={saving} onClick={onClose}>
-            {ui('取消', 'Cancel')}
+            {t('common.cancel')}
           </button>
           <button className="primary" disabled={busy} onClick={() => void save()}>
             {saving && <LoaderCircle size={15} className="spin" />}
-            {saving ? ui('正在保存…', 'Saving…') : ui('保存背景', 'Save background')}
+            {saving
+              ? t('playerBackgroundSettings.saving')
+              : t('playerBackgroundSettings.saveBackground')}
           </button>
         </div>
       </div>

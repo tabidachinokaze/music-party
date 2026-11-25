@@ -1,4 +1,4 @@
-import { ui } from './ui-language'
+import { t } from './ui-language'
 import type { ChatEmoji } from './types'
 export interface StickerGroup {
   id: string
@@ -15,18 +15,17 @@ export function stickerKey(item: SavedSticker): string {
 }
 export function parseStickerGroups(body: any): StickerGroup[] {
   if (!Array.isArray(body?.data?.emojiGroups))
-    throw new Error(ui('表情分组响应异常，请重试', 'Could not read sticker groups. Try again.'))
+    throw new Error(t('stickers.couldNotReadStickerGroupsTryAgain'))
   return body.data.emojiGroups
     .filter((group: any) => group?.edit === true)
     .map((group: any) => {
       if (typeof group.id === 'number' && !Number.isSafeInteger(group.id))
-        throw new Error(ui('表情分组 ID 精度异常', 'Invalid sticker group ID precision'))
+        throw new Error(t('stickers.invalidStickerGroupIdPrecision'))
       const id = String(group.id)
-      if (!/^-?\d{1,24}$/.test(id))
-        throw new Error(ui('表情分组 ID 无效', 'Invalid sticker group ID'))
+      if (!/^-?\d{1,24}$/.test(id)) throw new Error(t('stickers.invalidStickerGroupId'))
       return {
         id,
-        name: typeof group.name === 'string' ? group.name : ui('自定义表情', 'Custom stickers'),
+        name: typeof group.name === 'string' ? group.name : t('common.customStickers'),
         editable: true,
       }
     })
@@ -42,12 +41,7 @@ export function receivedStickerIdentity(value: unknown): { emojiId: string; emoj
     typeof group !== 'string' ||
     !/^-?\d{1,24}$/.test(group)
   )
-    throw new Error(
-      ui(
-        '表情身份无效，请选择收到的官方表情',
-        'Invalid sticker. Choose an official sticker from a message.',
-      ),
-    )
+    throw new Error(t('stickers.invalidStickerChooseAnOfficialStickerFromA'))
   return { emojiId: id, emojiGroupId: group }
 }
 
@@ -58,7 +52,7 @@ export function stickerDeleteIds(value: unknown): string[] {
     value.length > 100 ||
     value.some((id) => typeof id !== 'string' || !/^[1-9]\d{0,23}$/.test(id))
   )
-    throw new Error(ui('请选择有效的自定义表情', 'Choose a valid custom sticker'))
+    throw new Error(t('stickers.chooseAValidCustomSticker'))
   return [...new Set(value)]
 }
 
@@ -74,7 +68,7 @@ export function stickerMutationResult(body: any): void {
         body?.data?.toast ||
           body?.message ||
           body?.msg ||
-          ui('网易云未确认表情操作', 'NetEase did not confirm the sticker action'),
+          t('stickers.neteaseDidNotConfirmTheStickerAction'),
       ),
       { code: body?.code },
     )

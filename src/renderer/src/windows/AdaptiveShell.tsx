@@ -1,4 +1,4 @@
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { animate } from 'animejs'
 import {
@@ -37,21 +37,21 @@ export function WindowButtons({
 }) {
   if (fullScreen) return null
   return (
-    <div className="window-buttons" role="group" aria-label={ui('窗口控制', 'Window controls')}>
+    <div className="window-buttons" role="group" aria-label={t('adaptiveShell.windowControls')}>
       <IconButton
-        label={ui('最小化', 'Minimize')}
+        label={t('common.minimize')}
         onClick={() => void window.together.windowAction('minimize')}
       >
         <Minus size={14} />
       </IconButton>
       <IconButton
-        label={maximized ? ui('还原窗口', 'Restore') : ui('最大化', 'Maximize')}
+        label={maximized ? t('adaptiveShell.restore') : t('adaptiveShell.maximize')}
         onClick={() => void window.together.windowAction('toggle-maximize')}
       >
         {maximized ? <Copy size={12} /> : <Square size={12} />}
       </IconButton>
       <IconButton
-        label={ui('关闭窗口', 'Close window')}
+        label={t('adaptiveShell.closeWindow')}
         onClick={() => void window.together.windowAction('close')}
       >
         <X size={15} />
@@ -83,7 +83,7 @@ export function WindowChrome({
       <div className="immersive-window-tools" inert={blocked}>
         <IconButton
           className="chrome-back"
-          label={ui('返回浏览', 'Back to browsing')}
+          label={t('adaptiveShell.backToBrowsing')}
           onClick={onBack}
         >
           <ChevronDown size={17} />
@@ -102,7 +102,7 @@ export function WindowChrome({
         {searchShortcut && (
           <IconButton
             className="chrome-search"
-            label={ui('全站搜索', 'Search all music')}
+            label={t('common.searchAllMusic')}
             onClick={() => open('search')}
           >
             <Search size={16} />
@@ -111,10 +111,10 @@ export function WindowChrome({
         {layout !== 'wide' && (
           <IconButton
             className="chrome-menu"
-            label={ui('全部功能', 'All features')}
+            label={t('common.allFeatures')}
             aria-description={
               layout === 'compact' && unread
-                ? ui('{0} 条未读私信', 'Unread messages: {0}', unread)
+                ? t('adaptiveShell.unreadMessages', { count: unread })
                 : undefined
             }
             onClick={() => open('windows')}
@@ -129,10 +129,10 @@ export function WindowChrome({
           className="chrome-account"
           label={
             unread
-              ? ui('查看未读私信', 'View unread messages')
+              ? t('adaptiveShell.viewUnreadMessages')
               : nickname
-                ? nickname + ui(' · 打开设置', ' · Open settings')
-                : ui('登录账号', 'Sign in')
+                ? t('adaptiveShell.openSettings', { nickname })
+                : t('adaptiveShell.signIn')
           }
           onClick={() => open(unread ? 'private' : nickname ? 'settings' : 'login')}
         >
@@ -155,14 +155,14 @@ export function Sidebar({
   likedCount?: number
 }) {
   const mainLinks = [
-    ['library', ui('音乐库', 'Library'), Compass],
-    ['search', ui('搜索', 'Search'), Search],
-    ['liked', ui('我喜欢的音乐', 'Liked Songs'), Heart],
-    ['recent', ui('最近播放', 'Recently played'), Clock3],
+    ['library', t('common.library'), Compass],
+    ['search', t('common.search'), Search],
+    ['liked', t('common.likedSongs'), Heart],
+    ['recent', t('common.recentlyPlayed'), Clock3],
   ] as const
   const accountLinks = [
-    ['private', ui('私信', 'Messages'), Mail],
-    ['settings', ui('设置', 'Settings'), Settings2],
+    ['private', t('common.messages'), Mail],
+    ['settings', t('common.settings'), Settings2],
   ] as const
   const sidebarIds = new Set<PanelId>([...mainLinks, ...accountLinks].map(([id]) => id))
   const active = trail.filter((id) => sidebarIds.has(id)).at(-1)
@@ -170,13 +170,13 @@ export function Sidebar({
     <aside
       data-list-viewport=""
       className="main-sidebar"
-      aria-label={ui('主导航', 'Main navigation')}
+      aria-label={t('adaptiveShell.mainNavigation')}
     >
       {[mainLinks, accountLinks].map((links, group) => (
         <nav
           key={group}
           aria-label={
-            group ? ui('账号与设置', 'Account and settings') : ui('音乐导航', 'Music navigation')
+            group ? t('adaptiveShell.accountAndSettings') : t('adaptiveShell.musicNavigation')
           }
         >
           {links.map(([id, name, Icon]) => (
@@ -186,7 +186,7 @@ export function Sidebar({
               aria-label={name}
               aria-description={
                 id === 'liked' && likedCount !== undefined
-                  ? ui('{0} 首', likedCount === 1 ? '{0} track' : '{0} tracks', likedCount)
+                  ? t('music.trackCount', { count: likedCount })
                   : undefined
               }
               aria-current={active === id ? 'page' : undefined}
@@ -367,7 +367,7 @@ function PageNavigation({
   backLabel: string
 }) {
   return (
-    <nav className="page-navigation" aria-label={ui('页面导航', 'Page navigation')}>
+    <nav className="page-navigation" aria-label={t('adaptiveShell.pageNavigation')}>
       {onBack && (
         <IconButton className="icon-btn surface-back" label={backLabel} onClick={onBack}>
           <ArrowLeft size={16} />
@@ -452,7 +452,7 @@ export function Surface({
           {placement === 'drawer' && !onBack && close && (
             <IconButton
               className="icon-btn drawer-collapse"
-              label={ui('关闭{0}', 'Close {0}', title)}
+              label={t('common.close', { title })}
               onClick={close}
             >
               <ChevronRight size={17} />
@@ -467,7 +467,7 @@ export function Surface({
           {close && (placement === 'dialog' || (placement === 'drawer' && onBack)) && (
             <button
               className="icon-btn surface-close"
-              aria-label={ui('关闭{0}', 'Close {0}', title)}
+              aria-label={t('common.close', { title })}
               onClick={close}
             >
               <X size={18} />

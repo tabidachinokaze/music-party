@@ -1,4 +1,5 @@
-import { ui, getUiLanguage } from '../../shared/ui-language'
+import { localizedMessageText } from '../../shared/message-content'
+import { t, getUiLanguage } from '../../shared/ui-language'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   ArrowRight,
@@ -42,17 +43,17 @@ type InviteCheck =
 function inviteCheckLabel(result: InviteCheck) {
   switch (result.state) {
     case 'idle':
-      return ui('检查房间后加入', 'Check the room before joining')
+      return t('privateMessages.checkTheRoomBeforeJoining')
     case 'loading':
-      return ui('正在检查…', 'Checking…')
+      return t('common.checking')
     case 'ready':
-      return result.song || ui('房间可以加入', 'Room available')
+      return result.song || t('privateMessages.roomAvailable')
     case 'ended':
-      return ui('邀请已过期或房间已结束', 'The invite expired or the room has ended')
+      return t('privateMessages.theInviteExpiredOrTheRoomHasEnded')
     case 'unavailable':
-      return ui('未能确认房间状态，请稍后重试', 'Couldn’t check the room. Try again later.')
+      return t('privateMessages.couldntCheckTheRoomTryAgainLater')
     case 'error':
-      return result.message || ui('检查失败', 'Couldn’t check the invite')
+      return result.message || t('privateMessages.couldntCheckTheInvite')
   }
 }
 function InviteCard({
@@ -103,14 +104,14 @@ function InviteCard({
     <div className="private-invite-card">
       <div>
         <Headphones size={20} />
-        <strong>{ui('官方多人一起听', 'Group listening room')}</strong>
+        <strong>{t('privateMessages.groupListeningRoom')}</strong>
       </div>
       <p>{inviteCheckLabel(result)}</p>
       {room?.roomId === invite.roomId ? (
-        <small>{ui('你已在这个房间', 'You’re already in this room')}</small>
+        <small>{t('privateMessages.youreAlreadyInThisRoom')}</small>
       ) : state === 'ready' ? (
         <button className="primary" disabled={busy} onClick={() => onJoin(invite)}>
-          {room ? ui('切换到这个房间', 'Switch to this room') : ui('加入一起听', 'Join room')}
+          {room ? t('privateMessages.switchToThisRoom') : t('privateMessages.joinRoom')}
           <ArrowRight size={14} />
         </button>
       ) : (
@@ -120,10 +121,10 @@ function InviteCard({
           onClick={check}
         >
           {state === 'loading'
-            ? ui('正在检查…', 'Checking…')
+            ? t('common.checking')
             : state === 'ended'
-              ? ui('邀请已失效', 'Invite expired')
-              : ui('检查邀请', 'Check invite')}
+              ? t('privateMessages.inviteExpired')
+              : t('privateMessages.checkInvite')}
         </button>
       )}
     </div>
@@ -246,9 +247,7 @@ export function PrivateMessages({
     return (
       <div className="empty private-inbox-empty">
         <Mail size={28} />
-        <strong>
-          {ui('登录后查看网易云私信', 'Sign in to view your NetEase Cloud Music messages')}
-        </strong>
+        <strong>{t('privateMessages.signInToViewYourNeteaseCloudMusic')}</strong>
       </div>
     )
   const ThreadHeader = compact ? PanelHeader : Fragment
@@ -277,13 +276,9 @@ export function PrivateMessages({
           <label className="contact-filter">
             <Search size={15} />
             <input
-              title={ui(
-                '筛选 {0} 个会话中的联系人或消息',
-                'Search contacts or messages across {0} conversations',
-                inbox.conversations.length,
-              )}
-              aria-label={ui('筛选私信会话', 'Filter conversations')}
-              placeholder={ui('筛选私信联系人…', 'Filter contacts…')}
+              title={t('private.searchConversations', { count: inbox.conversations.length })}
+              aria-label={t('privateMessages.filterConversations')}
+              placeholder={t('privateMessages.filterContacts')}
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
             />
@@ -293,19 +288,18 @@ export function PrivateMessages({
             data-connected={inbox.notificationsConnected}
             title={
               inbox.notificationsConnected
-                ? ui('Mini 通知已连接', 'Connected to live notifications')
-                : ui(
-                    '通知重连中，打开页面时保留历史查询补偿',
-                    'Reconnecting to notifications. Opening a conversation also checks for missed messages.',
-                  )
+                ? t('privateMessages.connectedToLiveNotifications')
+                : t('privateMessages.reconnectingToNotificationsOpeningAConversationAlsoChecks')
             }
           >
-            {inbox.notificationsConnected ? ui('实时', 'Live') : ui('重连中', 'Reconnecting')}
+            {inbox.notificationsConnected
+              ? t('privateMessages.live')
+              : t('privateMessages.reconnecting')}
           </span>
           <div className="conversation-actions">
             <button
               className="icon-btn"
-              aria-label={ui('刷新私信会话', 'Refresh conversations')}
+              aria-label={t('privateMessages.refreshConversations')}
               disabled={inbox.conversationBusy}
               onClick={inbox.refreshConversations}
             >
@@ -313,7 +307,7 @@ export function PrivateMessages({
             </button>
             <button
               className="icon-btn"
-              aria-label={ui('选择好友发私信', 'Message a friend')}
+              aria-label={t('privateMessages.messageAFriend')}
               onClick={() => {
                 setShowContacts(true)
                 inbox.loadContacts()
@@ -334,7 +328,7 @@ export function PrivateMessages({
             <button
               className={inbox.selected?.uid === c.uid ? 'selected' : ''}
               key={c.uid}
-              title={ui('打开与 {0} 的会话', 'Open conversation with {0}', conversationName(c))}
+              title={t('common.openConversationWith', { nickname: conversationName(c) })}
               aria-current={inbox.selected?.uid === c.uid ? 'true' : undefined}
               onClick={() => onSelect(c)}
             >
@@ -353,11 +347,11 @@ export function PrivateMessages({
                   )}
                 </span>
                 <span className="conversation-preview">
-                  <small>{conversationPreview(c) || ui('开始私信', 'Start a conversation')}</small>
+                  <small>{conversationPreview(c) || t('privateMessages.startAConversation')}</small>
                   {c.unread > 0 && (
                     <span
                       className="unread-count"
-                      aria-label={ui('{0} 条未读', '{0} unread', c.unread)}
+                      aria-label={t('privateMessages.unread', { count: c.unread })}
                     >
                       {c.unread > 99 ? '99+' : c.unread}
                     </span>
@@ -375,14 +369,14 @@ export function PrivateMessages({
           {!inbox.conversationBusy && !inbox.conversationError && !filtered.length && (
             <p className="chat-empty">
               {filter
-                ? ui('没有匹配的联系人', 'No matching contacts')
-                : ui('暂无私信，点击 + 选择好友', 'No messages yet. Select + to message a friend.')}
+                ? t('privateMessages.noMatchingContacts')
+                : t('privateMessages.noMessagesYetSelectToMessageAFriend')}
             </p>
           )}
           {inbox.conversationBusy && (
             <p className="loading">
               <LoaderCircle size={14} className="spin" />
-              {ui('加载中…', 'Loading…')}
+              {t('privateMessages.loading')}
             </p>
           )}
           <div ref={conversationPages} className="pagination-sentinel" aria-hidden="true" />
@@ -392,13 +386,8 @@ export function PrivateMessages({
         {!inbox.selected ? (
           <div className="private-welcome">
             <Mail size={34} />
-            <h2>{ui('从一句话，一起听起', 'Start a conversation')}</h2>
-            <p>
-              {ui(
-                '选择会话，查看私信或分享当前多人房间。',
-                'Choose a conversation to read messages or share your listening room.',
-              )}
-            </p>
+            <h2>{t('privateMessages.emptyConversation')}</h2>
+            <p>{t('privateMessages.chooseAConversationToReadMessagesOrShare')}</p>
           </div>
         ) : (
           <>
@@ -416,33 +405,33 @@ export function PrivateMessages({
                   </strong>
                   <small data-presence={userPresence(inbox.selected.online)}>
                     {inbox.selected.online === true
-                      ? ui('在线', 'Online')
+                      ? t('common.online')
                       : inbox.selected.online === false
-                        ? ui('离线', 'Offline')
-                        : ui('在线状态未知', 'Presence unknown')}
-                    {compact && ui(' · 私信快捷回复', ' · Quick reply')}
+                        ? t('common.offline')
+                        : t('common.presenceUnknown')}
+                    {compact && t('privateMessages.quickReply')}
                   </small>
                 </div>
                 {!compact && (
                   <button type="button" className="text-btn switch-conversation" onClick={onList}>
-                    {ui('切换联系人 ({0})', 'Switch contact ({0})', inbox.conversations.length)}
+                    {t('privateMessages.switchContact', { count: inbox.conversations.length })}
                   </button>
                 )}
                 {compact && (
                   <button
                     className="text-btn expand-conversation"
-                    aria-label={ui('打开完整对话', 'Open full conversation')}
-                    title={ui('打开完整对话', 'Open full conversation')}
+                    aria-label={t('common.openFullConversation')}
+                    title={t('common.openFullConversation')}
                     onClick={onExpand}
                   >
-                    {ui('完整对话', 'Full conversation')} <ArrowUpRight size={12} />
+                    {t('privateMessages.fullConversation')} <ArrowUpRight size={12} />
                   </button>
                 )}
                 {!compact && (
                   <button
                     className="icon-btn thread-invite"
-                    aria-label={ui('邀请到当前房间', 'Invite to room')}
-                    title={ui('邀请到当前房间', 'Invite to room')}
+                    aria-label={t('common.inviteToRoom')}
+                    title={t('common.inviteToRoom')}
                     disabled={!room || inbox.sending}
                     onClick={() => {
                       if (room && inbox.selected)
@@ -454,12 +443,12 @@ export function PrivateMessages({
                     }}
                   >
                     <Headphones size={15} />
-                    <span>{ui('邀请到当前房间', 'Invite to room')}</span>
+                    <span>{t('common.inviteToRoom')}</span>
                   </button>
                 )}
                 <button
                   className="icon-btn"
-                  aria-label={ui('刷新当前私信', 'Refresh conversation')}
+                  aria-label={t('privateMessages.refreshConversation')}
                   disabled={inbox.historyBusy}
                   onClick={inbox.refreshHistory}
                 >
@@ -470,10 +459,10 @@ export function PrivateMessages({
             {inbox.readError && (
               <div className="private-read-error" role="status">
                 <span>
-                  {ui('已读状态同步失败：{0}', 'Couldn’t sync read receipts: {0}', inbox.readError)}
+                  {t('privateMessages.couldntSyncReadReceipts', { readError: inbox.readError })}
                 </span>
                 <button className="text-btn" onClick={inbox.refreshHistory}>
-                  {ui('重试同步已读', 'Retry read receipt')}
+                  {t('privateMessages.retryReadReceipt')}
                 </button>
               </div>
             )}
@@ -488,7 +477,7 @@ export function PrivateMessages({
                 data-list-viewport=""
                 className="private-messages"
                 role="log"
-                aria-label={ui('私信消息', 'Direct messages')}
+                aria-label={t('privateMessages.directMessages')}
                 aria-live="polite"
                 onScroll={() => {
                   const box = log.current
@@ -502,10 +491,10 @@ export function PrivateMessages({
               >
                 <div ref={historyPages} className="pagination-sentinel" aria-hidden="true" />
                 {inbox.historyBusy && !inbox.messages.length && (
-                  <p className="loading">{ui('正在读取私信…', 'Loading messages…')}</p>
+                  <p className="loading">{t('privateMessages.loadingMessages')}</p>
                 )}
                 {!inbox.historyBusy && !inbox.historyError && !inbox.messages.length && (
-                  <p className="chat-empty">{ui('还没有聊天记录', 'No messages yet')}</p>
+                  <p className="chat-empty">{t('privateMessages.noMessagesYet')}</p>
                 )}
                 {messages.map((message, index) => (
                   <div
@@ -523,10 +512,10 @@ export function PrivateMessages({
                       mine={message.senderId === selfUid}
                       author={
                         message.senderId === selfUid
-                          ? account.nickname || ui('我', 'Me')
+                          ? account.nickname || t('common.me')
                           : inbox.selected
                             ? conversationName(inbox.selected)
-                            : ui('听友', 'Listener')
+                            : t('common.listener')
                       }
                       avatar={
                         message.senderId === selfUid ? account.avatarUrl : inbox.selected?.avatar
@@ -539,9 +528,7 @@ export function PrivateMessages({
                         text={
                           message.previewOnlyText
                             ? ''
-                            : message.fallbackTextEn
-                              ? ui(message.text, message.fallbackTextEn)
-                              : message.text
+                            : localizedMessageText(message.text, message.fallbackText)
                         }
                         attachments={message.attachments}
                         richText={message.richText}
@@ -568,13 +555,10 @@ export function PrivateMessages({
                         <small className={message.error ? 'chat-failed' : ''}>
                           {message.error ||
                             {
-                              sending: ui('发送中…', 'Sending…'),
-                              submitted: ui(
-                                '已提交，等待私信回显',
-                                'Sent. Waiting for delivery confirmation.',
-                              ),
-                              failed: ui('发送失败', 'Send failed'),
-                              uncertain: ui('结果未确认', 'Delivery unconfirmed'),
+                              sending: t('common.sending'),
+                              submitted: t('privateMessages.sentWaitingForDeliveryConfirmation'),
+                              failed: t('common.sendFailed'),
+                              uncertain: t('common.deliveryUnconfirmed'),
                             }[message.delivery]}
                         </small>
                       )}
@@ -585,7 +569,7 @@ export function PrivateMessages({
               {showLatest && (
                 <button
                   className="back-to-latest"
-                  aria-label={ui('回到最新消息', 'Jump to latest')}
+                  aria-label={t('common.jumpToLatest')}
                   onClick={() => {
                     if (log.current) log.current.scrollTop = log.current.scrollHeight
                     stick.current = true
@@ -601,11 +585,11 @@ export function PrivateMessages({
               className="private-compose"
               value={inbox.draft}
               onChange={inbox.setDraft}
-              label={ui('私信内容', 'Direct message')}
-              placeholder={ui('发送私信…', 'Write a message…')}
+              label={t('privateMessages.directMessage')}
+              placeholder={t('privateMessages.writeAMessage')}
               maxLength={PRIVATE_TEXT_LIMIT}
               busy={inbox.sending}
-              submitLabel={ui('发送私信', 'Send message')}
+              submitLabel={t('privateMessages.sendMessage')}
               onSubmit={() => {
                 stick.current = true
                 return inbox.send()
@@ -617,7 +601,7 @@ export function PrivateMessages({
                     accountKey={selfUid}
                     scope="private"
                     recipient={conversationName(inbox.selected!)}
-                    triggerLabel={ui('表情包', 'Stickers')}
+                    triggerLabel={t('common.stickers')}
                     triggerIcon={<Sticker size={16} />}
                     disabled={inbox.sending}
                     onSticker={inbox.sendSticker}
@@ -638,7 +622,7 @@ export function PrivateMessages({
       </div>
       {showContacts && (
         <Overlay
-          title={ui('选择私信收件人', 'Choose a recipient')}
+          title={t('privateMessages.chooseARecipient')}
           onClose={() => setShowContacts(false)}
         >
           <form
@@ -659,8 +643,8 @@ export function PrivateMessages({
             }}
           >
             <input
-              aria-label={ui('收件人网易云 ID', 'Recipient’s NetEase Cloud Music ID')}
-              placeholder={ui('或输入网易云用户 ID', 'Or enter a NetEase Cloud Music user ID')}
+              aria-label={t('privateMessages.recipientsNeteaseCloudMusicId')}
+              placeholder={t('privateMessages.orEnterANeteaseCloudMusicUserId')}
               value={newUid}
               onChange={(e) => setNewUid(e.target.value.trim())}
             />
@@ -668,10 +652,10 @@ export function PrivateMessages({
               className="secondary"
               disabled={!/^[1-9]\d{0,23}$/.test(newUid) || newUid === selfUid}
             >
-              {ui('打开会话', 'Open conversation')}
+              {t('privateMessages.openConversation')}
             </button>
           </form>
-          <p className="muted">{ui('我关注的人', 'Following')}</p>
+          <p className="muted">{t('privateMessages.following')}</p>
           {inbox.contactsError && (
             <p role="alert" className="private-error">
               {inbox.contactsError}
@@ -681,7 +665,7 @@ export function PrivateMessages({
             {inbox.contacts.map((c) => (
               <button
                 key={c.uid}
-                title={ui('打开与 {0} 的会话', 'Open conversation with {0}', conversationName(c))}
+                title={t('common.openConversationWith', { nickname: conversationName(c) })}
                 onClick={() => {
                   onSelect(c)
                   setShowContacts(false)
@@ -698,32 +682,23 @@ export function PrivateMessages({
             ))}
             <div ref={contactPages} className="pagination-sentinel" aria-hidden="true" />
           </div>
-          {inbox.contactsBusy && (
-            <p className="loading">{ui('正在读取联系人…', 'Loading contacts…')}</p>
-          )}
+          {inbox.contactsBusy && <p className="loading">{t('privateMessages.loadingContacts')}</p>}
         </Overlay>
       )}
       {confirmInvite && (
         <Overlay
-          title={ui(
-            '邀请 {0} 一起听',
-            'Invite {0} to listen together',
-            conversationName(confirmInvite),
-          )}
+          title={t('privateMessages.inviteToListenTogether', {
+            nickname: conversationName(confirmInvite),
+          })}
           onClose={() => setConfirmInvite(null)}
         >
-          <p>
-            {ui(
-              '将通过网易云私信发送以下多人房间链接：',
-              'Send this room link in a direct message?',
-            )}
-          </p>
+          <p>{t('privateMessages.sendThisRoomLinkInADirectMessage')}</p>
           <pre className="invite-preview-text">
             {inviteText(confirmInvite.room.roomId, selfUid)}
           </pre>
           <div className="row-actions">
             <button className="secondary" onClick={() => setConfirmInvite(null)}>
-              {ui('取消', 'Cancel')}
+              {t('common.cancel')}
             </button>
             <button
               className="primary"
@@ -735,25 +710,20 @@ export function PrivateMessages({
                 }
               }}
             >
-              {ui('确认发送邀请', 'Send invitation')}
+              {t('privateMessages.sendInvitation')}
             </button>
           </div>
         </Overlay>
       )}
       {switchInvite && (
         <Overlay
-          title={ui('切换一起听房间？', 'Switch listening rooms?')}
+          title={t('privateMessages.switchListeningRooms')}
           onClose={() => setSwitchInvite(null)}
         >
-          <p>
-            {ui(
-              '将先离开当前房间，再加入这条邀请对应的官方多人房间。',
-              'You’ll leave your current room and join the room in this invite.',
-            )}
-          </p>
+          <p>{t('privateMessages.youllLeaveYourCurrentRoomAndJoinThe')}</p>
           <div className="row-actions">
             <button className="secondary" onClick={() => setSwitchInvite(null)}>
-              {ui('取消', 'Cancel')}
+              {t('common.cancel')}
             </button>
             <button
               className="primary"
@@ -763,7 +733,7 @@ export function PrivateMessages({
                 setSwitchInvite(null)
               }}
             >
-              {ui('确认切换房间', 'Switch rooms')}
+              {t('privateMessages.switchRooms')}
             </button>
           </div>
         </Overlay>

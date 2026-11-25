@@ -1,4 +1,4 @@
-import { ui } from './ui-language'
+import { t } from './ui-language'
 // SPDX-License-Identifier: AGPL-3.0-only
 // Ported from folium-mod-music-party@b01525f src/client/private-history-gaps.ts.
 // Copyright (C) tabidachinokaze. See THIRD_PARTY_NOTICES.md.
@@ -32,9 +32,9 @@ export class PrivateHistoryGaps {
     const range = this.ranges.find((item) => item.before === cursor)
     if (!range) return
     if (page.more && page.before === null)
-      throw new Error(ui('私信分页缺少下一页游标', 'The next page of messages has no cursor'))
+      throw new Error(t('privateHistoryGaps.theNextPageOfMessagesHasNoCursor'))
     if (page.before !== null && page.before >= cursor)
-      throw new Error(ui('私信分页响应未向前推进', 'No more message history could be loaded'))
+      throw new Error(t('privateHistoryGaps.noMoreMessageHistoryCouldBeLoaded'))
     if (!page.more || page.before === null || page.before <= range.after)
       this.ranges = this.ranges.filter((item) => item !== range)
     else range.before = page.before

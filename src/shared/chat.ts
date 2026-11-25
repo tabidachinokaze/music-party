@@ -1,4 +1,4 @@
-import { ui } from './ui-language'
+import { t, translateIn } from './ui-language'
 import type { ChatMessage, ChatPage } from './types'
 import { parseEmoji, richMessageContent, mediaUrl } from './message-content'
 export const CHAT_MAX_LENGTH = 100
@@ -15,9 +15,7 @@ function object(value: any): any {
 export function parseChatPage(body: any, roomId: string, viewerUid: string): ChatPage {
   const data = body?.data
   if (!data || !Array.isArray(data.records))
-    throw new Error(
-      ui('聊天记录响应格式异常，请稍后刷新', 'Couldn’t read the chat history. Try again later.'),
-    )
+    throw new Error(t('chat.couldntReadTheChatHistoryTryAgainLater'))
   const messages: ChatMessage[] = []
   for (const raw of data.records) {
     if (!raw || (raw.roomId && raw.roomId !== roomId)) continue
@@ -48,8 +46,10 @@ export function parseChatPage(body: any, roomId: string, viewerUid: string): Cha
             resourceType: 'song',
             resourceId: id,
             title: String(resource.title).slice(0, 1000),
-            subtitle: Array.isArray(resource.artistName) ? resource.artistName.join(' / ') : '歌曲',
-            ...(!Array.isArray(resource.artistName) && { fallbackSubtitleEn: 'Song' }),
+            subtitle: Array.isArray(resource.artistName)
+              ? resource.artistName.join(' / ')
+              : translateIn('zh-CN', 'chat.song'),
+            ...(!Array.isArray(resource.artistName) && { fallbackSubtitle: 'chat.song' }),
             cover: mediaUrl(resource.coverUrl),
             actionUrl: `https://music.163.com/song?id=${id}`,
           },
@@ -62,17 +62,18 @@ export function parseChatPage(body: any, roomId: string, viewerUid: string): Cha
         .map((part: any) => (typeof part?.text === 'string' ? part.text : ''))
         .join('')
     const previewOnlyText = !text && !!content.attachments?.length
-    const generatedText = !text && !emoji
-    if (!text)
-      text = emoji
-        ? `[${emoji.emojiName}]`
+    const fallbackText =
+      text || emoji
+        ? undefined
         : raw.msgType === 2
-          ? '推荐了一首歌'
+          ? 'chat.recommendedTrack'
           : raw.msgType === 1
-            ? '房间互动'
+            ? 'chat.interaction'
             : raw.msgType === 3
-              ? '房间通知'
-              : '收到一条消息'
+              ? 'chat.roomNotice'
+              : 'chat.receivedMessage'
+    if (fallbackText) text = translateIn('zh-CN', fallbackText)
+    else if (!text && emoji) text = `[${emoji.emojiName}]`
     // Some history responses omit a record ID. Include the content to keep distinct
     // sends by the same account in the same millisecond across overlapping pages.
     const recordId = raw.msgId ?? raw.id
@@ -84,20 +85,11 @@ export function parseChatPage(body: any, roomId: string, viewerUid: string): Cha
       id: `${uid}:${time}:${identity}`,
       roomId,
       uid,
-      nickname: typeof raw.nickname === 'string' ? raw.nickname : '听友',
+      nickname: typeof raw.nickname === 'string' ? raw.nickname : '',
       avatar: typeof raw.avatarUrl === 'string' ? raw.avatarUrl : '',
       time,
       text: text.slice(0, 10000),
-      ...(generatedText && {
-        fallbackTextEn:
-          raw.msgType === 2
-            ? 'Recommended a song'
-            : raw.msgType === 1
-              ? 'Room activity'
-              : raw.msgType === 3
-                ? 'Room notice'
-                : 'Received a message',
-      }),
+      ...(fallbackText && { fallbackText }),
       ...(previewOnlyText && { previewOnlyText: true }),
       kind: emoji
         ? 'image'

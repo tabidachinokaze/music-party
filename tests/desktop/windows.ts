@@ -1,6 +1,19 @@
 import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
+import { mkdtemp, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { PanelId } from '../../src/shared/panels'
+
+// These workflows assert Chinese UI labels regardless of the host's preferred languages.
+export async function createChineseProfile(prefix: string) {
+  const path = await mkdtemp(join(tmpdir(), prefix))
+  await writeFile(
+    join(path, 'settings.json'),
+    JSON.stringify({ preferences: { language: 'zh-CN' } }),
+  )
+  return path
+}
 
 export function serveSeekableWav(req: IncomingMessage, res: ServerResponse, pcm: Buffer) {
   res.setHeader('Content-Type', 'audio/wav')

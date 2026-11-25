@@ -1,9 +1,14 @@
-import { settingsGroup, openTool, panelPage, loginFixture, widenPanel } from './windows'
+import {
+  createChineseProfile,
+  settingsGroup,
+  openTool,
+  panelPage,
+  loginFixture,
+  widenPanel,
+} from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rm } from 'node:fs/promises'
 
 test('favorite views share server playlist ordering and multi-playlist writes retain selection and retry only failures', async () => {
   const favoriteIds = ['9', '2', '7']
@@ -123,7 +128,7 @@ test('favorite views share server playlist ordering and multi-playlist writes re
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = (server.address() as any).port
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-library-'))
+  const profile = await createChineseProfile('music-party-library-')
   const app = await electron.launch({
     args: [
       '.',
@@ -528,7 +533,7 @@ test('player playlist entry keeps the chosen song across playback changes and is
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   port = (server.address() as any).port
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-player-playlist-'))
+  const profile = await createChineseProfile('music-party-player-playlist-')
   const app = await electron.launch({
     args: [
       '.',

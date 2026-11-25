@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import { Search, X } from 'lucide-react'
 import { useLayoutEffect, useRef, useState } from 'react'
 
@@ -84,8 +84,8 @@ export function BrowserSearch({ navigation }: { navigation: BrowserNavigationSta
           type="button"
           aria-label={
             navigation.onSubmit
-              ? ui('清空搜索', 'Clear search')
-              : ui('清空列表搜索', 'Clear list search')
+              ? t('browserNavigation.clearSearch')
+              : t('browserNavigation.clearListSearch')
           }
           onClick={() => {
             change('')
@@ -97,7 +97,7 @@ export function BrowserSearch({ navigation }: { navigation: BrowserNavigationSta
       )}
       {navigation.onSubmit && (
         <button className="text-btn" type="submit" disabled={!text.trim() || navigation.busy}>
-          {ui('搜索', 'Search')}
+          {t('common.search')}
         </button>
       )}
     </form>

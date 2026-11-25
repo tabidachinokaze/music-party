@@ -1,4 +1,4 @@
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { ArrowUpToLine, Music2, Trash2 } from 'lucide-react'
 import type { Member, RoomQueueEntry } from '../../../shared/types'
@@ -93,7 +93,7 @@ export function MembersDrawer({
       <h3>
         {title} · {entries.length}
       </h3>
-      {!entries.length && <p className="muted">{ui('暂无歌曲', 'No songs')}</p>}
+      {!entries.length && <p className="muted">{t('membersDrawer.noSongs')}</p>}
       {entries.map((entry) => (
         <div
           key={entry.songBizId}
@@ -117,17 +117,19 @@ export function MembersDrawer({
                 onOpen={onArtist}
               />
             </small>
-            {entry.songBizId === current?.songBizId && <span>{ui('正在播放', 'Now playing')}</span>}
+            {entry.songBizId === current?.songBizId && <span>{t('common.nowPlaying')}</span>}
           </div>
           {waiting ? (
             <div className="member-recommendation-actions">
               <button
                 className="icon-btn"
-                aria-label={ui('顶歌 {0}', 'Upvote {0}', entry.track.name)}
-                title={entry.uped ? ui('已顶歌', 'Upvoted') : ui('UP 顶歌', 'Upvote')}
+                aria-label={t('common.upvote', { name: entry.track.name })}
+                title={entry.uped ? t('membersDrawer.upvoted') : t('membersDrawer.upvote')}
                 disabled={!!p.busy || entry.uped}
                 onClick={() =>
-                  p.act(ui('顶歌', 'Upvote'), () => p.recommendOperation('multiUp', entry))
+                  p.act(t('membersDrawer.upvoteAction'), () =>
+                    p.recommendOperation('multiUp', entry),
+                  )
                 }
               >
                 <ArrowUpToLine size={16} />
@@ -136,7 +138,7 @@ export function MembersDrawer({
               {entry.songRcmdUid === String(p.account?.userId) && (
                 <button
                   className="icon-btn"
-                  aria-label={ui('删除推荐 {0}', 'Remove recommendation: {0}', entry.track.name)}
+                  aria-label={t('common.removeRecommendation', { name: entry.track.name })}
                   disabled={!!p.busy}
                   onClick={() => {
                     p.setError('')
@@ -149,7 +151,7 @@ export function MembersDrawer({
             </div>
           ) : (
             <small className="member-recommendation-likes">
-              {ui('{0} 赞', entry.likeCount === 1 ? '{0} like' : '{0} likes', entry.likeCount)}
+              {t('room.likeCount', { count: entry.likeCount })}
             </small>
           )}
         </div>
@@ -157,7 +159,7 @@ export function MembersDrawer({
     </section>
   )
   return (
-    <Overlay title={ui('房间成员', 'Room members')} onClose={onClose}>
+    <Overlay title={t('common.roomMembers')} onClose={onClose}>
       {member && groups ? (
         <>
           <div className="member-recommendation-heading">
@@ -165,25 +167,23 @@ export function MembersDrawer({
             <strong>{member.nickname}</strong>
             <small>
               {records.complete
-                ? ui(
-                    '共推荐 {0} 首',
-                    'Tracks recommended: {0}',
-                    groups.waiting.length + groups.played.length,
-                  )
-                : ui('推荐数加载中', 'Loading recommendation count…')}
+                ? t('membersDrawer.tracksRecommended', {
+                    count: groups.waiting.length + groups.played.length,
+                  })
+                : t('membersDrawer.loadingRecommendationCount')}
             </small>
           </div>
           <div data-list-viewport="" className="member-recommendation-list">
             {records.complete ? (
               <>
-                {renderGroup(ui('待播歌曲', 'Up next'), groups.waiting, true)}
-                {renderGroup(ui('已播歌曲', 'Previously played'), groups.played, false)}
+                {renderGroup(t('membersDrawer.upNext'), groups.waiting, true)}
+                {renderGroup(t('membersDrawer.previouslyPlayed'), groups.played, false)}
               </>
             ) : (
               <p className="chat-empty">
                 {records.loading
-                  ? ui('正在获取推荐记录…', 'Loading recommendations…')
-                  : ui('推荐记录暂不可用', 'Recommendations unavailable')}
+                  ? t('membersDrawer.loadingRecommendations')
+                  : t('membersDrawer.recommendationsUnavailable')}
               </p>
             )}
           </div>
@@ -193,15 +193,13 @@ export function MembersDrawer({
           {owner && (
             <button
               className="member-current-recommender"
-              aria-label={ui('查看当前推荐者 {0}', 'View current recommender: {0}', owner.nickname)}
+              aria-label={t('room.viewRecommender', { nickname: owner.nickname })}
               onClick={() => selectMember(owner)}
             >
               <Music2 size={18} />
               <MemberAvatar member={owner} />
               <strong>{owner.nickname}</strong>
-              <small>
-                {p.playing ? ui('正在播放', 'Now playing') : ui('播放已暂停', 'Paused')}
-              </small>
+              <small>{p.playing ? t('common.nowPlaying') : t('membersDrawer.paused')}</small>
             </button>
           )}
           <div ref={directory} data-list-viewport="" className="member-directory">
@@ -210,15 +208,15 @@ export function MembersDrawer({
                 className="member-directory-row"
                 key={member.uid}
                 data-member={member.uid}
-                aria-label={ui('查看 {0} 的推荐', 'View recommendations from {0}', member.nickname)}
+                aria-label={t('room.viewRecommendations', { nickname: member.nickname })}
                 onClick={() => selectMember(member)}
               >
                 <MemberAvatar member={member} />
                 <strong>{member.nickname}</strong>
-                {String(p.account?.userId) === member.uid && <span>{ui('我', 'Me')}</span>}
+                {String(p.account?.userId) === member.uid && <span>{t('common.me')}</span>}
                 <small>
                   {records.complete
-                    ? ui('推荐 {0} 首', 'Tracks recommended: {0}', count(member.uid))
+                    ? t('membersDrawer.memberTrackCount', { count: count(member.uid) })
                     : '—'}
                 </small>
               </button>
@@ -228,12 +226,8 @@ export function MembersDrawer({
                 <span className="member-pending-avatar" aria-hidden="true" />
                 <span>
                   {index === 7 && missingMembers > 8
-                    ? ui(
-                        '等待其余 {0} 位成员资料',
-                        'Waiting for {0} more member profiles',
-                        missingMembers - index,
-                      )
-                    : ui('等待成员资料', 'Waiting for member details')}
+                    ? t('room.waitingForProfiles', { count: missingMembers - index })
+                    : t('membersDrawer.waitingForMemberDetails')}
                 </span>
               </div>
             ))}
@@ -241,9 +235,9 @@ export function MembersDrawer({
               <p className="chat-empty">
                 {p.onlineCount === null
                   ? p.memberStatusError
-                    ? ui('暂未取得成员信息', 'Member details unavailable')
-                    : ui('正在读取成员…', 'Loading members…')
-                  : ui('暂无房间成员', 'No room members')}
+                    ? t('membersDrawer.memberDetailsUnavailable')
+                    : t('membersDrawer.loadingMembers')
+                  : t('membersDrawer.noRoomMembers')}
               </p>
             )}
           </div>
@@ -257,25 +251,18 @@ export function MembersDrawer({
             disabled={!!p.busy || records.loading}
             onClick={() => {
               if (p.memberStatusError)
-                void p.act(ui('刷新成员', 'Refresh members'), p.refreshMembers)
+                void p.act(t('membersDrawer.refreshMembers'), p.refreshMembers)
               if (records.error) records.refresh()
             }}
           >
-            {ui('重试', 'Retry')}
+            {t('common.retry')}
           </button>
         </p>
       )}
       {removing && (
-        <Overlay
-          title={ui('删除自己的推荐？', 'Remove your recommendation?')}
-          onClose={() => setRemoving(null)}
-        >
+        <Overlay title={t('common.removeYourRecommendation')} onClose={() => setRemoving(null)}>
           <p className="overlay-intro">
-            {ui(
-              '将「{0}」从房间待播列表移除。',
-              'Remove “{0}” from the room queue.',
-              removing.track.name,
-            )}
+            {t('common.removeFromTheRoomQueue', { name: removing.track.name })}
           </p>
           {p.error && (
             <p className="private-error" role="alert">
@@ -284,19 +271,19 @@ export function MembersDrawer({
           )}
           <div className="row-actions">
             <button className="secondary" onClick={() => setRemoving(null)}>
-              {ui('取消', 'Cancel')}
+              {t('common.cancel')}
             </button>
             <button
               className="primary"
               disabled={!!p.busy}
               onClick={() =>
-                p.act(ui('删除推荐', 'Remove recommendation'), async () => {
+                p.act(t('membersDrawer.removeRecommendation'), async () => {
                   await p.recommendOperation('multiRemove', removing)
                   setRemoving(null)
                 })
               }
             >
-              {ui('确认删除推荐', 'Remove recommendation')}
+              {t('membersDrawer.confirmRemoveRecommendation')}
             </button>
           </div>
         </Overlay>

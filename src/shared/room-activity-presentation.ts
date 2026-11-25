@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Adapted from tabidachinokaze/folium-mod-music-party at b01525f.
 // Source: https://github.com/tabidachinokaze/folium-mod-music-party
-import { ui } from './ui-language'
+import { t } from './ui-language'
+import { localizedMessageText } from './message-content'
 import type { ChatMessage } from './types'
 import { hasActivityActor, likeActivitySongRange, roomActivityText } from './room-activity'
 
@@ -19,13 +20,13 @@ export interface RoomActivityPresentation {
 }
 type Span = { start: number; end: number; kind: 'actor' | 'song' }
 const events = {
-  join: { label: ['加入', 'Joined'], icon: 'user-plus' },
-  recommend: { label: ['推荐', 'Recommended'], icon: 'music-2' },
-  promote: { label: ['置顶', 'Moved up'], icon: 'arrow-up-to-line' },
-  like: { label: ['点赞', 'Liked'], icon: 'thumbs-up' },
-  redheart: { label: ['红心', 'Favorited'], icon: 'heart' },
-  leave: { label: ['离开', 'Left'], icon: 'log-out' },
-  notice: { label: ['动态', 'Activity'], icon: 'info' },
+  join: { label: 'roomActivityPresentation.joined', icon: 'user-plus' },
+  recommend: { label: 'roomActivityPresentation.recommended', icon: 'music-2' },
+  promote: { label: 'roomActivityPresentation.movedUp', icon: 'arrow-up-to-line' },
+  like: { label: 'roomActivityPresentation.liked', icon: 'thumbs-up' },
+  redheart: { label: 'roomActivityPresentation.favorited', icon: 'heart' },
+  leave: { label: 'roomActivityPresentation.left', icon: 'log-out' },
+  notice: { label: 'roomActivityPresentation.activity', icon: 'info' },
 } as const
 
 function eventType(action: string): RoomActivityPresentation['type'] {
@@ -97,12 +98,13 @@ function templateTitle(action: string, offset: number): Span | null {
 
 export function roomActivityPresentation(
   message: Pick<ChatMessage, 'nickname' | 'text' | 'attachments'> &
-    Partial<Pick<ChatMessage, 'kind' | 'interactType' | 'fallbackTextEn'>>,
+    Partial<Pick<ChatMessage, 'kind' | 'interactType' | 'fallbackText'>>,
 ): RoomActivityPresentation {
-  const body = message.fallbackTextEn
-      ? ui(message.text, message.fallbackTextEn).trim()
-      : message.text.trim(),
-    text = roomActivityText({ ...message, text: body }),
+  const body = localizedMessageText(message.text, message.fallbackText).trim(),
+    attachments = message.attachments?.map((item) =>
+      item.fallbackTitle ? { ...item, title: t(item.fallbackTitle) } : item,
+    ),
+    text = roomActivityText({ ...message, attachments, text: body }),
     nickname = message.nickname.trim(),
     hasActor = !!nickname && hasActivityActor(body, nickname),
     bodyOffset = nickname && !hasActor ? nickname.length + 3 : 0,
@@ -114,13 +116,13 @@ export function roomActivityPresentation(
         ? 'redheart'
         : message.kind === 'interaction' && message.interactType === 3
           ? 'like'
-          : message.fallbackTextEn && message.kind === 'resource'
+          : message.fallbackText && message.kind === 'resource'
             ? 'recommend'
             : eventType(action)
   const spans: Span[] = nickname ? [{ start: 0, end: nickname.length, kind: 'actor' }] : []
   const titles = [
     ...new Set(
-      (message.attachments || [])
+      (attachments || [])
         .filter(
           (item) =>
             item.kind === 'resource' && (!item.resourceType || item.resourceType === 'song'),
@@ -148,5 +150,5 @@ export function roomActivityPresentation(
   }
   if (position < text.length) parts.push({ kind: 'text', text: text.slice(position) })
   const { label, icon } = events[type]
-  return { text, type, label: ui(label[0], label[1]), icon, parts }
+  return { text, type, label: t(label), icon, parts }
 }

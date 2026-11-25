@@ -1,4 +1,5 @@
 import {
+  createChineseProfile,
   expectQueueHeaderFits,
   expectRoomHeaderSingleLine,
   openTool,
@@ -7,9 +8,7 @@ import {
 } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rm } from 'node:fs/promises'
 
 test('room creation, rematching, cancellation and notification ACK keep the selected matching song', async () => {
   test.setTimeout(90000)
@@ -32,7 +31,7 @@ test('room creation, rematching, cancellation and notification ACK keep the sele
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const audioUrl = `http://127.0.0.1:${(server.address() as any).port}/audio.wav`
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-room-setup-'))
+  const profile = await createChineseProfile('music-party-room-setup-')
   const app = await electron.launch({
     args: [
       '.',

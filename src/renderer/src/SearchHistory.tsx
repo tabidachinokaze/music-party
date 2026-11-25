@@ -1,6 +1,6 @@
 import { Trash2, X } from 'lucide-react'
 import { useState } from 'react'
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 
 const limit = 10
 
@@ -42,8 +42,8 @@ export function SearchHistory({
 }) {
   if (!history.queries.length) return null
   return (
-    <div className="search-history" role="group" aria-label={ui('最近搜索', 'Recent searches')}>
-      <span>{ui('最近搜索', 'Recent searches')}</span>
+    <div className="search-history" role="group" aria-label={t('common.recentSearches')}>
+      <span>{t('common.recentSearches')}</span>
       {history.queries.map((query) => (
         <div className="search-history-chip" key={query}>
           <button type="button" title={query} onClick={() => onSearch(query)}>
@@ -52,8 +52,8 @@ export function SearchHistory({
           <button
             type="button"
             className="history-delete"
-            aria-label={ui('删除搜索记录 {0}', 'Remove search “{0}”', query)}
-            title={ui('删除这条记录', 'Remove this search')}
+            aria-label={t('searchHistory.removeSearch', { query })}
+            title={t('searchHistory.removeThisSearch')}
             onClick={() => history.remove(query)}
           >
             <X size={13} />
@@ -63,11 +63,11 @@ export function SearchHistory({
       <button
         type="button"
         className="text-btn history-clear"
-        aria-label={ui('清空搜索记录', 'Clear search history')}
+        aria-label={t('searchHistory.clearSearchHistory')}
         onClick={history.clear}
       >
         <Trash2 size={14} />
-        {ui('清空', 'Clear')}
+        {t('searchHistory.clear')}
       </button>
     </div>
   )

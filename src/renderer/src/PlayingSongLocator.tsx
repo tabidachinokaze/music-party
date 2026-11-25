@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import { useCallback, useEffectEvent, useLayoutEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { LocateFixed } from 'lucide-react'
@@ -63,7 +63,7 @@ export function PlayingSongLocator({
         createPortal(
           <IconButton
             className="locate-playing-song"
-            label={ui('定位正在播放的歌曲', 'Locate current track')}
+            label={t('playingSongLocator.locateCurrentTrack')}
             aria-busy={seeking}
             onClick={() => {
               if (seeking) return

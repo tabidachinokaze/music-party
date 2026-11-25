@@ -8,7 +8,13 @@ import {
   type MenuItemConstructorOptions,
 } from 'electron'
 import { join } from 'node:path'
-import { setUiLanguage, ui } from '../shared/ui-language'
+import {
+  getUiLanguage,
+  resolveUiLanguage,
+  setUiLanguage,
+  t,
+  type UiLanguage,
+} from '../shared/ui-language'
 import {
   validateMediaState,
   type DesktopInfo,
@@ -38,9 +44,28 @@ export class DesktopController {
     private store: SettingsStore,
     private window: () => BrowserWindow | null,
     private quit: () => void,
+    private languageChanged: (language: UiLanguage) => void,
   ) {}
+  private syncLanguage() {
+    const { language } = this.store.preferences
+    const resolved = resolveUiLanguage(
+      language,
+      language === 'system' ? app.getPreferredSystemLanguages() : [],
+    )
+    if (resolved === getUiLanguage()) return false
+    setUiLanguage(resolved)
+    this.languageChanged(resolved)
+    return true
+  }
+  private refreshSystemLanguage = () => {
+    if (this.store.preferences.language === 'system' && this.syncLanguage()) {
+      this.refreshMenus()
+      this.notify()
+    }
+  }
   setup() {
-    setUiLanguage(this.store.preferences.language)
+    this.syncLanguage()
+    app.on('browser-window-focus', this.refreshSystemLanguage)
     nativeTheme.themeSource = this.store.preferences.theme
     try {
       const icon = nativeImage
@@ -73,6 +98,7 @@ export class DesktopController {
       maximized: this.window()?.isMaximized() ?? false,
       fullScreen: this.fullscreen?.value ?? false,
       fullScreenRevision: this.fullscreen?.revision ?? 0,
+      resolvedLanguage: getUiLanguage(),
       resolvedTheme: nativeTheme.shouldUseDarkColors ? 'dark' : 'light',
       platform: process.platform,
       persistenceError: this.store.error,
@@ -84,7 +110,7 @@ export class DesktopController {
   updatePreferences(value: unknown): DesktopInfo {
     const previousScale = this.store.preferences.fontScale
     this.store.update(value)
-    setUiLanguage(this.store.preferences.language)
+    this.syncLanguage()
     if (this.store.preferences.fontScale !== previousScale)
       this.window()?.webContents.setZoomFactor(this.store.preferences.fontScale / 100)
     nativeTheme.themeSource = this.store.preferences.theme
@@ -123,25 +149,23 @@ export class DesktopController {
         id: 'desktop-toggle',
         label: this.media.playing
           ? this.media.roomId
-            ? ui('暂停本机播放', 'Pause on this device')
-            : ui('暂停', 'Pause')
+            ? t('desktop.pauseOnThisDevice')
+            : t('common.pause')
           : this.media.roomId
-            ? ui('恢复同听', 'Resume listening together')
-            : ui('播放', 'Play'),
+            ? t('desktop.resumeListeningTogether')
+            : t('common.play'),
         enabled: this.media.canToggle,
         click: () => this.command('toggle'),
       },
       {
         id: 'desktop-previous',
-        label: ui('上一首', 'Previous track'),
+        label: t('desktop.previousTrack'),
         enabled: this.media.canPrevious,
         click: () => this.command('previous'),
       },
       {
         id: 'desktop-next',
-        label: this.media.roomId
-          ? ui('请求房间下一首', 'Request next track')
-          : ui('下一首', 'Next track'),
+        label: this.media.roomId ? t('common.requestNextTrack') : t('desktop.nextTrack'),
         enabled: this.media.canNext,
         click: () => this.command('next'),
       },
@@ -151,18 +175,15 @@ export class DesktopController {
     const controls = this.playbackItems()
     this.tray?.setContextMenu(
       Menu.buildFromTemplate([
-        { label: ui('显示 Music Party', 'Show Music Party'), click: () => this.show() },
+        { label: t('desktop.showMusicParty'), click: () => this.show() },
         {
-          label: this.media.title.slice(0, 80) || ui('还没有正在播放的歌曲', 'Nothing is playing'),
+          label: this.media.title.slice(0, 80) || t('desktop.nothingIsPlaying'),
           enabled: false,
         },
         ...(this.media.roomId
           ? [
               {
-                label: ui(
-                  '官方多人房间 · 暂停仅影响本机',
-                  'Listen Together · Pausing affects only this device',
-                ),
+                label: t('desktop.listenTogetherPausingAffectsOnlyThisDevice'),
                 enabled: false,
               },
             ]
@@ -170,9 +191,9 @@ export class DesktopController {
         { type: 'separator' },
         ...controls,
         { type: 'separator' },
-        { label: ui('歌词', 'Lyrics'), click: () => this.command('lyrics') },
-        { label: ui('设置', 'Settings'), click: () => this.command('settings') },
-        { label: ui('退出 Music Party', 'Quit Music Party'), click: () => this.quit() },
+        { label: t('common.lyrics'), click: () => this.command('lyrics') },
+        { label: t('common.settings'), click: () => this.command('settings') },
+        { label: t('common.quitMusicParty'), click: () => this.quit() },
       ]),
     )
     Menu.setApplicationMenu(
@@ -180,53 +201,53 @@ export class DesktopController {
         {
           label: 'Music Party',
           submenu: [
-            { id: 'desktop-show', label: ui('显示窗口', 'Show window'), click: () => this.show() },
+            { id: 'desktop-show', label: t('desktop.showWindow'), click: () => this.show() },
             {
-              label: ui('设置', 'Settings'),
+              label: t('common.settings'),
               accelerator: 'CommandOrControl+,',
               click: () => this.command('settings'),
             },
             { type: 'separator' },
             {
               id: 'desktop-quit',
-              label: ui('退出 Music Party', 'Quit Music Party'),
+              label: t('common.quitMusicParty'),
               accelerator: 'CommandOrControl+Q',
               click: () => this.quit(),
             },
           ],
         },
-        { label: ui('播放', 'Playback'), submenu: controls },
+        { label: t('desktop.playback'), submenu: controls },
         {
-          label: ui('编辑', 'Edit'),
+          label: t('desktop.edit'),
           submenu: [
-            { label: ui('撤销', 'Undo'), role: 'undo' },
-            { label: ui('重做', 'Redo'), role: 'redo' },
+            { label: t('desktop.undo'), role: 'undo' },
+            { label: t('desktop.redo'), role: 'redo' },
             { type: 'separator' },
-            { label: ui('剪切', 'Cut'), role: 'cut' },
-            { label: ui('复制', 'Copy'), role: 'copy' },
-            { label: ui('粘贴', 'Paste'), role: 'paste' },
-            { label: ui('全选', 'Select all'), role: 'selectAll' },
+            { label: t('desktop.cut'), role: 'cut' },
+            { label: t('desktop.copy'), role: 'copy' },
+            { label: t('desktop.paste'), role: 'paste' },
+            { label: t('desktop.selectAll'), role: 'selectAll' },
           ],
         },
         {
-          label: ui('窗口', 'Window'),
+          label: t('desktop.window'),
           submenu: [
-            { label: ui('最小化', 'Minimize'), role: 'minimize' },
-            { label: ui('切换全屏', 'Toggle full screen'), role: 'togglefullscreen' },
+            { label: t('common.minimize'), role: 'minimize' },
+            { label: t('desktop.toggleFullScreen'), role: 'togglefullscreen' },
             {
-              label: ui('放大显示', 'Zoom in'),
+              label: t('desktop.zoomIn'),
               accelerator: 'CommandOrControl+Plus',
               enabled: this.store.preferences.fontScale < 150,
               click: () => this.stepDisplaySize('in'),
             },
             {
-              label: ui('缩小显示', 'Zoom out'),
+              label: t('desktop.zoomOut'),
               accelerator: 'CommandOrControl+-',
               enabled: this.store.preferences.fontScale > 80,
               click: () => this.stepDisplaySize('out'),
             },
             {
-              label: ui('恢复默认大小', 'Reset zoom'),
+              label: t('desktop.resetZoom'),
               accelerator: 'CommandOrControl+0',
               click: () => this.updatePreferences({ fontScale: 100 }),
             },
@@ -234,7 +255,7 @@ export class DesktopController {
               ? []
               : [
                   {
-                    label: ui('切换开发者工具', 'Toggle developer tools'),
+                    label: t('desktop.toggleDeveloperTools'),
                     role: 'toggleDevTools' as const,
                   },
                 ]),
@@ -244,6 +265,7 @@ export class DesktopController {
     )
   }
   destroy() {
+    app.off('browser-window-focus', this.refreshSystemLanguage)
     this.tray?.destroy()
     this.tray = null
   }

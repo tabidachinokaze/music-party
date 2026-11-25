@@ -1,4 +1,4 @@
-import { getUiLanguage, ui } from '../../shared/ui-language'
+import { getUiLanguage, t } from '../../shared/ui-language'
 import { useEffect, useRef, useState } from 'react'
 import { invitation, parseInvitation, toSong } from '../../shared/protocol'
 import {
@@ -46,7 +46,7 @@ function roomFromStatus(body: any) {
   if (snapshot?.roomId) return snapshot
   const expectsSnapshot = data?.status === 'IN_ROOM' || data?.status === 'RECONNECT_SUCCESS'
   if (!expectsSnapshot && snapshot == null && (snapshot === null || data?.status)) return null
-  throw new Error(ui('暂未取得完整的房间状态', 'Room status is not available yet'))
+  throw new Error(t('party.roomStatusIsNotAvailableYet'))
 }
 
 export function useParty() {
@@ -70,12 +70,7 @@ export function useParty() {
     }
   }, [language])
   useEffect(() => {
-    if (version)
-      document.title = ui(
-        'Music Party {0} · 官方多人一起听',
-        'Music Party {0} · Listen Together',
-        version,
-      )
+    if (version) document.title = t('party.musicPartyListenTogether', { version })
   }, [version, language])
   const qrGeneration = useRef(0)
   const [qr, setQr] = useState<{ key: string; qrimg: string } | null>(null)
@@ -131,7 +126,7 @@ export function useParty() {
   const [playing, setPlaying] = useState(false)
   const [auditioning, setAuditioning] = useState(false)
   const [volume, setVolume] = useState(0.6)
-  const [health, setHealth] = useState(ui('尚未加入多人房间', "You haven't joined a room"))
+  const [health, setHealth] = useState(t('party.youHaventJoinedARoom'))
   const [traces, setTraces] = useState<Trace[]>([])
   const audio = useRef<HTMLAudioElement>(null)
   const syncPlayer = useRef<RoomPlayer | null>(null)
@@ -212,7 +207,7 @@ export function useParty() {
     try {
       await task()
     } catch (e: any) {
-      setError(e.message || ui('操作失败', 'Action failed'))
+      setError(e.message || t('party.actionFailed'))
     } finally {
       actionLock.current = false
       setBusy('')
@@ -296,18 +291,12 @@ export function useParty() {
   async function resolveTrack(id: string, audition = false) {
     const [details, source] = await Promise.all([api('song', { ids: id }), api('stream', { id })])
     const stream = source.data?.[0]
-    if (!stream?.url)
-      throw new Error(ui('当前账号无法播放这首歌曲', 'This account cannot play this song'))
+    if (!stream?.url) throw new Error(t('party.thisAccountCannotPlayThisSong'))
     if (!audition && stream.freeTrialInfo && stream.freeTrialInfo !== 'null')
-      throw new Error(
-        ui(
-          '当前账号只能试听这首歌，请选择可完整播放的歌曲',
-          'Only a preview is available for this account. Choose a song you can play in full.',
-        ),
-      )
+      throw new Error(t('party.onlyAPreviewIsAvailableForThisAccount'))
     if (!['https:', 'http:'].includes(new URL(stream.url).protocol))
-      throw new Error(ui('音源地址无效', 'Invalid audio source'))
-    if (!details.songs?.[0]) throw new Error(ui('未取得歌曲信息', 'Song details unavailable'))
+      throw new Error(t('party.invalidAudioSource'))
+    if (!details.songs?.[0]) throw new Error(t('party.songDetailsUnavailable'))
     return { song: toSong(details.songs[0]), url: stream.url }
   }
   useEffect(() => {
@@ -395,14 +384,8 @@ export function useParty() {
           setQrStatus({ phase: 'confirmed' })
           try {
             if (!(await refreshAccount()))
-              throw new Error(
-                ui(
-                  '未读取到账号信息，请重新扫码',
-                  "Couldn't load your account. Please scan the code again.",
-                ),
-              )
-            if (!stopped)
-              setNotice(ui('登录成功，可以加入官方多人房间', 'Signed in. You can now join a room.'))
+              throw new Error(t('party.couldntLoadYourAccountPleaseScanTheCode'))
+            if (!stopped) setNotice(t('party.signedInYouCanNowJoinARoom'))
           } catch (error) {
             if (!stopped) setQrStatus({ phase: 'error', message: (error as Error).message })
           } finally {
@@ -439,12 +422,7 @@ export function useParty() {
       pollInFlight.current = membersInFlight.current = null
       playbackRef.current = null
       syncPlayer.current?.suspend()
-      setHealth(
-        ui(
-          '连接已暂停，等待恢复后重新同步',
-          'Connection paused. Sync will resume when reconnected.',
-        ),
-      )
+      setHealth(t('party.connectionPausedSyncWillResumeWhenReconnected'))
     }
     async function resume() {
       disconnected.current = false
@@ -454,7 +432,7 @@ export function useParty() {
       playbackRef.current = null
       syncPlayer.current?.suspend()
       interval.current = 5000
-      setHealth(ui('正在重新确认房间并恢复同步…', 'Checking the room and resuming sync…'))
+      setHealth(t('party.checkingTheRoomAndResumingSync'))
       await refreshMembers()
       if (roomRef.current) await observe()
       transition.current?.resume()
@@ -476,7 +454,7 @@ export function useParty() {
     try {
       rememberRoom(String(accountRef.current?.userId || ''), roomId)
     } catch {
-      setError(ui('一起听房间记录无法保存到本机', "Couldn't save this room on this device"))
+      setError(t('party.couldntSaveThisRoomOnThisDevice'))
     }
   }
   function detachRoom(forget = true) {
@@ -529,12 +507,7 @@ export function useParty() {
     if (epoch !== generation.current) return
     const snapshot = parseSnapshot(value, sampledAt)
     if (snapshot.roomId !== roomRef.current?.roomId)
-      throw new Error(
-        ui(
-          '账号当前房间已变化，请离开本地房间后重新获取',
-          'Your account has switched rooms. Leave this room and try again.',
-        ),
-      )
+      throw new Error(t('party.yourAccountHasSwitchedRoomsLeaveThisRoom'))
     applyMembers(snapshot)
 
     applyPlayback(value.roomPlaySongInfo, sampledAt, epoch)
@@ -619,7 +592,7 @@ export function useParty() {
           const available = snapshot ? parseSnapshot(snapshot, performance.now()) : null
           clearRoom()
           setAvailableRoom(available)
-          setNotice(ui('账号已离开或切换了房间', 'Your account has left or switched rooms'))
+          setNotice(t('party.yourAccountHasLeftOrSwitchedRooms'))
           return
         }
         applySnapshot(snapshot, (at + performance.now()) / 2, epoch)
@@ -673,22 +646,20 @@ export function useParty() {
         applyPlayback(body.data?.roomPlaySongInfo, (started + performance.now()) / 2, epoch)
 
         setHealth(
-          ui(
-            '最近同步 {0} · 心跳 {1} 秒',
-            'Last synced at {0} · Heartbeat every {1}s',
-            new Date().toLocaleTimeString(getUiLanguage()),
-            Math.round(interval.current / 1000),
-          ),
+          t('room.lastSync', {
+            time: new Date().toLocaleTimeString(getUiLanguage()),
+            seconds: Math.round(interval.current / 1000),
+          }),
         )
       } catch (e: any) {
         if (epoch !== generation.current) return
         if (e.code === 488) {
           if (leavingEpoch.current === epoch) return
           clearRoom()
-          setError(ui('官方多人房间已失效，请重新加入', 'This room has expired. Please rejoin.'))
+          setError(t('party.thisRoomHasExpiredPleaseRejoin'))
         } else {
           interval.current = Math.min(interval.current * 2, 60000)
-          setHealth(ui('正在重连：{0}', 'Reconnecting: {0}', e.message))
+          setHealth(t('party.reconnecting', { message: e.message }))
           if (!syncPlayer.current?.auditioning) audio.current?.pause()
         }
       }
@@ -747,30 +718,22 @@ export function useParty() {
     if (snapshot.chatRoomId)
       void window.together.joinImChatroom(snapshot.chatRoomId).catch(() => {})
     applySnapshot(value, sampledAt, generation.current)
-    setNotice(
-      ui('已加入一起听，歌曲会自动同步。', 'Joined the room. Songs will sync automatically.'),
-    )
+    setNotice(t('party.joinedTheRoomSongsWillSyncAutomatically'))
   }
   async function ensureNotInRoom() {
-    if (roomRef.current)
-      throw new Error(ui('请先离开当前多人房间', 'Leave your current room first'))
+    if (roomRef.current) throw new Error(t('party.leaveYourCurrentRoomFirst'))
     const status = await api('multiStatus')
     if (status.data?.multiLtRoomSnapshot?.roomId) {
       setAvailableRoom(parseSnapshot(status.data.multiLtRoomSnapshot, performance.now()))
-      throw new Error(
-        ui(
-          '账号已在多人房间中，请使用“恢复当前房间”，或先在官方 App 离开',
-          'Your account is already in a room. Rejoin it here or leave it in NetEase Cloud Music.',
-        ),
-      )
+      throw new Error(t('party.yourAccountIsAlreadyInARoomRejoin'))
     }
     setAvailableRoom(null)
   }
   async function createRoom() {
-    if (matchingRef.current) throw new Error(ui('请先取消匹配', 'Cancel matching first'))
+    if (matchingRef.current) throw new Error(t('common.cancelMatchingFirst'))
     const song = matchSongRef.current
     if (!song || !/^[1-9]\d*$/.test(song.id))
-      throw new Error(ui('请先选择一首匹配用歌曲', 'Choose a song for matching first'))
+      throw new Error(t('common.chooseASongForMatchingFirst'))
     const publicRoom = allowStrangerMatch
     await ensureNotInRoom()
     const at = performance.now()
@@ -788,7 +751,7 @@ export function useParty() {
     setPreview({ ...invite, ...body.data })
   }
   async function joinRoom(link: string) {
-    if (matchingRef.current) throw new Error(ui('请先取消匹配', 'Cancel matching first'))
+    if (matchingRef.current) throw new Error(t('common.cancelMatchingFirst'))
     const invite = parseInvitation(link)
     await ensureNotInRoom()
     const at = performance.now()
@@ -801,20 +764,18 @@ export function useParty() {
     )
   }
   async function restoreRoom() {
-    if (matchingRef.current) throw new Error(ui('请先取消匹配', 'Cancel matching first'))
+    if (matchingRef.current) throw new Error(t('common.cancelMatchingFirst'))
     const at = performance.now()
     const body = await api('multiStatus')
     const snapshot = roomFromStatus(body)
     if (!snapshot) {
       setAvailableRoom(null)
       saveRoomId(null)
-      throw new Error(ui('当前账号未在官方多人房间中', 'This account is not in a room'))
+      throw new Error(t('party.thisAccountIsNotInARoom'))
     }
     if (availableRoom && snapshot.roomId !== availableRoom.roomId) {
       setAvailableRoom(parseSnapshot(snapshot, performance.now()))
-      throw new Error(
-        ui('账号所在房间已变化，请确认当前房间', 'Your room has changed. Check the current room.'),
-      )
+      throw new Error(t('common.yourRoomHasChangedCheckTheCurrentRoom'))
     }
     attachRoom(snapshot, String(account.userId), 'unknown', (at + performance.now()) / 2)
   }
@@ -827,27 +788,19 @@ export function useParty() {
       epoch === generation.current &&
       !roomRef.current &&
       !matchingRef.current
-    if (!canLeave())
-      throw new Error(
-        ui('房间状态已变化，请重新查看', 'The room changed. Open Listen Together again.'),
-      )
+    if (!canLeave()) throw new Error(t('common.theRoomChangedOpenListenTogetherAgain'))
     const snapshot = roomFromStatus(await api('multiStatus'))
-    if (!canLeave())
-      throw new Error(
-        ui('房间状态已变化，请重新查看', 'The room changed. Open Listen Together again.'),
-      )
+    if (!canLeave()) throw new Error(t('common.theRoomChangedOpenListenTogetherAgain'))
     if (snapshot && snapshot.roomId !== roomId) {
       setAvailableRoom(parseSnapshot(snapshot, performance.now()))
-      throw new Error(
-        ui('账号所在房间已变化，请确认当前房间', 'Your room has changed. Check the current room.'),
-      )
+      throw new Error(t('common.yourRoomHasChangedCheckTheCurrentRoom'))
     }
     if (snapshot) await api('multiLeave', { roomId })
     if (canLeave()) {
       generation.current++
       setAvailableRoom(null)
       saveRoomId(null)
-      setNotice(ui('已退出当前房间', 'Left the room'))
+      setNotice(t('party.leftTheRoom'))
     }
   }
   async function continueWithRoomQueue(
@@ -889,8 +842,7 @@ export function useParty() {
     if (!target) return
     const epoch = generation.current
     const sameRoom = () => epoch === generation.current && roomRef.current?.roomId === target.roomId
-    if (leavingEpoch.current === epoch)
-      throw new Error(ui('正在离开房间', 'Already leaving this room'))
+    if (leavingEpoch.current === epoch) throw new Error(t('party.alreadyLeavingThisRoom'))
     leavingEpoch.current = epoch
     try {
       const initialPlayback = playbackRef.current
@@ -905,22 +857,22 @@ export function useParty() {
     } finally {
       if (leavingEpoch.current === epoch) leavingEpoch.current = null
     }
-    setNotice(ui('已离开多人房间', 'Left the room'))
+    setNotice(t('party.leftGroupRoom'))
   }
   async function matchRoom() {
     const song = matchSongRef.current
-    if (!song) throw new Error(ui('请先选择一首匹配用歌曲', 'Choose a song for matching first'))
+    if (!song) throw new Error(t('common.chooseASongForMatchingFirst'))
     if (matchingRef.current) return
     await ensureNotInRoom()
     await matcher.current?.start(song.id)
   }
   async function cancelMatch() {
     await matcher.current?.cancel()
-    setNotice(ui('已取消匹配', 'Matching canceled'))
+    setNotice(t('party.matchingCanceled'))
   }
   async function rematchRoom() {
     const song = matchSongRef.current
-    if (!song) throw new Error(ui('请先选择一首匹配用歌曲', 'Choose a song for matching first'))
+    if (!song) throw new Error(t('common.chooseASongForMatchingFirst'))
     if (matchingRef.current) return
     const target = roomRef.current
     if (!target) return matchRoom()
@@ -964,7 +916,7 @@ export function useParty() {
       const body = await api('multiAdd', { roomId: roomRef.current.roomId, songId: song.id })
       if (epoch !== generation.current) return
       applyPlayback(body.data?.roomSongInfo, (at + performance.now()) / 2, epoch)
-      setNotice(ui('已推送「{0}」到官方多人房间', 'Recommended “{0}” to the room', song.name))
+      setNotice(t('party.recommendedToTheRoom', { name: song.name }))
       await observe()
       return
     }
@@ -1015,7 +967,7 @@ export function useParty() {
     const q = queueRef.current
     const next = nextQueueIndex(q.ids.length, q.index, direction, q.mode, automatic)
     if (next === null) {
-      if (automatic) setNotice(ui('个人队列已播放完毕', 'Reached the end of your queue'))
+      if (automatic) setNotice(t('party.reachedTheEndOfYourQueue'))
       return
     }
     await playQueueIndex(next)
@@ -1035,14 +987,12 @@ export function useParty() {
     try {
       savePersonalQueue(queueOwner.current, { ids, index, song: personalSaved.current })
     } catch {
-      setError(ui('个人队列无法保存到本机', "Couldn't save your queue on this device"))
+      setError(t('party.couldntSaveYourQueueOnThisDevice'))
     }
   }
   function selectedPersonalSong() {
     const id = queueRef.current.ids[queueRef.current.index]
-    return (
-      personalSaved.current || (id ? toSong({ id, name: ui('歌曲 {0}', 'Song {0}', id) }) : null)
-    )
+    return personalSaved.current || (id ? toSong({ id, name: t('music.songId', { id }) }) : null)
   }
   function selectPersonalTrack(ids: string[], index: number, song?: Song) {
     queueRef.current = { ...queueRef.current, ids, index }
@@ -1110,20 +1060,20 @@ export function useParty() {
     })
     if (epoch !== generation.current) return
     applyPlayback(body.data?.roomSongInfo, (at + performance.now()) / 2, epoch)
-    setNotice(ui('切歌请求已被房间接受', 'The room accepted your skip request'))
+    setNotice(t('party.theRoomAcceptedYourSkipRequest'))
     await observe()
   }
   async function recommendOperation(method: 'multiRemove' | 'multiUp', entry: RoomQueueEntry) {
     const target = roomRef.current,
       epoch = generation.current
-    if (!target) throw new Error(ui('请先加入多人房间', 'Join a room first'))
+    if (!target) throw new Error(t('party.joinARoomFirst'))
     await api(method, { roomId: target.roomId, songId: entry.songId, bizId: entry.songBizId })
     if (epoch !== generation.current) return
     setQueueRevision((value) => value + 1)
     setNotice(
       method === 'multiRemove'
-        ? ui('已删除这首推荐', 'Recommendation removed')
-        : ui('已顶歌，待播顺序由官方房间更新', 'Upvoted. The room will update the queue order.'),
+        ? t('party.recommendationRemoved')
+        : t('party.upvotedTheRoomWillUpdateTheQueueOrder'),
     )
     await observe()
   }
@@ -1181,10 +1131,7 @@ export function useParty() {
       setPosition(audio.current!.currentTime * 1000)
       return
     }
-    if (roomRef.current)
-      throw new Error(
-        ui('多人房间进度由服务端统一控制', 'Playback position is controlled by the room'),
-      )
+    if (roomRef.current) throw new Error(t('party.playbackPositionIsControlledByTheRoom'))
     if (current) {
       audio.current!.currentTime = progress / 1000
       setPosition(progress)
@@ -1224,11 +1171,10 @@ export function useParty() {
     await window.together.copy(
       invitation({ ...roomRef.current!, inviterUid: String(account.userId) }),
     )
-    setNotice(ui('官方多人邀请链接已复制', 'Room invitation link copied'))
+    setNotice(t('party.roomInvitationLinkCopied'))
   }
   async function exportTrace() {
-    if (await window.together.exportTrace())
-      setNotice(ui('观测记录已导出', 'Diagnostic log exported'))
+    if (await window.together.exportTrace()) setNotice(t('party.diagnosticLogExported'))
   }
   const audioEvents = {
     onTimeUpdate: () => setPosition(audio.current!.currentTime * 1000),
@@ -1245,34 +1191,18 @@ export function useParty() {
     onError: () => {
       if (roomRef.current) {
         if (syncPlayer.current?.auditioning) {
-          setError(
-            ui(
-              '试听音频加载失败，正在返回一起听',
-              "Couldn't load the preview. Returning to the room.",
-            ),
-          )
+          setError(t('party.couldntLoadThePreviewReturningToTheRoom'))
           stopAudition().catch((e) => setError(e.message))
           return
         }
-        setError(
-          ui(
-            '本机音频加载失败，房间播放不受影响',
-            "Audio couldn't load on this device. The room is still playing.",
-          ),
-        )
+        setError(t('party.audioCouldntLoadOnThisDeviceTheRoom'))
         return
       }
       const id = localPlayingId.current
       if (id && refreshedSource.current !== id) {
         refreshedSource.current = id
         playLocal(id, (audio.current?.currentTime || 0) * 1000).catch((e) => setError(e.message))
-      } else if (id)
-        setError(
-          ui(
-            '本机音频加载失败，请重试或换一首歌曲',
-            "Couldn't load audio. Try again or choose another song.",
-          ),
-        )
+      } else if (id) setError(t('party.couldntLoadAudioTryAgainOrChooseAnother'))
     },
   }
   return {
@@ -1317,12 +1247,9 @@ export function useParty() {
     inspectInvite,
     members,
     membersStatus: memberError?.detail
-      ? ui('成员刷新失败：{0}', "Couldn't refresh members: {0}", memberError.detail)
+      ? t('party.couldntRefreshMembers', { detail: memberError.detail })
       : memberError
-        ? ui(
-            '服务端暂未返回成员列表，请稍后刷新',
-            "Member details aren't available yet. Try again later.",
-          )
+        ? t('party.memberDetailsArentAvailableYetTryAgainLater')
         : '',
     memberStatusError: memberError !== null,
     refreshMembers,

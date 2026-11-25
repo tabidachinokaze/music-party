@@ -1,12 +1,10 @@
 import { expect, test, _electron as electron, type Locator } from '@playwright/test'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { widenPanel } from './windows'
+import { createChineseProfile, widenPanel } from './windows'
 
 // Chromium's DevTools mouse events bypass the operating system's caption hit test.
 // Send the click through XTEST on a private virtual display, never the user's desktop.
@@ -25,7 +23,7 @@ x11.XCloseDisplay(display)
 
 test('native pointer reaches title bar buttons and search with and without a drawer', async () => {
   test.skip(process.platform !== 'linux' || !!spawnSync('Xvfb', ['-help']).error, 'requires Xvfb')
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-titlebar-'))
+  const profile = await createChineseProfile('music-party-titlebar-')
   const display = spawn('Xvfb', [
     '-displayfd',
     '1',

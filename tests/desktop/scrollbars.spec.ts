@@ -1,11 +1,9 @@
 import { test, expect, _electron as electron } from '@playwright/test'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { openTool, widenPanel } from './windows'
+import { rm } from 'node:fs/promises'
+import { createChineseProfile, openTool, widenPanel } from './windows'
 
 test('list overflow keeps its width and the native scroll target, including with classic scrollbars', async () => {
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-scrollbars-'))
+  const profile = await createChineseProfile('music-party-scrollbars-')
   const app = await electron.launch({
     args: ['.', `--ozone-platform=${process.env.WAYLAND_DISPLAY ? 'wayland' : 'x11'}`],
     env: {

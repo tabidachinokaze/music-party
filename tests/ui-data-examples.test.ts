@@ -48,6 +48,7 @@ test('the desktopInfo example is complete and its settings pass desktop validati
     trayAvailable: expect.any(Boolean),
     fullScreen: expect.any(Boolean),
     fullScreenRevision: expect.any(Number),
+    resolvedLanguage: 'zh-CN',
     resolvedTheme: expect.stringMatching(/^(dark|light)$/),
     platform: expect.any(String),
     persistenceError: expect.any(String),

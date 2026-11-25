@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import type { RoomPlayback, Song } from '../../shared/types'
 import { shouldAccept, targetPosition } from '../../shared/multiplayer'
 
@@ -171,11 +171,11 @@ export class RoomPlayer {
       }
       const fail: EventListener = () => {
         cleanup()
-        reject(new Error(ui('当前歌曲音频加载失败', "Couldn't load audio for this song")))
+        reject(new Error(t('roomPlayer.couldntLoadAudioForThisSong')))
       }
       const timer = setTimeout(() => {
         cleanup()
-        reject(new Error(ui('音频加载超时', 'Audio loading timed out')))
+        reject(new Error(t('roomPlayer.audioLoadingTimedOut')))
       }, 15000)
       this.cancelLoad = () => {
         cleanup()
@@ -188,13 +188,7 @@ export class RoomPlayer {
     await ready
   }
   async audition(id: string) {
-    if (!this.state)
-      throw new Error(
-        ui(
-          '房间播放状态尚未同步，请稍后试听',
-          'Room playback is still syncing. Try the preview again shortly.',
-        ),
-      )
+    if (!this.state) throw new Error(t('roomPlayer.roomPlaybackIsStillSyncingTryThePreview'))
     this.cancelLoad?.()
     const epoch = ++this.epoch
     this.loaded = null

@@ -1,4 +1,4 @@
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import { RoomMatchSong } from '../player/RoomSetup'
 import { useState } from 'react'
 import {
@@ -27,36 +27,36 @@ import { PanelHeader } from './Surface'
 
 const directoryItems = () =>
   [
-    ['lyrics', ui('歌词', 'Lyrics'), AlignLeft],
-    ['controls', ui('播放调节', 'Playback controls'), SlidersHorizontal],
-    ['queue', ui('播放队列', 'Play queue'), ListMusic],
-    ['search', ui('搜索', 'Search'), Search],
-    ['library', ui('音乐库', 'Library'), Library],
-    ['room', ui('一起听', 'Listen Together'), Headphones],
-    ['chat', ui('房间聊天', 'Room chat'), MessageCircle],
-    ['private', ui('私信', 'Messages'), Mail],
-    ['settings', ui('设置', 'Settings'), Settings2],
+    ['lyrics', t('common.lyrics'), AlignLeft],
+    ['controls', t('common.playbackControls'), SlidersHorizontal],
+    ['queue', t('common.playQueue'), ListMusic],
+    ['search', t('common.search'), Search],
+    ['library', t('common.library'), Library],
+    ['room', t('common.listenTogether'), Headphones],
+    ['chat', t('common.roomChat'), MessageCircle],
+    ['private', t('common.messages'), Mail],
+    ['settings', t('common.settings'), Settings2],
   ] as const
 export const panelTitle = (id: PanelId) =>
   directoryItems().find(([key]) => id === key)?.[1] ??
   (
     {
-      windows: ui('全部功能', 'All features'),
-      recent: ui('最近播放', 'Recently played'),
-      created: ui('创建的歌单', 'My playlists'),
-      liked: ui('我喜欢的音乐', 'Liked Songs'),
-      albums: ui('收藏的专辑', 'Saved albums'),
-      login: ui('扫码登录', 'Sign in with QR code'),
-      members: ui('房间成员', 'Room members'),
-      match: ui('匹配房间', 'Match a room'),
-      'match-song': ui('切换歌曲', 'Change song'),
-      add: ui('添加到歌单', 'Add to playlist'),
-      diagnostics: ui('观测记录', 'Activity log'),
-      confirm: ui('确认操作', 'Confirm action'),
-      feedback: ui('播放提示', 'Playback notification'),
+      windows: t('common.allFeatures'),
+      recent: t('common.recentlyPlayed'),
+      created: t('panelPages.myPlaylists'),
+      liked: t('common.likedSongs'),
+      albums: t('common.savedAlbums'),
+      login: t('common.signInWithQrCode'),
+      members: t('common.roomMembers'),
+      match: t('panelPages.matchARoom'),
+      'match-song': t('common.changeSong'),
+      add: t('common.addToPlaylist'),
+      diagnostics: t('panelPages.activityLog'),
+      confirm: t('panelPages.confirmAction'),
+      feedback: t('panelPages.playbackNotification'),
     } as Record<string, string>
   )[id] ??
-  ui('曲目详情', 'Track details')
+  t('panelPages.trackDetails')
 
 export function WindowDirectory({
   open,
@@ -72,7 +72,7 @@ export function WindowDirectory({
   account: ReturnType<typeof useParty>['account']
 }) {
   return (
-    <nav className="window-directory" aria-label={ui('全部功能', 'All features')}>
+    <nav className="window-directory" aria-label={t('common.allFeatures')}>
       {directoryItems().map(([id, title, Icon]) => {
         const count = id === 'private' ? unread : id === 'chat' ? chatUnread : 0
         return (
@@ -81,8 +81,8 @@ export function WindowDirectory({
             aria-label={title}
             aria-description={
               [
-                id === current && ui('已打开', 'Open'),
-                count > 0 && count + ui(' 条未读', ' unread'),
+                id === current && t('common.open'),
+                count > 0 && t('privateMessages.unread', { count }),
               ]
                 .filter(Boolean)
                 .join('，') || undefined
@@ -93,7 +93,7 @@ export function WindowDirectory({
             <span>{title}</span>
             {count > 0 && <small>{count > 99 ? '99+' : count}</small>}
             {id === current ? (
-              <Check size={14} aria-label={ui('已打开', 'Open')} />
+              <Check size={14} aria-label={t('common.open')} />
             ) : (
               <ChevronRight size={14} />
             )}
@@ -102,11 +102,11 @@ export function WindowDirectory({
       })}
       <button
         className="directory-account"
-        title={account ? ui('打开设置', 'Open settings') : ui('扫码登录', 'Sign in with QR code')}
+        title={account ? t('panelPages.openSettings') : t('common.signInWithQrCode')}
         onClick={() => open(account ? 'settings' : 'login')}
       >
         {account?.avatarUrl ? <img alt="" src={account.avatarUrl} /> : <LogIn size={18} />}
-        <span>{account?.nickname || ui('扫码登录', 'Sign in with QR code')}</span>
+        <span>{account?.nickname || t('common.signInWithQrCode')}</span>
         <ChevronRight size={14} />
       </button>
     </nav>
@@ -133,13 +133,13 @@ export function LibraryPanel({
         </PanelHeader>
       )}
       {browse && (
-        <div className="catalog-tabs" aria-label={ui('音乐库分类', 'Library categories')}>
+        <div className="catalog-tabs" aria-label={t('panelPages.libraryCategories')}>
           {(
             [
-              ['library', ui('歌单', 'Playlists'), Library],
-              ['liked', ui('我喜欢', 'Liked'), Heart],
-              ['recent', ui('最近播放', 'Recently played'), Clock3],
-              ['albums', ui('收藏的专辑', 'Saved albums'), Music2],
+              ['library', t('common.playlists'), Library],
+              ['liked', t('panelPages.liked'), Heart],
+              ['recent', t('common.recentlyPlayed'), Clock3],
+              ['albums', t('common.savedAlbums'), Music2],
             ] as const
           ).map(([key, name, Icon]) => (
             <button key={key} aria-pressed={view === key} onClick={() => onSection?.(key)}>
@@ -174,81 +174,71 @@ export function RoomPanel({
   const creator =
     p.room?.creatorName ||
     (p.room?.creatorUid
-      ? ui('用户 {0}', 'User {0}', p.room.creatorUid)
-      : ui('暂未提供', 'Unavailable'))
+      ? t('common.userId', { uid: p.room.creatorUid })
+      : t('panelPages.unavailable'))
   return (
     <div className="room-lobby room-tools">
       <section className="room-card room-count">
-        <h3>{ui('房间信息', 'Room information')}</h3>
+        <h3>{t('panelPages.roomInformation')}</h3>
         <dl className="room-facts">
           <div>
-            <dt>{ui('在线成员', 'Online members')}</dt>
+            <dt>{t('panelPages.onlineMembers')}</dt>
             <dd>
               <button
                 className="room-members-link"
-                aria-label={ui('查看房间成员', 'View room members')}
-                title={ui('查看房间成员', 'View room members')}
+                aria-label={t('common.viewRoomMembers')}
+                title={t('common.viewRoomMembers')}
                 onClick={() => open('members')}
               >
                 {p.onlineCount === null
-                  ? ui('查看成员', 'View members')
-                  : ui('{0} 人', '{0} online', p.onlineCount)}
+                  ? t('panelPages.viewMembers')
+                  : t('panelPages.online', { count: p.onlineCount })}
               </button>
             </dd>
           </div>
           <div>
-            <dt>{ui('房间类型', 'Room type')}</dt>
+            <dt>{t('panelPages.roomType')}</dt>
             <dd>{roomTypeLabel(p.room?.roomBizType)}</dd>
           </div>
           <div>
-            <dt>{ui('创建者', 'Created by')}</dt>
+            <dt>{t('panelPages.createdBy')}</dt>
             <dd>{creator}</dd>
           </div>
           <div>
-            <dt>{ui('音乐标签', 'Music tags')}</dt>
-            <dd>{tags?.length ? tags.join(' · ') : ui('暂无标签', 'No tags yet')}</dd>
+            <dt>{t('panelPages.musicTags')}</dt>
+            <dd>{tags?.length ? tags.join(' · ') : t('panelPages.noTagsYet')}</dd>
           </div>
         </dl>
       </section>
 
       <section className="room-card">
-        <h3>{ui('遇见新的听友', 'Meet new listeners')}</h3>
-        <p>
-          {ui(
-            '换一个房间，和新的朋友分享音乐。',
-            'Find another room to share music with new listeners.',
-          )}
-        </p>
+        <h3>{t('panelPages.meetNewListeners')}</h3>
+        <p>{t('panelPages.findAnotherRoomToShareMusicWithNew')}</p>
         <RoomMatchSong party={p} onChooseSong={onChooseSong} />
         <div className="room-actions">
           <button
             className="secondary"
             disabled={!!p.busy || p.matching || !p.matchSong}
-            onClick={() => p.act(ui('重新匹配', 'Find another room'), p.rematchRoom)}
+            onClick={() => p.act(t('common.findAnotherRoom'), p.rematchRoom)}
           >
-            {ui('重新匹配', 'Find another room')}
+            {t('common.findAnotherRoom')}
           </button>
         </div>
-        <p>
-          {ui(
-            '重新匹配会退出当前房间，寻找新的听友。',
-            'Matching again leaves this room to find new listeners.',
-          )}
-        </p>
+        <p>{t('panelPages.matchingAgainLeavesThisRoomToFindNew')}</p>
       </section>
 
       <div className="room-actions room-actions-footer">
         <button
           className="secondary"
-          onClick={() => p.act(ui('复制邀请链接', 'Copy invitation link'), p.copyInvite)}
+          onClick={() => p.act(t('common.copyInvitationLink'), p.copyInvite)}
         >
-          {ui('复制邀请链接', 'Copy invitation link')}
+          {t('common.copyInvitationLink')}
         </button>
         <button className="secondary" onClick={() => open('private')}>
-          {ui('私信邀请', 'Invite via message')}
+          {t('panelPages.inviteViaMessage')}
         </button>
         <button className="secondary room-danger room-leave" onClick={leave}>
-          {ui('退出房间', 'Leave room')}
+          {t('panelPages.leaveRoom')}
         </button>
       </div>
     </div>

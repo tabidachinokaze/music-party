@@ -1,4 +1,4 @@
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import { PanelHeader } from '../windows/Surface'
 import { type CSSProperties, useEffect, useState } from 'react'
 import { ArrowUpToLine, ListMusic, Music2, Play, Repeat2, Sparkles, Trash2 } from 'lucide-react'
@@ -12,7 +12,7 @@ import { Overlay } from './Overlay'
 import { useScrollPagination } from '../useScrollPagination'
 
 export const queueTitle = (inRoom: boolean) =>
-  inRoom ? ui('房间待播列表', 'Room queue') : ui('个人播放队列', 'Personal queue')
+  inRoom ? t('queueDrawer.roomQueue') : t('queueDrawer.personalQueue')
 
 export function QueueDrawer({
   party: p,
@@ -56,15 +56,12 @@ export function QueueDrawer({
   const officialSong = p.roomPlayback?.song
   const roomSong = inRoom ? officialSong : null
   const recommenderName = (song: QueueSong, entry?: Partial<RoomQueueEntry>) => {
-    if (!song.songRcmdUid || song.songRcmdUid === '0')
-      return ui('系统推荐', 'System recommendation')
+    if (!song.songRcmdUid || song.songRcmdUid === '0') return t('common.systemRecommendation')
     const member = p.members.find((member) => member.uid === song.songRcmdUid)
     const nickname = entry?.songRcmdUid === song.songRcmdUid ? entry.recommender?.trim() : ''
-    return ui(
-      '{0} 推荐',
-      'Recommended by {0}',
-      nickname || member?.nickname || ui('用户 {0}', 'User {0}', song.songRcmdUid),
-    )
+    return t('room.recommendedBy', {
+      nickname: nickname || member?.nickname || t('common.userId', { uid: song.songRcmdUid }),
+    })
   }
   const currentRecommender = roomSong
     ? recommenderName(roomSong, roomQueue.entries[currentIndex])
@@ -132,7 +129,7 @@ export function QueueDrawer({
         <PanelHeader>
           <div className="panel-inline-actions">
             <small className="queue-total">
-              {ui('{0} 首', count === 1 ? '{0} track' : '{0} tracks', count)}
+              {t('music.trackCount', { count: p.personalQueue.length })}
             </small>
           </div>
         </PanelHeader>
@@ -140,13 +137,13 @@ export function QueueDrawer({
       {!inRoom && (
         <div className="queue-toolbar">
           <select
-            aria-label={ui('播放模式', 'Playback mode')}
+            aria-label={t('queueDrawer.playbackMode')}
             value={p.repeatMode}
             onChange={(event) => p.changeRepeat(event.target.value as 'order' | 'loop' | 'single')}
           >
-            <option value="order">{ui('顺序播放', 'Play in order')}</option>
-            <option value="loop">{ui('列表循环', 'Repeat all')}</option>
-            <option value="single">{ui('单曲循环', 'Repeat one')}</option>
+            <option value="order">{t('queueDrawer.playInOrder')}</option>
+            <option value="loop">{t('common.repeatAll')}</option>
+            <option value="single">{t('common.repeatOne')}</option>
           </select>
           <button
             className="text-btn"
@@ -154,7 +151,7 @@ export function QueueDrawer({
             onClick={p.clearPersonalQueue}
           >
             <Trash2 size={13} />
-            {ui('清空队列', 'Clear queue')}
+            {t('queueDrawer.clearQueue')}
           </button>
         </div>
       )}
@@ -162,7 +159,7 @@ export function QueueDrawer({
         <div
           className="room-queue-tabs filter-tabs"
           role="tablist"
-          aria-label={ui('房间队列', 'Room queue')}
+          aria-label={t('queueDrawer.roomQueueTab')}
         >
           {(['listening', 'history'] as const).map((tab) => {
             const selected = tab === (historyTab ? 'history' : 'listening')
@@ -202,8 +199,8 @@ export function QueueDrawer({
                 }}
               >
                 {tab === 'listening'
-                  ? ui('正在听', 'Now listening')
-                  : ui('听过的', 'Previously played')}
+                  ? t('queueDrawer.nowListening')
+                  : t('queueDrawer.previouslyPlayed')}
               </button>
             )
           })}
@@ -212,8 +209,8 @@ export function QueueDrawer({
       {inRoom && !historyTab && (
         <div className="queue-toolbar room-queue-order">
           <Repeat2 size={13} />
-          <span>{ui('按顶歌排序', 'Ranked by upvotes')}</span>
-          <small>{ui('待播顺序由一起听房间同步', 'Queue order is synced with the room')}</small>
+          <span>{t('queueDrawer.rankedByUpvotes')}</span>
+          <small>{t('queueDrawer.queueOrderIsSyncedWithTheRoom')}</small>
         </div>
       )}
       <div
@@ -235,7 +232,7 @@ export function QueueDrawer({
       >
         {!historyTab && nowPlaying && (inRoom || ids[p.personalIndex] !== nowPlaying.id) && (
           <div className="queue-playing">
-            <span className="queue-section-label">{ui('正在播放', 'Now playing')}</span>
+            <span className="queue-section-label">{t('common.nowPlaying')}</span>
             <div>
               <div className="queue-playing-art">
                 {nowPlaying.cover ? (
@@ -276,9 +273,9 @@ export function QueueDrawer({
           <div className="queue-section-label">
             {inRoom
               ? count === undefined
-                ? ui('接下来播放', 'Up next')
-                : ui('接下来播放（{0}）', 'Up next ({0})', count)
-              : ui('队列中的歌曲', 'Queued songs')}
+                ? t('queueDrawer.upNext')
+                : t('queueDrawer.upNextCount', { count })
+              : t('queueDrawer.queuedSongs')}
           </div>
         )}
         {listError && (
@@ -291,7 +288,7 @@ export function QueueDrawer({
                 if (error) retry()
               }}
             >
-              {ui('重试', 'Retry')}
+              {t('common.retry')}
             </button>
           </p>
         )}
@@ -303,8 +300,8 @@ export function QueueDrawer({
           const title =
             track?.name ||
             (track === null
-              ? ui('歌曲信息暂不可用', 'Song details unavailable')
-              : ui('正在读取歌曲…', 'Loading song…'))
+              ? t('queueDrawer.songDetailsUnavailable')
+              : t('queueDrawer.loadingSong'))
           return (
             <div
               className={`queue-track ${!inRoom && index === p.personalIndex ? 'current' : ''}`}
@@ -336,11 +333,9 @@ export function QueueDrawer({
                       type="button"
                       className="queue-row-play"
                       disabled={!!p.busy}
-                      title={track?.name ? ui('播放《{0}》', 'Play “{0}”', track.name) : undefined}
-                      aria-label={ui('播放队列第 {0} 首', 'Play queue item {0}', index + 1)}
-                      onClick={() =>
-                        p.act(ui('播放队列', 'Play queue'), () => p.playQueueIndex(index))
-                      }
+                      title={track?.name ? t('queueDrawer.play', { name: track.name }) : undefined}
+                      aria-label={t('queueDrawer.playQueueItem', { count: index + 1 })}
+                      onClick={() => p.act(t('common.playQueue'), () => p.playQueueIndex(index))}
                     >
                       {title}
                     </button>
@@ -358,7 +353,7 @@ export function QueueDrawer({
                 (index === p.personalIndex ? (
                   <span
                     className={`equalizer ${p.playing ? 'playing' : ''}`}
-                    aria-label={ui('正在播放', 'Now playing')}
+                    aria-label={t('common.nowPlaying')}
                   >
                     <i />
                     <i />
@@ -371,11 +366,11 @@ export function QueueDrawer({
                 <div className="queue-entry-actions">
                   <button
                     className="icon-btn"
-                    aria-label={ui('顶歌 {0}', 'Upvote {0}', track?.name || entry.songId)}
-                    title={ui('UP 顶歌，提高待播优先级', 'Upvote to move this song up the queue')}
+                    aria-label={t('common.upvote', { name: track?.name || entry.songId })}
+                    title={t('queueDrawer.upvoteToMoveThisSongUpTheQueue')}
                     disabled={!!p.busy || entry.uped}
                     onClick={() =>
-                      p.act(ui('顶歌', 'Upvote'), () =>
+                      p.act(t('membersDrawer.upvoteAction'), () =>
                         p.recommendOperation('multiUp', entry as RoomQueueEntry),
                       )
                     }
@@ -386,12 +381,10 @@ export function QueueDrawer({
                   {entry.songRcmdUid === String(p.account?.userId) && (
                     <button
                       className="icon-btn"
-                      aria-label={ui(
-                        '删除推荐 {0}',
-                        'Remove recommendation: {0}',
-                        track?.name || entry.songId,
-                      )}
-                      title={ui('删除自己的推荐', 'Remove your recommendation')}
+                      aria-label={t('common.removeRecommendation', {
+                        name: track?.name || entry.songId,
+                      })}
+                      title={t('queueDrawer.removeYourRecommendation')}
                       disabled={!!p.busy}
                       onClick={() => {
                         p.setError('')
@@ -407,11 +400,11 @@ export function QueueDrawer({
           )
         })}
         {inRoom && !historyTab && !p.roomPlayback && (
-          <p className="queue-loading">{ui('正在同步房间待播列表…', 'Syncing room queue…')}</p>
+          <p className="queue-loading">{t('queueDrawer.syncingRoomQueue')}</p>
         )}
         {historyTab && history.loading && (
           <p className="queue-loading" role="status">
-            {ui('正在读取播放历史…', 'Loading listening history…')}
+            {t('queueDrawer.loadingListeningHistory')}
           </p>
         )}
         {!entries.length && !listError && !loading && (!inRoom || activeList.complete) && (
@@ -419,42 +412,27 @@ export function QueueDrawer({
             <ListMusic size={30} />
             <strong>
               {historyTab
-                ? ui('还没有听过的歌曲', 'No listening history yet')
+                ? t('queueDrawer.noListeningHistoryYet')
                 : inRoom
-                  ? ui('还没有待播歌曲', 'No upcoming songs')
-                  : ui('队列还是空的', 'Your queue is empty')}
+                  ? t('queueDrawer.noUpcomingSongs')
+                  : t('queueDrawer.yourQueueIsEmpty')}
             </strong>
             {!historyTab && (
               <p>
                 {inRoom
-                  ? ui(
-                      '从歌单或搜索中选一首，推荐给大家。',
-                      'Recommend a song from a playlist or search.',
-                    )
-                  : ui(
-                      '播放歌单或搜索结果后，歌曲会出现在这里。',
-                      'Play a playlist or a search result to add songs here.',
-                    )}
+                  ? t('queueDrawer.recommendASongFromAPlaylistOrSearch')
+                  : t('queueDrawer.playAPlaylistOrASearchResultTo')}
               </p>
             )}
           </div>
         )}
-        {loading && (
-          <p className="queue-loading">{ui('正在读取歌曲信息…', 'Loading song details…')}</p>
-        )}
+        {loading && <p className="queue-loading">{t('queueDrawer.loadingSongDetails')}</p>}
         <div ref={queueSentinel} className="pagination-sentinel" aria-hidden="true" />
       </div>
       {removing && (
-        <Overlay
-          title={ui('删除自己的推荐？', 'Remove your recommendation?')}
-          onClose={() => setRemoving(null)}
-        >
+        <Overlay title={t('common.removeYourRecommendation')} onClose={() => setRemoving(null)}>
           <p className="overlay-intro">
-            {ui(
-              '将「{0}」从房间待播列表移除。',
-              'Remove “{0}” from the room queue.',
-              removing.track.name,
-            )}
+            {t('common.removeFromTheRoomQueue', { name: removing.track.name })}
           </p>
           {p.error && (
             <p className="private-error" role="alert">
@@ -463,19 +441,19 @@ export function QueueDrawer({
           )}
           <div className="row-actions">
             <button className="secondary" onClick={() => setRemoving(null)}>
-              {ui('取消', 'Cancel')}
+              {t('common.cancel')}
             </button>
             <button
               className="primary"
               disabled={!!p.busy}
               onClick={() =>
-                p.act(ui('删除推荐', 'Remove recommendation'), async () => {
+                p.act(t('membersDrawer.removeRecommendation'), async () => {
                   await p.recommendOperation('multiRemove', removing)
                   setRemoving(null)
                 })
               }
             >
-              {ui('确认删除推荐', 'Remove recommendation')}
+              {t('membersDrawer.confirmRemoveRecommendation')}
             </button>
           </div>
         </Overlay>

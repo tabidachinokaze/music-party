@@ -1,19 +1,19 @@
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import type { PanelId } from '../../../shared/panels'
 import type { Conversation, Member } from '../../../shared/types'
 
 export const settingsLabels = {
   get appearance() {
-    return ui('外观', 'Appearance')
+    return t('common.appearance')
   },
   get playback() {
-    return ui('播放与桌面', 'Playback & desktop')
+    return t('navigationHistory.playbackDesktop')
   },
   get account() {
-    return ui('账号', 'Account')
+    return t('common.account')
   },
   get updates() {
-    return ui('更新与帮助', 'Updates & help')
+    return t('navigationHistory.updatesHelp')
   },
 } as const
 export type SettingsSection = keyof typeof settingsLabels

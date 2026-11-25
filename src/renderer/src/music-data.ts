@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import type { Album, Artist, Method, Playlist, SearchKind, Song } from '../../shared/types'
 import { toSong } from '../../shared/protocol'
 export type ApiCall = (method: Method, args?: Record<string, unknown>) => Promise<any>
@@ -17,9 +17,7 @@ export function readSearchPage(
     return true
   })
   if (rows.length && !items.length)
-    throw new Error(
-      ui('搜索结果分页未继续前进，请重试', 'Search results stopped loading. Try again.'),
-    )
+    throw new Error(t('musicData.searchResultsStoppedLoadingTryAgain'))
   const countField = { songs: 'songCount', playlists: 'playlistCount', artists: 'artistCount' }[
     kind
   ]
@@ -40,7 +38,7 @@ export function writablePlaylists(playlists: Playlist[], uid: string): Playlist[
 export function playlistFrom(value: any): Playlist {
   return {
     id: String(value.id),
-    name: value.name || ui('未命名歌单', 'Untitled playlist'),
+    name: value.name || t('musicData.untitledPlaylist'),
     cover: value.coverImgUrl || value.picUrl || '',
     count: value.trackCount || 0,
     creatorId: String(value.creator?.userId || ''),
@@ -68,18 +66,13 @@ export async function allPlaylists(
     const body = await api('playlists', { uid, offset })
     if (!active()) return []
     if (!Array.isArray(body.playlist))
-      throw new Error(ui('歌单响应格式异常，请重试', 'Invalid playlist response. Try again.'))
+      throw new Error(t('musicData.invalidPlaylistResponseTryAgain'))
     const before = byId.size
     for (const item of body.playlist) byId.set(String(item.id), playlistFrom(item))
     progress([...byId.values()])
     if (!body.more) return [...byId.values()]
     if (!body.playlist.length || before === byId.size)
-      throw new Error(
-        ui(
-          '服务端重复返回同一页，歌单尚未加载完整，请刷新重试',
-          'The server returned the same page twice. Refresh to load the rest of your playlists.',
-        ),
-      )
+      throw new Error(t('musicData.theServerReturnedTheSamePageTwiceRefresh'))
     offset += body.playlist.length
   }
   return []
@@ -87,7 +80,7 @@ export async function allPlaylists(
 export async function songsByIds(api: ApiCall, ids: string[]): Promise<Song[]> {
   if (!ids.length) return []
   const body = await api('song', { ids: ids.join(',') })
-  if (!Array.isArray(body.songs)) throw new Error(ui('歌曲响应格式异常', 'Invalid track response'))
+  if (!Array.isArray(body.songs)) throw new Error(t('musicData.invalidTrackResponse'))
   const byId = new Map<string, Song>(body.songs.map((s: any) => [String(s.id), toSong(s)]))
   return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))
 }
@@ -118,14 +111,13 @@ export async function allAlbums(
   while (active()) {
     const body = await api('albums', { offset })
     if (!active()) return []
-    if (!Array.isArray(body.data))
-      throw new Error(ui('收藏专辑响应异常，请重试', 'Could not read saved albums. Try again.'))
+    if (!Array.isArray(body.data)) throw new Error(t('musicData.couldNotReadSavedAlbumsTryAgain'))
     const before = byId.size
     for (const item of body.data) {
       if (!/^[1-9]\d*$/.test(String(item.id))) continue
       byId.set(String(item.id), {
         id: String(item.id),
-        name: item.name || ui('未命名专辑', 'Untitled album'),
+        name: item.name || t('musicData.untitledAlbum'),
         cover: item.picUrl || '',
         count: Number(item.size || 0),
         artist: albumArtistName(item),
@@ -139,9 +131,7 @@ export async function allAlbums(
       (Number.isFinite(body.count) ? offset < body.count : body.data.length === 50)
     if (!more) return [...byId.values()]
     if (!body.data.length || before === byId.size)
-      throw new Error(
-        ui('收藏专辑分页未继续前进，请重试', 'No more saved albums could be loaded. Try again.'),
-      )
+      throw new Error(t('musicData.noMoreSavedAlbumsCouldBeLoadedTry'))
   }
   return []
 }

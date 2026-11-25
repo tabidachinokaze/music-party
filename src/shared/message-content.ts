@@ -1,5 +1,17 @@
-import type { ChatEmoji, MessageAttachment, MessageTextPart } from './types'
+import type { ChatEmoji, MessageAttachment, MessageTextPart, MessageFallback } from './types'
+import { getUiLanguage, translateIn, type StaticMessageKey } from './ui-language'
 import { neteaseAssetUrl } from './media'
+
+export function localizedMessageText(
+  raw: string,
+  fallback?: MessageFallback,
+  locale = getUiLanguage(),
+): string {
+  if (!fallback) return raw
+  return typeof fallback === 'string'
+    ? translateIn(locale, fallback)
+    : translateIn(locale, fallback.key, { name: fallback.name })
+}
 
 export function messageObject(value: unknown): any {
   if (value && typeof value === 'object' && !Array.isArray(value)) return value
@@ -95,7 +107,9 @@ export function parseEmoji(value: unknown): ChatEmoji | undefined {
   return {
     emojiId: id,
     emojiGroupId: group,
-    emojiName: text(item.emojiName || item.name, 80) || '表情',
+    // The canonical placeholder also identifies sticker envelopes returned by the service.
+    emojiName:
+      text(item.emojiName || item.name, 80) || translateIn('zh-CN', 'emojiPicker.stickers'),
     emojiImgUrl: url,
     width: Math.min(4096, Math.max(1, Number(item.width) || 160)),
     height: Math.min(4096, Math.max(1, Number(item.height) || 160)),
@@ -115,8 +129,8 @@ export function richMessageContent(value: unknown): {
   const addMedia = (
     kind: 'image' | 'audio' | 'video',
     raw: any,
-    title: string,
-    english?: string,
+    fallbackKey: StaticMessageKey,
+    suppliedTitle?: string,
   ) => {
     if (!raw) return
     const item = messageObject(raw)
@@ -133,11 +147,11 @@ export function richMessageContent(value: unknown): {
             item.playUrlInfo?.url ||
             item.videoUrl,
     )
-    const mediaTitle = text(item.name || item.title)
+    const mediaTitle = text(item.name || item.title) || suppliedTitle
     attachments.push({
       kind,
-      title: mediaTitle || title,
-      ...(!mediaTitle && english && { fallbackTitleEn: english }),
+      title: mediaTitle || translateIn('zh-CN', fallbackKey),
+      ...(!mediaTitle && { fallbackTitle: fallbackKey }),
       url,
       cover: mediaUrl(
         item.coverUrl || item.cover || item.coverImage?.url || item.coverImage?.picUrl,
@@ -166,10 +180,13 @@ export function richMessageContent(value: unknown): {
     })
   }
   const emoji = parseEmoji(data.emoji)
-  if (emoji) addMedia('image', emoji, emoji.emojiName)
+  if (emoji) {
+    const raw = messageObject(data.emoji)
+    addMedia('image', emoji, 'emojiPicker.stickers', text(raw.emojiName || raw.name, 80))
+  }
   const images = data.pics || data.pictures || data.images
   if (Array.isArray(images))
-    images.slice(0, 9).forEach((pic) => addMedia('image', pic, '图片', 'Image'))
+    images.slice(0, 9).forEach((pic) => addMedia('image', pic, 'chat.image'))
   else
     addMedia(
       'image',
@@ -179,15 +196,9 @@ export function richMessageContent(value: unknown): {
         (root.msgType === 2 || (root.msgType >= 30 && root.msgType <= 48)
           ? undefined
           : data.picUrl),
-      '图片',
-      'Image',
+      'chat.image',
     )
-  addMedia(
-    'audio',
-    data.voice || data.audio || (data.voiceUrl ? data : null),
-    '语音消息',
-    'Voice message',
-  )
+  addMedia('audio', data.voice || data.audio || (data.voiceUrl ? data : null), 'chat.voice')
   const video = messageObject(data.video)
   if (
     video.url ||
@@ -196,36 +207,35 @@ export function richMessageContent(value: unknown): {
     data.videoUrl ||
     data.playUrlInfo?.url
   )
-    addMedia('video', data.video || data, '视频消息', 'Video')
+    addMedia('video', data.video || data, 'chat.videoMessage')
   // New message-center envelopes use msgType; legacy private-history type values are different.
-  if (root.msgType === 1 && !attachments.length) addMedia('image', body, '图片', 'Image')
-  if (root.msgType === 4 && !attachments.length)
-    addMedia('audio', body, '语音消息', 'Voice message')
-  if (root.msgType === 5 && !attachments.length) addMedia('video', body, '视频消息', 'Video')
-  const resources: [string, string, string, string][] = [
-    ['song', 'song', '歌曲', 'Song'],
-    ['playlist', 'playlist', '歌单', 'Playlist'],
-    ['album', 'album', '专辑', 'Album'],
-    ['artist', 'artist', '歌手', 'Artist'],
-    ['program', 'program', '播客节目', 'Podcast episode'],
-    ['djRadio', 'radio', '播客', 'Podcast'],
-    ['radio', 'radio', '播客', 'Podcast'],
-    ['mv', 'mv', 'MV', 'MV'],
-    ['video', 'video', '视频', 'Video'],
-    ['user', 'user', '用户', 'User'],
-    ['profile', 'user', '用户', 'User'],
-    ['topic', 'topic', '话题', 'Topic'],
-    ['subject', 'topic', '专题', 'Feature'],
-    ['event', 'event', '动态', 'Post'],
-    ['activity', 'event', '活动', 'Event'],
-    ['mlog', 'mlog', 'Mlog', 'Mlog'],
-    ['concert', 'concert', '演出', 'Concert'],
-    ['live', 'live', '直播', 'Live stream'],
-    ['comment', 'comment', '评论', 'Comment'],
-    ['generalMsg', 'general', '消息卡片', 'Message card'],
-    ['promotion', 'general', '活动卡片', 'Event card'],
+  if (root.msgType === 1 && !attachments.length) addMedia('image', body, 'chat.image')
+  if (root.msgType === 4 && !attachments.length) addMedia('audio', body, 'chat.voice')
+  if (root.msgType === 5 && !attachments.length) addMedia('video', body, 'chat.videoMessage')
+  const resources: [string, string, StaticMessageKey][] = [
+    ['song', 'song', 'chat.song'],
+    ['playlist', 'playlist', 'messageContent.playlist'],
+    ['album', 'album', 'common.album'],
+    ['artist', 'artist', 'common.artist'],
+    ['program', 'program', 'chat.episode'],
+    ['djRadio', 'radio', 'chat.podcast'],
+    ['radio', 'radio', 'chat.podcast'],
+    ['mv', 'mv', 'chat.mv'],
+    ['video', 'video', 'chat.video'],
+    ['user', 'user', 'chat.user'],
+    ['profile', 'user', 'chat.user'],
+    ['topic', 'topic', 'chat.topic'],
+    ['subject', 'topic', 'chat.feature'],
+    ['event', 'event', 'chat.post'],
+    ['activity', 'event', 'chat.event'],
+    ['mlog', 'mlog', 'chat.mlog'],
+    ['concert', 'concert', 'chat.concert'],
+    ['live', 'live', 'chat.live'],
+    ['comment', 'comment', 'chat.comment'],
+    ['generalMsg', 'general', 'chat.card'],
+    ['promotion', 'general', 'chat.eventCard'],
   ]
-  for (const [key, type, label, english] of resources) {
+  for (const [key, type, labelKey] of resources) {
     let raw = data[key]
     const typed: Record<number, string> = {
       2: 'generalMsg',
@@ -278,10 +288,10 @@ export function richMessageContent(value: unknown): {
       kind: 'resource',
       resourceType: type,
       resourceId: id,
-      title: title || label,
-      subtitle: subtitle || label,
-      ...(!title && { fallbackTitleEn: english }),
-      ...(!subtitle && { fallbackSubtitleEn: english }),
+      title: title || translateIn('zh-CN', labelKey),
+      subtitle: subtitle || translateIn('zh-CN', labelKey),
+      ...(!title && { fallbackTitle: labelKey }),
+      ...(!subtitle && { fallbackSubtitle: labelKey }),
       cover: mediaUrl(
         item.picUrl ||
           item.coverImgUrl ||
@@ -302,8 +312,8 @@ export function richMessageContent(value: unknown): {
     const title = text(file.name || file.fileName)
     attachments.push({
       kind: 'file',
-      title: title || '文件',
-      ...(!title && { fallbackTitleEn: 'File' }),
+      title: title || translateIn('zh-CN', 'common.file'),
+      ...(!title && { fallbackTitle: 'common.file' }),
       subtitle: text(file.description),
       actionUrl: musicMessageLink(file.url) || neteaseAssetUrl(file.url),
     })

@@ -1,9 +1,7 @@
 import { _electron as electron, expect, test } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { widenPanel } from './windows'
+import { rm } from 'node:fs/promises'
+import { createChineseProfile, widenPanel } from './windows'
 
 test('one window preserves browsing and playback across compact, split and desktop layouts', async () => {
   const server = createServer((_req, res) => {
@@ -11,7 +9,7 @@ test('one window preserves browsing and playback across compact, split and deskt
     res.end(JSON.stringify({ code: 200, data: { code: 200, profile: null } }))
   })
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
-  const dir = await mkdtemp(join(tmpdir(), 'music-party-portrait-'))
+  const dir = await createChineseProfile('music-party-portrait-')
   const app = await electron.launch({
     args: ['.', '--ozone-platform=x11', '--password-store=basic'],
     env: {

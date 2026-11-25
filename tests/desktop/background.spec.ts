@@ -1,9 +1,8 @@
 import { DEFAULT_PLAYER_BACKGROUND } from '../../src/shared/desktop'
-import { settingsGroup, openTool, widenPanel } from './windows'
+import { createChineseProfile, settingsGroup, openTool, widenPanel } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdir, mkdtemp, readFile, rename, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { mkdir, readFile, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
 test('application skin previews and saves images, covers the whole window and survives restart', async () => {
@@ -14,7 +13,7 @@ test('application skin previews and saves images, covers the whole window and su
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = (server.address() as any).port
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-player-background-'))
+  const profile = await createChineseProfile('music-party-player-background-')
   const launch = () =>
     electron.launch({
       args: [

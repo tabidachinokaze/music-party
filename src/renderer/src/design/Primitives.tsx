@@ -1,4 +1,4 @@
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import { type ButtonHTMLAttributes, type ReactNode } from 'react'
 
 export function IconButton({
@@ -22,7 +22,7 @@ export function IconButton({
 
 export function UnreadBadge({ count }: { count: number }) {
   return count > 0 ? (
-    <span className="mp-badge" aria-label={count + ui(' 条未读', ' unread')}>
+    <span className="mp-badge" aria-label={t('privateMessages.unread', { count })}>
       {count > 99 ? '99+' : count}
     </span>
   ) : null

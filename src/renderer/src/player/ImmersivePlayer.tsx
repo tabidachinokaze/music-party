@@ -1,4 +1,4 @@
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import { MusicianNames } from '../MusicianNames'
 import { AlbumArtwork } from './AlbumArtwork'
 import { Lyrics, type useTrackLyrics } from '../Lyrics'
@@ -35,7 +35,7 @@ export function ImmersivePlayer({
   return (
     <section
       className="immersive-player"
-      aria-label={ui('正在播放', 'Now Playing')}
+      aria-label={t('immersivePlayer.nowPlaying')}
       data-playing={p.playing}
       data-focus={focus}
     >
@@ -59,9 +59,9 @@ export function ImmersivePlayer({
           </div>
           <div className="immersive-song-info">
             <div className="immersive-song-heading">
-              <h1>{song?.name || ui('尚未选歌', 'No track selected')}</h1>
+              <h1>{song?.name || t('common.noTrackSelected')}</h1>
               {p.auditioning && (
-                <small className="audition-label">{ui('本机试听', 'Local preview')}</small>
+                <small className="audition-label">{t('common.localPreview')}</small>
               )}
             </div>
             <div className="immersive-metadata">
@@ -74,7 +74,7 @@ export function ImmersivePlayer({
                 (albumId ? (
                   <button
                     className="album-link"
-                    title={ui('打开专辑《{0}》', 'Open album “{0}”', song.album)}
+                    title={t('common.openAlbum', { album: song.album })}
                     onClick={() => onAlbum(albumId, song.album)}
                   >
                     {song.album}
@@ -86,8 +86,8 @@ export function ImmersivePlayer({
             {(lyrics.status === 'instrumental' || lyrics.status === 'missing') && (
               <small className="playing-lyric-status" role="status">
                 {lyrics.status === 'instrumental'
-                  ? ui('纯音乐，请欣赏', 'Instrumental')
-                  : ui('这首歌暂时没有歌词', 'Lyrics are unavailable for this track')}
+                  ? t('common.instrumental')
+                  : t('common.lyricsAreUnavailableForThisTrack')}
               </small>
             )}
             {currentLine && <p className="cover-lyric">{currentLine.text}</p>}
@@ -99,7 +99,7 @@ export function ImmersivePlayer({
             onRead={onRead}
             activeIndex={activeIndex}
             seekable={!!song && (!p.room || p.auditioning) && !p.busy}
-            onSeek={(pos) => void act(ui('跳转歌词', 'Seek to lyric'), () => p.seek(pos))}
+            onSeek={(pos) => void act(t('immersivePlayer.seekToLyric'), () => p.seek(pos))}
           />
         </div>
       </div>

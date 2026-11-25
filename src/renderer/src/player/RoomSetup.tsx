@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { LoaderCircle } from 'lucide-react'
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import type { useParty } from '../useParty'
 import { Overlay } from './Overlay'
 
@@ -10,14 +10,14 @@ export function RoomMatchSong({ party: p, onChooseSong }: { party: Party; onChoo
   return (
     <div className="room-match-song">
       <div className="match-song-selected">
-        <small>{ui('匹配用歌曲', 'Song for matching')}</small>
+        <small>{t('roomSetup.songForMatching')}</small>
         {p.matchSong ? (
           <>
             <strong title={p.matchSong.name}>{p.matchSong.name}</strong>
             {p.matchSong.artist && <span title={p.matchSong.artist}>{p.matchSong.artist}</span>}
           </>
         ) : (
-          <strong>{ui('尚未选歌', 'No song selected')}</strong>
+          <strong>{t('roomSetup.noSongSelected')}</strong>
         )}
       </div>
       <button
@@ -26,7 +26,7 @@ export function RoomMatchSong({ party: p, onChooseSong }: { party: Party; onChoo
         disabled={!!p.busy || p.matching}
         onClick={onChooseSong}
       >
-        {ui('切换歌曲', 'Change song')}
+        {t('common.changeSong')}
       </button>
     </div>
   )
@@ -51,9 +51,9 @@ export function RoomSetup({
   const locked = !!p.busy || p.matching
   const canStart = !locked && !existing && !!p.matchSong
   const canJoin = !locked && !existing && !!link.trim()
-  const memberNames = existing?.members.map((member) => member.nickname).join(ui('、', ', '))
+  const memberNames = existing?.members.map((member) => member.nickname).join(t('roomSetup.value'))
   return (
-    <Overlay title={ui('一起听', 'Listen Together')} onClose={onClose} wide>
+    <Overlay title={t('common.listenTogether')} onClose={onClose} wide>
       <div className="room-lobby">
         {p.error && (
           <p className="alert error" role="alert">
@@ -63,13 +63,13 @@ export function RoomSetup({
 
         {existing && (
           <section className="room-card">
-            <h3>{ui('继续一起听', 'Continue listening together')}</h3>
-            <p>{ui('你的账号已有一个多人房间', 'Your account is already in a room.')}</p>
+            <h3>{t('roomSetup.continueListeningTogether')}</h3>
+            <p>{t('roomSetup.yourAccountIsAlreadyInARoom')}</p>
             <div className="room-resume-summary">
               <strong>
                 {existing.onlineCount === null
-                  ? ui('一起听房间', 'Listening room')
-                  : ui('{0} 人一起听', '{0} listening', existing.onlineCount)}
+                  ? t('roomSetup.listeningRoom')
+                  : t('room.listeningCount', { count: existing.onlineCount })}
               </strong>
               {memberNames && <span title={memberNames}>{memberNames}</span>}
             </div>
@@ -78,36 +78,31 @@ export function RoomSetup({
                 className="primary"
                 disabled={locked}
                 onClick={() =>
-                  p.act(ui('恢复房间', 'Rejoin room'), async () => {
+                  p.act(t('roomSetup.rejoinRoom'), async () => {
                     await p.restoreRoom()
                     onJoined()
                   })
                 }
               >
-                {ui('恢复当前房间', 'Rejoin current room')}
+                {t('roomSetup.rejoinCurrentRoom')}
               </button>
               <button
                 className="secondary room-danger"
                 disabled={locked}
                 onClick={onLeaveAvailable}
               >
-                {ui('退出当前房间', 'Leave current room')}
+                {t('roomSetup.leaveCurrentRoom')}
               </button>
             </div>
           </section>
         )}
 
         <section className="room-card">
-          <h3>{ui('开启一场一起听', 'Start listening together')}</h3>
-          <p>
-            {ui(
-              '用当前网易云歌曲创建房间，或寻找同样喜欢音乐的人。',
-              'Start a room with a song or find someone to listen with.',
-            )}
-          </p>
+          <h3>{t('roomSetup.startListeningTogether')}</h3>
+          <p>{t('roomSetup.startARoomWithASongOrFind')}</p>
           <RoomMatchSong party={p} onChooseSong={onChooseSong} />
           <label className="room-public-option">
-            {ui('允许陌生人匹配', 'Allow others to match with this room')}
+            {t('roomSetup.allowOthersToMatchWithThisRoom')}
             <input
               type="checkbox"
               checked={p.allowStrangerMatch}
@@ -120,28 +115,28 @@ export function RoomSetup({
               className="primary"
               disabled={!canStart}
               onClick={() =>
-                p.act(ui('创建房间', 'Create room'), async () => {
+                p.act(t('roomSetup.createRoom'), async () => {
                   await p.createRoom()
                   onJoined()
                 })
               }
             >
-              {ui('用当前歌曲创建', 'Create with this song')}
+              {t('roomSetup.createWithThisSong')}
             </button>
             {p.matching ? (
               <button
                 className="secondary"
                 onClick={() => p.cancelMatch().catch((error) => p.setError(error.message))}
               >
-                {ui('取消匹配', 'Cancel matching')}
+                {t('roomSetup.cancelMatching')}
               </button>
             ) : (
               <button
                 className="secondary"
                 disabled={!canStart}
-                onClick={() => p.act(ui('匹配房间', 'Find a room'), p.matchRoom)}
+                onClick={() => p.act(t('common.findARoom'), p.matchRoom)}
               >
-                {ui('匹配房间', 'Find a room')}
+                {t('common.findARoom')}
               </button>
             )}
           </div>
@@ -150,9 +145,9 @@ export function RoomSetup({
               <LoaderCircle size={14} className="spin" />
               {
                 {
-                  connecting: ui('正在连接匹配服务…', 'Connecting to the matching service…'),
-                  searching: ui('正在寻找房间…', 'Looking for a room…'),
-                  joining: ui('已找到房间，正在加入…', 'Room found. Joining…'),
+                  connecting: t('roomSetup.connectingToTheMatchingService'),
+                  searching: t('roomSetup.lookingForARoom'),
+                  joining: t('roomSetup.roomFoundJoining'),
                 }[p.matchPhase]
               }
             </p>
@@ -160,27 +155,22 @@ export function RoomSetup({
         </section>
 
         <section className="room-card">
-          <h3>{ui('加入朋友的房间', 'Join a friend’s room')}</h3>
-          <p>
-            {ui(
-              '粘贴朋友分享的多人一起听邀请链接。',
-              'Paste a Listen Together invitation from a friend.',
-            )}
-          </p>
+          <h3>{t('roomSetup.joinAFriendsRoom')}</h3>
+          <p>{t('roomSetup.pasteAListenTogetherInvitationFromAFriend')}</p>
           <form
             className="room-join-form"
             onSubmit={(event) => {
               event.preventDefault()
               if (canJoin)
-                p.act(ui('加入房间', 'Join room'), async () => {
+                p.act(t('roomSetup.joinRoom'), async () => {
                   await p.joinRoom(link)
                   onJoined()
                 })
             }}
           >
             <textarea
-              aria-label={ui('一起听邀请链接', 'Listen Together invitation link')}
-              placeholder={ui('粘贴邀请链接…', 'Paste invitation link…')}
+              aria-label={t('roomSetup.listenTogetherInvitationLink')}
+              placeholder={t('roomSetup.pasteInvitationLink')}
               rows={2}
               value={link}
               disabled={locked}
@@ -191,7 +181,7 @@ export function RoomSetup({
             />
             <div className="room-actions">
               <button type="submit" className="secondary" disabled={!canJoin}>
-                {ui('通过链接加入', 'Join via link')}
+                {t('roomSetup.joinViaLink')}
               </button>
               {link.trim() && (
                 <button
@@ -199,13 +189,13 @@ export function RoomSetup({
                   className="text-btn"
                   disabled={locked}
                   onClick={() =>
-                    p.act(ui('检查邀请', 'Check invitation'), async () => {
+                    p.act(t('roomSetup.checkInvitation'), async () => {
                       await p.inspectInvite(link)
                       setPreviewLink(link)
                     })
                   }
                 >
-                  {ui('预览邀请', 'Preview invitation')}
+                  {t('roomSetup.previewInvitation')}
                 </button>
               )}
             </div>
@@ -213,16 +203,14 @@ export function RoomSetup({
           {previewLink === link && p.preview && (
             <div className="room-invite-preview" role="status">
               <strong>
-                {ui(
-                  '{0}的一起听',
-                  'Listen Together with {0}',
-                  p.preview.inviter?.nickname || ui('好友', 'a friend'),
-                )}
+                {t('room.invitedBy', {
+                  nickname: p.preview.inviter?.nickname || t('roomSetup.aFriend'),
+                })}
               </strong>
               <p>
                 {p.preview.roomStatus === 'EXPIRED'
-                  ? ui('邀请已过期', 'Invitation expired')
-                  : p.preview.songData?.name || ui('等待加入房间', 'Ready to join')}
+                  ? t('roomSetup.invitationExpired')
+                  : p.preview.songData?.name || t('roomSetup.readyToJoin')}
               </p>
             </div>
           )}

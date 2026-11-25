@@ -1,11 +1,16 @@
-import { mouseSide, openTool, showPrivateList, panelPage, widenPanel } from './windows'
+import {
+  createChineseProfile,
+  mouseSide,
+  openTool,
+  showPrivateList,
+  panelPage,
+  widenPanel,
+} from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rm } from 'node:fs/promises'
 
 test('Mini pushes open a player conversation while background HTTP stays idle and online contacts sort first', async () => {
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-private-notices-'))
+  const profile = await createChineseProfile('music-party-private-notices-')
   const app = await electron.launch({
     args: [
       '.',

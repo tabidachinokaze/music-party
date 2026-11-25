@@ -3,7 +3,7 @@
 // text pickers and mention composer. Copyright (C) tabidachinokaze.
 // See THIRD_PARTY_NOTICES.md.
 
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import {
   useEffect,
   useId,
@@ -42,7 +42,7 @@ export function ChatComposer({
   members,
   renderTools,
   notice,
-  submitLabel = ui('发送', 'Send'),
+  submitLabel = t('chatComposer.send'),
   composerRef,
 }: {
   value: string
@@ -140,13 +140,7 @@ export function ChatComposer({
     const next = insertComposerText(value, range, text, maxLength)
     if (!next) {
       if (isMention)
-        setError(
-          ui(
-            '最多输入 {0} 字，剩余空间不足以提及这位成员',
-            'The {0}-character limit leaves too little room for this mention',
-            maxLength,
-          ),
-        )
+        setError(t('chatComposer.theCharacterLimitLeavesTooLittleRoomFor', { maxLength }))
       draft.current?.focus({ preventScroll: true })
       return
     }
@@ -253,8 +247,8 @@ export function ChatComposer({
           ref={emojiButton}
           className="icon-btn composer-tool"
           type="button"
-          aria-label="Emoji"
-          title="Emoji"
+          aria-label={t('chatComposer.emoji')}
+          title={t('chatComposer.emoji')}
           aria-haspopup="dialog"
           aria-expanded={menu === 'Emoji'}
           aria-controls={menu === 'Emoji' ? pickerId : undefined}
@@ -267,8 +261,8 @@ export function ChatComposer({
           ref={kaomojiButton}
           className="icon-btn composer-tool"
           type="button"
-          aria-label={ui('颜文字', 'Kaomoji')}
-          title={ui('颜文字', 'Kaomoji')}
+          aria-label={t('common.kaomoji')}
+          title={t('common.kaomoji')}
           aria-haspopup="dialog"
           aria-expanded={menu === 'kaomoji'}
           aria-controls={menu === 'kaomoji' ? pickerId : undefined}
@@ -291,7 +285,7 @@ export function ChatComposer({
           ) : (
             <CornerDownLeft size={14} />
           )}
-          <span>{busy ? ui('发送中…', 'Sending…') : submitLabel}</span>
+          <span>{busy ? t('common.sending') : submitLabel}</span>
         </button>
       </div>
       {error && (
@@ -302,7 +296,7 @@ export function ChatComposer({
       {menu && (
         <ComposerPanel
           id={pickerId}
-          title={menu === 'kaomoji' ? ui('颜文字', 'Kaomoji') : menu}
+          title={menu === 'kaomoji' ? t('common.kaomoji') : t('chatComposer.emoji')}
           anchor={menu === 'Emoji' ? emojiButton.current : kaomojiButton.current}
           onClose={() => setMenu(null)}
           picker
@@ -314,11 +308,11 @@ export function ChatComposer({
           {(menu === 'kaomoji' ? composerKaomojis : composerEmojis).map((text) => (
             <button
               key={text}
-              title={ui(
-                menu === 'kaomoji' ? '插入颜文字 {0}' : '插入表情 {0}',
-                menu === 'kaomoji' ? 'Insert kaomoji {0}' : 'Insert emoji {0}',
-                text,
-              )}
+              title={
+                menu === 'kaomoji'
+                  ? t('chatComposer.insertKaomoji', { text })
+                  : t('chatComposer.insertEmoji', { text })
+              }
               type="button"
               onClick={() => insert(text)}
             >
@@ -333,7 +327,7 @@ export function ChatComposer({
           className="composer-mentions"
           id={mentionId}
           role="listbox"
-          aria-label={ui('提及成员', 'Mention a member')}
+          aria-label={t('chatComposer.mentionAMember')}
         >
           {candidates.map((member, index) => (
             <button
@@ -342,7 +336,7 @@ export function ChatComposer({
               type="button"
               role="option"
               tabIndex={-1}
-              title={ui('提及 {0}', 'Mention {0}', member.nickname)}
+              title={t('chat.mention', { nickname: member.nickname })}
               aria-label={member.nickname}
               aria-selected={index === activeIndex}
               onPointerDown={(event) => event.preventDefault()}
@@ -357,9 +351,7 @@ export function ChatComposer({
             </button>
           ))}
           {!candidates.length && (
-            <p className="composer-mention-empty">
-              {ui('没有匹配的房间成员', 'No matching room members')}
-            </p>
+            <p className="composer-mention-empty">{t('chatComposer.noMatchingRoomMembers')}</p>
           )}
         </div>
       )}

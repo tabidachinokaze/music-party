@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import type { MatchNotice } from '../../shared/match-notice'
 import type { Method } from '../../shared/types'
 
@@ -11,7 +11,7 @@ export type MatchPhase = 'connecting' | 'searching' | 'joining' | null
 type Call = (method: Method, args?: Record<string, unknown>) => Promise<any>
 function cancellable<T>(task: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
-    const abort = () => reject(new Error(ui('匹配已取消', 'Matching canceled')))
+    const abort = () => reject(new Error(t('common.matchingCanceled')))
     if (signal.aborted) {
       task.catch(() => {})
       abort()
@@ -54,16 +54,11 @@ export class RoomMatcher {
       const started = this.started
       this.close()
       if (started) void this.call('multiMatchCancel').catch(() => {})
-      this.fail(
-        new Error(
-          ui('匹配超时，请重试或换一首歌', 'Matching timed out. Try again or choose another song.'),
-        ),
-      )
+      this.fail(new Error(t('roomMatch.matchingTimedOutTryAgainOrChooseAnother')))
     }, delay)
   }
   async start(songId: string) {
-    if (!/^[1-9]\d{0,23}$/.test(songId))
-      throw new Error(ui('请先选择一首匹配用歌曲', 'Choose a song for matching first'))
+    if (!/^[1-9]\d{0,23}$/.test(songId)) throw new Error(t('common.chooseASongForMatchingFirst'))
     await this.cancel()
     const generation = ++this.generation
     const id = crypto.randomUUID()
@@ -98,11 +93,7 @@ export class RoomMatcher {
       const started = this.started
       this.close()
       if (started) void this.call('multiMatchCancel').catch(() => {})
-      this.fail(
-        error instanceof Error
-          ? error
-          : new Error(ui('匹配失败，请重试', "Couldn't find a room. Try again.")),
-      )
+      this.fail(error instanceof Error ? error : new Error(t('roomMatch.couldntFindARoomTryAgain')))
     }
   }
   private poll(generation: number) {
@@ -125,12 +116,7 @@ export class RoomMatcher {
         this.fail(
           error instanceof Error
             ? error
-            : new Error(
-                ui(
-                  '匹配通知连接已断开，请重试',
-                  'Disconnected from the matching service. Try again.',
-                ),
-              ),
+            : new Error(t('common.disconnectedFromTheMatchingServiceTryAgain')),
         )
         return
       }
@@ -148,15 +134,7 @@ export class RoomMatcher {
     if (!this.live(generation) || this.acknowledging) return
     if (notice.kind === 'failed') {
       this.close()
-      this.fail(
-        new Error(
-          ui(
-            '官方匹配未成功（{0}），请重试或换一首歌',
-            'Matching failed ({0}). Try again or choose another song.',
-            notice.reason,
-          ),
-        ),
-      )
+      this.fail(new Error(t('room.matchFailed', { reason: notice.reason })))
       return
     }
     this.acknowledging = true
@@ -167,18 +145,14 @@ export class RoomMatcher {
       if (!this.live(generation)) return
       const snapshot = body.data?.multiLtRoomSnapshot
       if (snapshot?.roomId !== notice.roomId)
-        throw new Error(
-          ui('匹配确认未返回对应房间', "The matching service didn't confirm this room"),
-        )
+        throw new Error(t('roomMatch.theMatchingServiceDidntConfirmThisRoom'))
       this.close()
       this.accept(snapshot)
     } catch (error: any) {
       if (!this.live(generation)) return
       this.close()
       this.fail(
-        error instanceof Error
-          ? error
-          : new Error(ui('匹配确认失败，请重试', "Couldn't confirm the match. Try again.")),
+        error instanceof Error ? error : new Error(t('roomMatch.couldntConfirmTheMatchTryAgain')),
       )
     }
   }

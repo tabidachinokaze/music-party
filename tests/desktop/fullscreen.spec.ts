@@ -1,8 +1,7 @@
-import { openTool } from './windows'
+import { createChineseProfile, openTool } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
 test('immersive playback and native fullscreen preserve navigation, focus and normal window size', async () => {
@@ -12,7 +11,7 @@ test('immersive playback and native fullscreen preserve navigation, focus and no
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = (server.address() as { port: number }).port
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-fullscreen-'))
+  const profile = await createChineseProfile('music-party-fullscreen-')
   const launch = () =>
     electron.launch({
       args: [

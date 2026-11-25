@@ -1,8 +1,7 @@
-import { openTool, loginFixture, widenPanel, serveArtwork } from './windows'
+import { createChineseProfile, openTool, loginFixture, widenPanel, serveArtwork } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
 test('official custom stickers load every page, upload to the library and send directly in private chat', async () => {
@@ -138,7 +137,7 @@ test('official custom stickers load every page, upload to the library and send d
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = (server.address() as any).port,
-    profile = await mkdtemp(join(tmpdir(), 'music-party-stickers-'))
+    profile = await createChineseProfile('music-party-stickers-')
   const app = await electron.launch({
     args: [
       '.',

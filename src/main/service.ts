@@ -1,4 +1,4 @@
-import { ui } from '../shared/ui-language'
+import { t } from '../shared/ui-language'
 import type { Method, Reply, Request, Trace } from '../shared/types'
 import { redact, SerialCommands } from '../shared/protocol'
 import { CHAT_MAX_LENGTH, chatTrace } from '../shared/chat'
@@ -104,18 +104,18 @@ const fields: Partial<Record<Method, string[]>> = {
 
 export function validate(request: Request): Record<string, unknown> {
   if (!request || !Object.hasOwn(endpoints, request.method))
-    throw new Error(ui('不支持的操作', 'Unsupported action.'))
+    throw new Error(t('service.unsupportedAction'))
   const args = request.args || {}
   if (typeof args !== 'object' || Array.isArray(args))
-    throw new Error(ui('参数格式不正确', 'Invalid parameter format.'))
+    throw new Error(t('service.invalidParameterFormat'))
   const allowed = fields[request.method] || []
   if (Object.keys(args).some((key) => !allowed.includes(key)))
-    throw new Error(ui('请求包含不允许的参数', 'The request contains unsupported parameters.'))
+    throw new Error(t('service.theRequestContainsUnsupportedParameters'))
   for (const key of allowed) {
     const value = args[key]
     if (key === 'allowStrangerMatch') {
       if (value !== undefined && typeof value !== 'boolean')
-        throw new Error(ui('房间公开状态无效', 'Invalid room visibility.'))
+        throw new Error(t('service.invalidRoomVisibility'))
       continue
     }
     if (key === 'emojiIds') {
@@ -125,7 +125,7 @@ export function validate(request: Request): Record<string, unknown> {
         value.length > 100 ||
         !value.every((id) => typeof id === 'string' && /^[1-9]\d{0,23}$/.test(id))
       )
-        throw new Error(ui('请选择要删除的表情', 'Select the stickers to delete.'))
+        throw new Error(t('service.selectTheStickersToDelete'))
       continue
     }
     if (key === 'emojiId' || key === 'emojiGroupId') {
@@ -133,17 +133,17 @@ export function validate(request: Request): Record<string, unknown> {
         typeof value !== 'string' ||
         !(key === 'emojiGroupId' ? /^-?\d{1,24}$/ : /^[1-9]\d{0,23}$/).test(value)
       )
-        throw new Error(ui('表情标识无效', 'Invalid sticker ID.'))
+        throw new Error(t('service.invalidStickerId'))
       continue
     }
     if (key === 'scope') {
       if (value !== 'room' && value !== 'private')
-        throw new Error(ui('表情使用场景无效', 'Invalid sticker destination.'))
+        throw new Error(t('service.invalidStickerDestination'))
       continue
     }
     if (key === 'groupId') {
       if (typeof value !== 'string' || !/^-?\d{1,24}$/.test(value))
-        throw new Error(ui('表情分组无效', 'Invalid sticker group.'))
+        throw new Error(t('service.invalidStickerGroup'))
       continue
     }
     if (
@@ -154,7 +154,7 @@ export function validate(request: Request): Record<string, unknown> {
       continue
     if (key === 'emoji') {
       const emoji = parseEmoji(value)
-      if (!emoji) throw new Error(ui('表情信息无效', 'Invalid sticker information.'))
+      if (!emoji) throw new Error(t('service.invalidStickerInformation'))
       continue
     }
     if (key === 'text') {
@@ -165,76 +165,69 @@ export function validate(request: Request): Record<string, unknown> {
         /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(value)
       )
         throw new Error(
-          ui(
-            '请输入 1–{0} 字的消息',
-            'Enter a message between 1 and {0} characters.',
-            request.method === 'privateSend' ? PRIVATE_TEXT_LIMIT : CHAT_MAX_LENGTH,
-          ),
+          t('chat.messageLimit', {
+            limit: request.method === 'privateSend' ? PRIVATE_TEXT_LIMIT : CHAT_MAX_LENGTH,
+          }),
         )
       continue
     }
     if (key === 'requestId') {
       if (typeof value !== 'string' || !/^[0-9a-f-]{36}$/i.test(value))
-        throw new Error(ui('消息请求标识无效', 'Invalid message request ID.'))
+        throw new Error(t('service.invalidMessageRequestId'))
       continue
     }
     if (key === 'cursor') {
       if (typeof value !== 'string' || !value || value.length > 2048)
-        throw new Error(ui('聊天分页标识无效', 'Invalid chat history cursor.'))
+        throw new Error(t('service.invalidChatHistoryCursor'))
       continue
     }
     if (key === 'before') {
       if (!Number.isSafeInteger(value) || Number(value) < 0)
-        throw new Error(ui('私信分页参数无效', 'Invalid message pagination parameters.'))
+        throw new Error(t('service.invalidMessagePaginationParameters'))
       continue
     }
     if (key === 'offset') {
       if (!Number.isSafeInteger(value) || Number(value) < 0 || Number(value) > 1000000)
-        throw new Error(ui('分页参数无效', 'Invalid pagination parameters.'))
+        throw new Error(t('service.invalidPaginationParameters'))
       continue
     }
     if (key === 'value') {
-      if (typeof value !== 'boolean')
-        throw new Error(ui('喜欢状态无效', 'Invalid favorite status.'))
+      if (typeof value !== 'boolean') throw new Error(t('service.invalidFavoriteStatus'))
       continue
     }
     if (key === 'kind') {
       if (!['songs', 'playlists', 'artists'].includes(String(value)))
-        throw new Error(ui('搜索类型无效', 'Invalid search type.'))
+        throw new Error(t('service.invalidSearchType'))
       continue
     }
     if (typeof value !== 'string' || !value || value.length > (key === 'ids' ? 16000 : 300))
-      throw new Error(ui('缺少或无效参数：{0}', 'Missing or invalid parameter: {0}', key))
+      throw new Error(t('service.missingOrInvalidParameter', { key }))
     if (
       ['id', 'songId', 'inviterUid', 'bizId', 'uid', 'playlistId'].includes(key) &&
       !/^\d{1,24}$/.test(value)
     )
-      throw new Error(ui('歌曲或用户 ID 无效', 'Invalid track or user ID.'))
+      throw new Error(t('service.invalidTrackOrUserId'))
     if (key === 'ids' && !/^\d{1,24}(,\d{1,24}){0,499}$/.test(value))
-      throw new Error(
-        ui('请输入最多 500 个歌曲 ID，以逗号分隔', 'Enter up to 500 comma-separated track IDs.'),
-      )
+      throw new Error(t('service.enterUpTo500CommaSeparatedTrackIds'))
     if (key === 'roomId' && !/^[\w-]{1,128}$/.test(value))
-      throw new Error(ui('房间 ID 无效', 'Invalid room ID.'))
+      throw new Error(t('service.invalidRoomId'))
   }
   if (
     PRIVATE_METHODS.has(request.method) &&
     args.uid !== undefined &&
     !/^[1-9]\d{0,23}$/.test(String(args.uid))
   )
-    throw new Error(ui('收件人或用户 ID 无效', 'Invalid recipient or user ID.'))
+    throw new Error(t('service.invalidRecipientOrUserId'))
   if (
     ['multiCreate', 'multiMatch'].includes(request.method) &&
     !/^[1-9]\d{0,23}$/.test(String(args.songId))
   )
-    throw new Error(
-      ui('请先选择一首可完整收听的匹配用歌曲', 'Choose a full-length track to start matching.'),
-    )
+    throw new Error(t('service.chooseAFullLengthTrackToStartMatching'))
   if (
     request.method === 'playlistAdd' &&
     !['uid', 'playlistId', 'songId'].every((key) => /^[1-9]\d{0,23}$/.test(String(args[key])))
   )
-    throw new Error(ui('歌单、歌曲或账号 ID 无效', 'Invalid playlist, track or account ID.'))
+    throw new Error(t('service.invalidPlaylistTrackOrAccountId'))
   return { ...args }
 }
 
@@ -297,7 +290,7 @@ export class ApiService {
         ? existing.reply
         : {
             ok: false,
-            error: ui('消息请求标识已被使用', 'That message request ID is already in use.'),
+            error: t('service.thatMessageRequestIdIsAlreadyInUse'),
           }
     if (this.sends.size >= 100) {
       const oldest = [...this.sends].find(([, entry]) => entry.settled)
@@ -305,7 +298,7 @@ export class ApiService {
       else
         return {
           ok: false,
-          error: ui('请等待正在发送的消息完成', 'Wait for the current message to finish sending.'),
+          error: t('service.waitForTheCurrentMessageToFinishSending'),
         }
     }
     const entry = { signature, reply: this.execute(request), settled: false }
@@ -320,10 +313,7 @@ export class ApiService {
     const cookie = this.cookie
     const assertSession = () => {
       if (epoch !== this.epoch)
-        throw Object.assign(
-          new Error(ui('账号已变化，请重新操作', 'The account changed. Try again.')),
-          { code: 409 },
-        )
+        throw Object.assign(new Error(t('service.theAccountChangedTryAgain')), { code: 409 })
     }
     const invoke: Invoke = async (endpoint, args) => {
       assertSession()
@@ -368,20 +358,16 @@ export class ApiService {
             PRIVATE_METHODS.has(method)) &&
           !this.cookie
         )
-          throw new Error(ui('请先扫码登录', 'Scan the QR code to sign in first.'))
+          throw new Error(t('service.scanTheQrCodeToSignInFirst'))
         if (method === 'qrCheck' && args.key !== this.activeKey)
-          throw new Error(
-            ui('二维码已更新，请扫描新的二维码', 'The QR code has changed. Scan the new code.'),
-          )
+          throw new Error(t('service.theQrCodeHasChangedScanTheNew'))
         if (method === 'playlistAdd') {
           const account = await invoke('login_status', { timeout: 12000 })
           const selfUid = String(account.body?.data?.profile?.userId || '')
           if (account.body?.data?.code === 302 || !/^[1-9]\d{0,23}$/.test(selfUid))
-            throw new Error(ui('登录已失效，请重新登录', 'Your session expired. Sign in again.'))
+            throw new Error(t('common.yourSessionExpiredSignInAgain'))
           if (selfUid !== args.uid)
-            throw new Error(
-              ui('账号已变化，请重新选择歌单', 'The account changed. Select the playlists again.'),
-            )
+            throw new Error(t('service.theAccountChangedSelectThePlaylistsAgain'))
           const detail = (await invoke('playlist_detail', { id: args.playlistId, timeout: 12000 }))
             .body
           const playlist = detail?.playlist
@@ -390,26 +376,11 @@ export class ApiService {
             String(playlist?.id) !== args.playlistId ||
             String(playlist?.creator?.userId) !== selfUid
           )
-            throw new Error(
-              ui(
-                '只能添加到当前账号创建的歌单，请刷新歌单后重试',
-                'You can only add tracks to playlists created by this account. Refresh the playlists and try again.',
-              ),
-            )
+            throw new Error(t('service.youCanOnlyAddTracksToPlaylistsCreated'))
           if (Number(playlist.specialType) === 5)
-            throw new Error(
-              ui(
-                '请使用红心按钮添加到喜欢的音乐',
-                'Use the heart button to add this track to Liked Songs.',
-              ),
-            )
+            throw new Error(t('service.useTheHeartButtonToAddThisTrack'))
           if (!Array.isArray(playlist.trackIds))
-            throw new Error(
-              ui(
-                '未能确认歌单内容，请刷新后重试',
-                'Could not verify the playlist contents. Refresh and try again.',
-              ),
-            )
+            throw new Error(t('service.couldNotVerifyThePlaylistContentsRefreshAnd'))
           if (playlist.trackIds.some((track: any) => String(track.id) === args.songId))
             return { code: 200, alreadyExists: true }
           args.data = {
@@ -427,12 +398,7 @@ export class ApiService {
         if (['multiRemove', 'multiUp', 'multiLike', 'multiRedHeart'].includes(method)) {
           const status = await invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
           if (status.body?.data?.multiLtRoomSnapshot?.roomId !== args.roomId)
-            throw new Error(
-              ui(
-                '账号已不在此房间，请重新同步',
-                'Your account has left this room. Reconnect to update its status.',
-              ),
-            )
+            throw new Error(t('common.yourAccountHasLeftThisRoomReconnectTo'))
           if (method === 'multiLike' || method === 'multiRedHeart')
             assertRoomCurrentSong(
               status.body,
@@ -449,8 +415,7 @@ export class ApiService {
               timeout: 12000,
             })
             const uid = String(account.body?.data?.profile?.userId || '')
-            if (!/^[1-9]\d*$/.test(uid))
-              throw new Error(ui('登录已失效，请重新登录', 'Your session expired. Sign in again.'))
+            if (!/^[1-9]\d*$/.test(uid)) throw new Error(t('common.yourSessionExpiredSignInAgain'))
             let cursor = '',
               found = false
             const seen = new Set<string>()
@@ -463,12 +428,7 @@ export class ApiService {
               })
               const data = response.body?.data
               if (response.body?.code !== 200 || !Array.isArray(data?.songLists))
-                throw new Error(
-                  ui(
-                    '无法确认推荐者，请刷新队列',
-                    'Could not verify who added the track. Try again when the queue updates.',
-                  ),
-                )
+                throw new Error(t('service.couldNotVerifyWhoAddedTheTrackTry'))
               const entry = data.songLists.find(
                 (row: any) =>
                   String(row.songInfo?.bizId) === args.bizId &&
@@ -476,17 +436,13 @@ export class ApiService {
               )
               if (entry) {
                 if (String(entry.rcmdUid) !== uid)
-                  throw new Error(
-                    ui('只能删除自己推荐的歌曲', 'You can only remove tracks you suggested.'),
-                  )
+                  throw new Error(t('service.youCanOnlyRemoveTracksYouSuggested'))
                 if (
                   String(
                     status.body.data.multiLtRoomSnapshot.roomPlaySongInfo?.playSong?.songBizId,
                   ) === args.bizId
                 )
-                  throw new Error(
-                    ui('不能删除正在播放的歌曲', 'You cannot remove the track currently playing.'),
-                  )
+                  throw new Error(t('service.youCannotRemoveTheTrackCurrentlyPlaying'))
                 found = true
                 break
               }
@@ -496,39 +452,24 @@ export class ApiService {
                 !data.page.cursor ||
                 seen.has(data.page.cursor)
               )
-                throw new Error(
-                  ui(
-                    '队列分页异常，请刷新后重试',
-                    'Could not read the next queue page. Try again when the queue updates.',
-                  ),
-                )
+                throw new Error(t('service.couldNotReadTheNextQueuePageTry'))
               cursor = data.page.cursor
               seen.add(cursor)
             } while (true)
-            if (!found)
-              throw new Error(
-                ui('这首推荐已不在待播队列中', 'This track is no longer in the room queue.'),
-              )
+            if (!found) throw new Error(t('service.thisTrackIsNoLongerInTheRoom'))
           }
         }
         if (method === 'privateSend' || method === 'privateInvite') {
           const account = await invoke('login_status', { cookie: this.cookie, timeout: 12000 })
           const selfUid = String(account.body?.data?.profile?.userId || '')
           if (!/^[1-9]\d*$/.test(selfUid))
-            throw Object.assign(
-              new Error(
-                ui(
-                  '登录已失效，请重新扫码登录',
-                  'Your session expired. Scan the QR code to sign in again.',
-                ),
-              ),
-              { code: 302 },
-            )
+            throw Object.assign(new Error(t('service.yourSessionExpiredScanTheQrCodeTo')), {
+              code: 302,
+            })
           if (args.uid === selfUid)
-            throw Object.assign(
-              new Error(ui('不能给自己发送私信', 'You cannot send a direct message to yourself.')),
-              { code: 400 },
-            )
+            throw Object.assign(new Error(t('common.youCannotSendADirectMessageToYourself')), {
+              code: 400,
+            })
           let text = args.text
           if (method === 'privateInvite') {
             const status = await invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
@@ -536,17 +477,9 @@ export class ApiService {
               status.body?.code !== 200 ||
               status.body?.data?.multiLtRoomSnapshot?.roomId !== args.roomId
             )
-              throw Object.assign(
-                new Error(
-                  ui(
-                    '当前房间已变化，请重新选择要分享的房间',
-                    'Your room changed. Select the room to share again.',
-                  ),
-                ),
-                {
-                  code: 409,
-                },
-              )
+              throw Object.assign(new Error(t('service.yourRoomChangedSelectTheRoomToShare')), {
+                code: 409,
+              })
             text = inviteText(String(args.roomId), selfUid)
           }
           // Exactly one validated recipient; no renderer-supplied bulk user_ids or sender identity.
@@ -600,23 +533,16 @@ export class ApiService {
           const account = (await invoke('login_status', { cookie: this.cookie, timeout: 12000 }))
             .body?.data?.profile
           if (!account?.userId)
-            throw Object.assign(new Error(ui('请先重新登录', 'Sign in again first.')), {
+            throw Object.assign(new Error(t('service.signInAgainFirst')), {
               code: 302,
             })
           if (String(account.userId) === args.uid)
-            throw Object.assign(
-              new Error(ui('不能给自己发送私信', 'You cannot send a direct message to yourself.')),
-              { code: 400 },
-            )
+            throw Object.assign(new Error(t('common.youCannotSendADirectMessageToYourself')), {
+              code: 400,
+            })
           const emoji = parseEmoji(args.emoji)!
           const token = (await invoke('register_checktoken_v3', { timeout: 12000 })).body?.token
-          if (!token)
-            throw new Error(
-              ui(
-                '未取得消息校验令牌，请重试',
-                'Could not obtain a message verification token. Try again.',
-              ),
-            )
+          if (!token) throw new Error(t('common.couldNotObtainAMessageVerificationTokenTry'))
           args.data = {
             checkToken: token,
             sendMsgBody: JSON.stringify({
@@ -657,17 +583,9 @@ export class ApiService {
           const status = await invoke('multiStatus', { cookie: this.cookie, timeout: 12000 })
           const snapshot = status.body?.data?.multiLtRoomSnapshot
           if (status.body?.code !== 200 || snapshot?.roomId !== args.roomId)
-            throw Object.assign(
-              new Error(
-                ui(
-                  '账号已不在此房间，请先恢复或重新加入',
-                  'Your account is no longer in this room. Reconnect or rejoin it.',
-                ),
-              ),
-              {
-                code: status.body?.code !== 200 ? Number(status.body?.code) || 409 : 409,
-              },
-            )
+            throw Object.assign(new Error(t('service.yourAccountIsNoLongerInThisRoom')), {
+              code: status.body?.code !== 200 ? Number(status.body?.code) || 409 : 409,
+            })
           const chatId = (snapshot.multiRoomInfoDTO ?? snapshot.roomInfo)?.chatRoomId
           if (
             !['string', 'number'].includes(typeof chatId) ||
@@ -675,12 +593,7 @@ export class ApiService {
             !/^[1-9]\d{0,23}$/.test(String(chatId))
           )
             throw Object.assign(
-              new Error(
-                ui(
-                  '房间聊天暂不可用，请刷新房间信息',
-                  'Room chat is temporarily unavailable. Try again when the room updates.',
-                ),
-              ),
+              new Error(t('service.roomChatIsTemporarilyUnavailableTryAgainWhen')),
               { code: 409 },
             )
           args.chatRoomId = String(chatId)
@@ -725,8 +638,7 @@ export class ApiService {
               source: 'song_url',
               reason: String(
                 redact(
-                  primaryError?.message ||
-                    ui('新版音源接口暂不可用', 'The new audio source is temporarily unavailable.'),
+                  primaryError?.message || t('service.theNewAudioSourceIsTemporarilyUnavailable'),
                 ),
               ),
             },
@@ -740,19 +652,11 @@ export class ApiService {
           (Number(code) !== 200 || body?.data === false || body?.data?.result === false)
         )
           throw new Error(
-            body?.message ||
-              body?.msg ||
-              ui(
-                '添加结果未确认，请刷新歌单后重试',
-                'Could not confirm the addition. Refresh the playlist and try again.',
-              ),
+            body?.message || body?.msg || t('service.couldNotConfirmTheAdditionRefreshThePlaylist'),
           )
         const validQr = method === 'qrCheck' && [800, 801, 802, 803].includes(Number(code))
         if (method === 'privateRead' && (Number(code) !== 200 || body?.data === false))
-          throw new Error(
-            body?.message ||
-              ui('私信已读状态未确认，请重试', 'Could not confirm read status. Try again.'),
-          )
+          throw new Error(body?.message || t('service.couldNotConfirmReadStatusTryAgain'))
         if (
           !body ||
           (code !== undefined && Number(code) !== 200 && !validQr) ||
@@ -763,18 +667,11 @@ export class ApiService {
           const error = new Error(
             body?.data?.failedMessage ||
               (failedType === 'MULTI_SONG_NOT_SATISFIED'
-                ? ui(
-                    '这首歌曲不符合官方多人房间的开房条件，请换一首可完整播放的歌曲后重试',
-                    'This track cannot start a NetEase group room. Choose a track that can play in full and try again.',
-                  )
+                ? t('service.thisTrackCannotStartANeteaseGroupRoom')
                 : failedType) ||
               body?.message ||
               body?.msg ||
-              ui(
-                '网易云请求失败（{0}）',
-                'NetEase request failed ({0})',
-                code ?? ui('未知响应', 'unknown response'),
-              ),
+              t('service.requestFailed', { code: code ?? t('service.unknownResponse') }),
           )
           Object.assign(error, { code: Number(code) })
           throw error
@@ -785,57 +682,32 @@ export class ApiService {
           ) &&
           body.data?.success !== true
         )
-          throw new Error(
-            ui(
-              '多人操作缺少成功确认，请查看观测记录并刷新房间状态',
-              'The room action was not confirmed. Check the request log and room status.',
-            ),
-          )
+          throw new Error(t('service.theRoomActionWasNotConfirmedCheckThe'))
         if (['multiAdd', 'multiNext'].includes(method) && body.data?.failedCode !== 0)
           throw new Error(
             body.data?.failedMsg ||
-              ui(
-                '房间未接受操作（{0}）',
-                'The room did not accept the action ({0})',
-                body.data?.failedCode ?? ui('缺少确认', 'confirmation missing'),
-              ),
+              t('room.actionRejected', {
+                code: body.data?.failedCode ?? t('service.confirmationMissing'),
+              }),
           )
         if (
           method === 'multiRedHeart' &&
           (body.data?.failedCode !== 0 || body.data?.result === false)
         )
           throw new Error(
-            body.data?.failedMsg ||
-              ui(
-                '房间红心未确认，请刷新房间',
-                'The room favorite was not confirmed. Try again when the room updates.',
-              ),
+            body.data?.failedMsg || t('service.theRoomFavoriteWasNotConfirmedTryAgain'),
           )
         if (
           ['multiRemove', 'multiUp', 'multiLike'].includes(method) &&
           (body.data?.result === false ||
             !(body.data?.failedCode === 0 || body.data?.result === true))
         )
-          throw new Error(
-            body.data?.failedMsg ||
-              ui(
-                '房间未接受操作，请刷新后重试',
-                'The room did not accept the action. Try again when the room updates.',
-              ),
-          )
+          throw new Error(body.data?.failedMsg || t('service.theRoomDidNotAcceptTheActionTry'))
         if (method === 'multiJoin' && body.data?.multiLtRoomSnapshot?.roomId !== args.roomId)
-          throw new Error(
-            ui(
-              '加入返回了不同房间，请先刷新当前房间状态',
-              'The service returned a different room. Check your current room before joining.',
-            ),
-          )
+          throw new Error(t('service.theServiceReturnedADifferentRoomCheckYour'))
         if (method === 'qrCreate') {
           this.activeKey = body.data?.unikey
-          if (!this.activeKey)
-            throw new Error(
-              ui('未取得登录二维码，请重试', 'Could not obtain a sign-in QR code. Try again.'),
-            )
+          if (!this.activeKey) throw new Error(t('service.couldNotObtainASignInQrCode'))
           const qr = await invoke('login_qr_create', { key: this.activeKey, qrimg: true })
           return { key: this.activeKey, ...qr.body.data }
         }
@@ -843,12 +715,7 @@ export class ApiService {
           // Set-Cookie attributes must not be sent back as cookies.
           const cookie = (result.cookie || []).map((item) => item.split(';')[0]).join('; ')
           if (!/(?:^|;\s*)MUSIC_U=/.test(cookie))
-            throw new Error(
-              ui(
-                '登录成功但未取得凭据，请重新扫码',
-                'Sign-in succeeded without credentials. Scan the QR code again.',
-              ),
-            )
+            throw new Error(t('service.signInSucceededWithoutCredentialsScanTheQr'))
           this.cookie = cookie
           this.epoch++
           this.uid = ''
@@ -873,12 +740,7 @@ export class ApiService {
           method === 'privateSticker' &&
           (!body.data?.msgBody?.msgId || [-2, -1].includes(body.data.msgBody.status))
         )
-          throw new Error(
-            ui(
-              '表情发送结果未确认，请刷新会话',
-              'Sticker delivery could not be confirmed. Refresh the conversation.',
-            ),
-          )
+          throw new Error(t('service.stickerDeliveryCouldNotBeConfirmedRefreshThe'))
         return stripCredentials(
           method === 'stickerPage'
             ? normalizeStickerPage(body, String(request.args!.groupId))
@@ -914,13 +776,13 @@ export class ApiService {
           error?.body?.message ||
             error?.body?.msg ||
             error?.message ||
-            ui('网易云服务暂时无法访问', 'The NetEase service is temporarily unavailable.'),
+            t('service.theNeteaseServiceIsTemporarilyUnavailable'),
         ),
       )
       trace.response =
         isChat || isPrivate
           ? {
-              error: ui('聊天请求失败（内容已隐藏）', 'Chat request failed (content hidden).'),
+              error: t('service.chatRequestFailedContentHidden'),
               code: Number(error?.code || error?.body?.code) || undefined,
             }
           : { error: message, body: trace.response || redact(error?.body) }

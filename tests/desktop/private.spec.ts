@@ -1,4 +1,5 @@
 import {
+  createChineseProfile,
   showPrivateList,
   settingsGroup,
   openTool,
@@ -9,9 +10,7 @@ import {
 } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rm } from 'node:fs/promises'
 import { inviteText } from '../../src/shared/private-messages'
 
 test('private inbox joins official invitations and shares only after recipient confirmation', async () => {
@@ -361,7 +360,7 @@ test('private inbox joins official invitations and shares only after recipient c
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const port = (server.address() as any).port,
-    profile = await mkdtemp(join(tmpdir(), 'music-party-inbox-'))
+    profile = await createChineseProfile('music-party-inbox-')
   const app = await electron.launch({
     args: [
       '.',

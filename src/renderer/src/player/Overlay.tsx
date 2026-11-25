@@ -1,4 +1,4 @@
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import { useContext } from 'react'
 import { InlineDialog, useSurfaceActive } from '../windows/Surface'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
@@ -144,7 +144,7 @@ function FloatingOverlay({
           <h2>{title}</h2>
           <button
             className="icon-btn"
-            aria-label={ui('关闭{0}', 'Close {0}', title)}
+            aria-label={t('common.close', { title })}
             disabled={!dismissible}
             onClick={() => setClosing(true)}
           >

@@ -1,14 +1,11 @@
-import { ui } from './ui-language'
+import { t } from './ui-language'
 import type { QueueSong, RoomPlayback, RoomSnapshot } from './types'
 
 function id(value: unknown): string {
   if (typeof value === 'number' && !Number.isSafeInteger(value))
-    throw new Error(
-      ui('房间 ID 精度异常，请更新 API', 'Invalid room ID precision. Update the API.'),
-    )
+    throw new Error(t('multiplayer.invalidRoomIdPrecisionUpdateTheApi'))
   const result = String(value ?? '')
-  if (!/^\d{1,24}$/.test(result))
-    throw new Error(ui('多人房间歌曲或用户 ID 无效', 'Invalid room track or user ID'))
+  if (!/^\d{1,24}$/.test(result)) throw new Error(t('multiplayer.invalidRoomTrackOrUserId'))
   return result
 }
 function finite(value: unknown, fallback = 0) {
@@ -23,13 +20,13 @@ export function parseRoomBizType(value: unknown): number | string | null {
 export function roomTypeLabel(value: unknown): string {
   switch (parseRoomBizType(value)) {
     case 1:
-      return ui('私密好友房', 'Private friends room')
+      return t('multiplayer.privateFriendsRoom')
     case 2:
-      return ui('公开好友房', 'Public friends room')
+      return t('multiplayer.publicFriendsRoom')
     case 3:
-      return ui('公开匹配房', 'Public matching room')
+      return t('multiplayer.publicMatchingRoom')
     default:
-      return ui('房间类型未知', 'Unknown room type')
+      return t('multiplayer.unknownRoomType')
   }
 }
 function queueSong(value: any): QueueSong {
@@ -42,9 +39,9 @@ function queueSong(value: any): QueueSong {
 export function parseRoomPlayback(value: any, sampledAt: number): RoomPlayback | null {
   if (!value || !Object.hasOwn(value, 'playSong')) return null
   if (!Number.isSafeInteger(value.version) || value.version < 0)
-    throw new Error(ui('房间歌曲版本无效', 'Invalid room track version'))
+    throw new Error(t('multiplayer.invalidRoomTrackVersion'))
   if (!Number.isFinite(value.playedTime) || value.playedTime < 0)
-    throw new Error(ui('房间播放进度无效', 'Invalid room playback position'))
+    throw new Error(t('multiplayer.invalidRoomPlaybackPosition'))
   const nextSongs = Array.isArray(value.nextSongs) ? value.nextSongs.map(queueSong) : []
   return {
     song: value.playSong ? queueSong(value.playSong) : null,
@@ -94,12 +91,7 @@ export function parsePreviewCreator(
 }
 export function parseSnapshot(value: any, sampledAt: number): RoomSnapshot {
   if (!value || typeof value.roomId !== 'string' || !/^[\w-]{1,128}$/.test(value.roomId))
-    throw new Error(
-      ui(
-        '响应缺少官方多人房间快照，请查看观测记录',
-        'Missing room snapshot. See the activity log.',
-      ),
-    )
+    throw new Error(t('multiplayer.missingRoomSnapshotSeeTheActivityLog'))
   // Wire names are @JSONField aliases in the official Android models.
   const users = value.multiLtRoomUserAgg ?? value.roomUserList
   const info = value.multiRoomInfoDTO ?? value.roomInfo
@@ -116,7 +108,7 @@ export function parseSnapshot(value: any, sampledAt: number): RoomSnapshot {
         const uid = id(member?.uid ?? member?.userId)
         members.set(uid, {
           uid,
-          nickname: typeof member.nickname === 'string' ? member.nickname : ui('听友', 'Listener'),
+          nickname: typeof member.nickname === 'string' ? member.nickname : t('common.listener'),
           avatar:
             typeof (member.avatar ?? member.avatarUrl) === 'string'
               ? (member.avatar ?? member.avatarUrl)

@@ -130,6 +130,34 @@ it('rejects unsafe background URIs, missing fields and values outside editor bou
     }),
   ).toHaveProperty('playerBackground.zoom', 300)
 })
+it('merges independent transparency and wallpaper changes against the latest saved background', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'music-party-background-controls-'))
+  const file = join(directory, 'settings.json')
+  try {
+    const store = new SettingsStore(file)
+    store.update({ playerBackground: { layoutTransparency: 70 } })
+    store.update({ playerBackground: { componentTransparency: 40 } })
+    store.update({ playerBackground: { popupTransparency: 57 } })
+    const wallpaper = { image: null, zoom: 180, opacity: 75, blur: 6, x: 14, y: 90 }
+    store.update({ playerBackground: wallpaper })
+    for (const invalid of [
+      {},
+      { zoom: 150 },
+      { image: null },
+      { popupTransparency: 101 },
+      { layoutTransparency: 50, unknown: 1 },
+    ])
+      expect(() => store.update({ playerBackground: invalid })).toThrow()
+    expect(new SettingsStore(file).preferences.playerBackground).toEqual({
+      ...wallpaper,
+      layoutTransparency: 70,
+      componentTransparency: 40,
+      popupTransparency: 57,
+    })
+  } finally {
+    rmSync(directory, { recursive: true, force: true })
+  }
+})
 it('leaves saved background unchanged after invalid updates and keeps defaults isolated', () => {
   const directory = mkdtempSync(join(tmpdir(), 'music-party-background-invalid-'))
   const file = join(directory, 'settings.json')
@@ -236,7 +264,7 @@ it('persists custom appearance while accepting older settings without appearance
     writeFileSync(file, JSON.stringify({ preferences: { volume: 0.3, theme: 'light' } }))
     const store = new SettingsStore(file)
     expect(store.preferences).toMatchObject({
-      language: 'zh-CN',
+      language: 'system',
       fontScale: 100,
       accentColor: null,
       volume: 0.3,
@@ -247,6 +275,10 @@ it('persists custom appearance while accepting older settings without appearance
       language: 'en',
       accentColor: '#448aff',
     })
+    for (const language of ['zh-CN', 'zh-TW', 'ja', 'system'] as const) {
+      store.update({ language })
+      expect(new SettingsStore(file).preferences.language).toBe(language)
+    }
     for (const fontScale of [79, 151, 100.5, NaN, Infinity, '125'])
       expect(() => store.update({ fontScale })).toThrow()
     for (const accentColor of ['red', '#abc', '#gggggg', 'url(javascript:alert(1))', 3])

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Song } from '../../../shared/types'
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import { songsByIds, type ApiCall } from '../music-data'
 
 /** Room lists carry display names only. Resolve credits by track ID for the rows on screen. */
@@ -34,11 +34,7 @@ export function useQueueTracks(api: ApiCall, scope: string, ids: string[]) {
         }
       } catch (error) {
         if (active)
-          setError(
-            error instanceof Error
-              ? error.message
-              : ui('歌曲信息暂时无法读取', 'Song details unavailable'),
-          )
+          setError(error instanceof Error ? error.message : t('queueTracks.songDetailsUnavailable'))
       } finally {
         if (active) setLoading(false)
       }

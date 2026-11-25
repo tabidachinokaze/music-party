@@ -1,4 +1,4 @@
-import { ui } from './ui-language'
+import { t } from './ui-language'
 // SPDX-License-Identifier: AGPL-3.0-only
 // Wire format verified against com.netease.cloudmusic.module.listentogether.im.LTMultiUserChangeMsg:
 // the IM business envelope carries serverExt.type = 30005 and serverExt.content is a
@@ -76,7 +76,7 @@ export function parseLtMemberUpdate(content: unknown): LtMemberUpdate | null {
       seen.add(id)
       members.push({
         uid: id,
-        nickname: text(member.nickname ?? member.nickName, ui('听友', 'Listener')),
+        nickname: text(member.nickname ?? member.nickName, t('common.listener')),
         avatar: text(member.avatar ?? member.avatarUrl, ''),
       })
     }

@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import {
   assertBackgroundImageDimensions,
   validateBackgroundImageBytes,
@@ -8,7 +8,7 @@ import { PLAYER_BACKGROUND_LIMITS, type PreparedPlayerBackground } from '../../s
 /** Chromium decodes local image formats; the main process validates the resulting static PNG. */
 export async function importPlayerBackground(file: File): Promise<PreparedPlayerBackground> {
   if (file.size > PLAYER_BACKGROUND_LIMITS.inputBytes)
-    throw new Error(ui('背景图片不能超过 20 MiB', 'Choose an image smaller than 20 MiB.'))
+    throw new Error(t('backgroundImport.chooseAnImageSmallerThan20Mib'))
   // A file chosen in a satellite belongs to that window's JavaScript realm.
   const bytes = new Uint8Array(await new Blob([file]).arrayBuffer())
   const { mime } = validateBackgroundImageBytes(bytes)
@@ -25,10 +25,7 @@ export async function importPlayerBackground(file: File): Promise<PreparedPlayer
     canvas.width = Math.max(1, Math.round(bitmap.width * scale))
     canvas.height = Math.max(1, Math.round(bitmap.height * scale))
     const context = canvas.getContext('2d')
-    if (!context)
-      throw new Error(
-        ui('当前环境无法处理背景图片', 'This device cannot process background images.'),
-      )
+    if (!context) throw new Error(t('backgroundImport.thisDeviceCannotProcessBackgroundImages'))
     context.imageSmoothingQuality = 'high'
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
     png = await new Promise<Blob>((resolve, reject) => {
@@ -36,18 +33,12 @@ export async function importPlayerBackground(file: File): Promise<PreparedPlayer
         (result) =>
           result
             ? resolve(result)
-            : reject(new Error(ui('背景图片转换失败', 'Could not convert the background image.'))),
+            : reject(new Error(t('backgroundImport.couldNotConvertTheBackgroundImage'))),
         'image/png',
       )
     })
   } catch (error: any) {
-    throw new Error(
-      error.message ||
-        ui(
-          '无法读取背景图片，请选择有效的 PNG、JPEG、GIF 或 WebP 图片',
-          'Could not read the image. Choose a valid PNG, JPEG, GIF or WebP file.',
-        ),
-    )
+    throw new Error(error.message || t('backgroundImport.couldNotReadTheImageChooseAValid'))
   } finally {
     bitmap?.close()
   }

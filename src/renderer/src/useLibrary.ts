@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import { useEffect, useRef, useState } from 'react'
 import type { Album, Playlist, Song } from '../../shared/types'
 import { toSong } from '../../shared/protocol'
@@ -61,8 +61,7 @@ export function useLibrary(api: ApiCall, uid: string | null) {
         if (active()) setComplete(true)
       }),
       api('likes', { uid }).then((body) => {
-        if (!Array.isArray(body.ids))
-          throw new Error(ui('喜欢列表响应异常', 'Invalid Liked Songs response'))
+        if (!Array.isArray(body.ids)) throw new Error(t('library.invalidLikedSongsResponse'))
         if (active()) {
           setLikes(new Set(body.ids.map(String)))
           setLikesReady(true)
@@ -73,7 +72,7 @@ export function useLibrary(api: ApiCall, uid: string | null) {
         setLoading(false)
         const errors = results.flatMap((result) =>
           result.status === 'rejected'
-            ? [result.reason?.message || ui('音乐库加载失败', 'Could not load your library')]
+            ? [result.reason?.message || t('library.couldNotLoadYourLibrary')]
             : [],
         )
         setError(errors.join('；'))
@@ -84,14 +83,8 @@ export function useLibrary(api: ApiCall, uid: string | null) {
     }
   }, [uid, revision])
   async function toggleLike(song: Song, desired = !likes.has(song.id)) {
-    if (!uid) throw new Error(ui('请先登录网易云账号', 'Sign in to NetEase Cloud Music first'))
-    if (!likesReady)
-      throw new Error(
-        ui(
-          '喜欢列表尚未加载完成，请稍后重试',
-          'Liked Songs is still loading. Try again in a moment.',
-        ),
-      )
+    if (!uid) throw new Error(t('common.signInToNeteaseCloudMusicFirst'))
+    if (!likesReady) throw new Error(t('library.likedSongsIsStillLoadingTryAgainIn'))
     if (likeLock.current.has(song.id)) return false
     const run = epoch.current
     likeLock.current.add(song.id)
@@ -129,7 +122,7 @@ export function useLibrary(api: ApiCall, uid: string | null) {
     playlistChanges,
     addSongToPlaylist: async (id: string, songId: string) => {
       const run = epoch.current
-      if (!uid) throw new Error(ui('请先登录网易云账号', 'Sign in to NetEase Cloud Music first'))
+      if (!uid) throw new Error(t('common.signInToNeteaseCloudMusicFirst'))
       const body = await api('playlistAdd', { uid, playlistId: id, songId })
       const exists = body.alreadyExists === true
       if (exists || run !== epoch.current) return exists
@@ -182,14 +175,12 @@ export function useSongCollection(
       let consumed = batch.length
       if (source?.artistId) {
         const body = await api('artistSongs', { id: source.artistId, offset })
-        if (!Array.isArray(body.songs))
-          throw new Error(ui('歌手歌曲响应异常', 'Invalid artist tracks response'))
+        if (!Array.isArray(body.songs)) throw new Error(t('library.invalidArtistTracksResponse'))
         items = body.songs.map(toSong)
         consumed = items.length
         hasMore = body.more === true
         count = Number(body.total || offset + items.length)
-        if (!items.length && hasMore)
-          throw new Error(ui('歌曲分页暂不可用，请重试', 'More tracks are unavailable. Try again.'))
+        if (!items.length && hasMore) throw new Error(t('library.moreTracksAreUnavailableTryAgain'))
         const seen = new Set(reset ? [] : allIds.current)
         items = items.filter((item) => {
           if (seen.has(item.id)) return false
@@ -197,12 +188,7 @@ export function useSongCollection(
           return true
         })
         if (consumed && !items.length)
-          throw new Error(
-            ui(
-              '歌手歌曲分页未继续前进，请重试',
-              'No more artist tracks could be loaded. Try again.',
-            ),
-          )
+          throw new Error(t('library.noMoreArtistTracksCouldBeLoadedTry'))
       } else {
         items = await songsByIds(api, batch)
         hasMore = offset + batch.length < allIds.current.length
@@ -251,9 +237,7 @@ export function useSongCollection(
           const body = await api('album', { id: source.albumId })
           if (run !== epoch.current) return
           if (!Array.isArray(body.songs))
-            throw new Error(
-              ui('专辑歌曲响应异常，请重试', 'Could not load album tracks. Try again.'),
-            )
+            throw new Error(t('library.couldNotLoadAlbumTracksTryAgain'))
           const items: Song[] = body.songs.map(toSong)
           setAlbumCredit({ id: source.albumId, artist: albumArtistName(body.album) })
           allIds.current = items.map((song) => song.id)
@@ -267,9 +251,7 @@ export function useSongCollection(
         if (source.playlistId) {
           const body = await api('playlist', { id: source.playlistId })
           if (!Array.isArray(body.playlist?.trackIds))
-            throw new Error(
-              ui('未获取到完整歌单，请重试', 'Could not load the entire playlist. Try again.'),
-            )
+            throw new Error(t('library.couldNotLoadTheEntirePlaylistTryAgain'))
           trackIds = body.playlist.trackIds.map((item: any) => String(item.id))
         }
         if (run !== epoch.current) return

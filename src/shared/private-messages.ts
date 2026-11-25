@@ -1,15 +1,19 @@
-import { ui } from './ui-language'
-import type { Conversation, MultiInvitation, PrivateMessage, PrivatePage } from './types'
-import { richMessageContent, messageObject } from './message-content'
+import { t } from './ui-language'
+import type {
+  Conversation,
+  MultiInvitation,
+  PrivateMessage,
+  PrivatePage,
+  MessageFallback,
+} from './types'
+import { richMessageContent, messageObject, localizedMessageText } from './message-content'
 import { neteaseAssetUrl } from './media'
 import { invitation, parseInvitation } from './protocol'
 export function conversationName(peer: Pick<Conversation, 'uid' | 'nickname'>) {
-  return peer.nickname || ui('用户 {0}', 'User {0}', peer.uid)
+  return peer.nickname || t('common.userId', { uid: peer.uid })
 }
 export function conversationPreview(contact: Conversation) {
-  return contact.fallbackPreviewEn
-    ? ui(contact.preview, contact.fallbackPreviewEn)
-    : contact.preview
+  return localizedMessageText(contact.preview, contact.fallbackPreview)
 }
 export const PRIVATE_TEXT_LIMIT = 500
 export const SEND_METHODS = new Set([
@@ -141,7 +145,7 @@ export function messageContent(
   envelope?: unknown,
 ): Pick<
   PrivateMessage,
-  'text' | 'fallbackTextEn' | 'previewOnlyText' | 'invitations' | 'attachments' | 'richText'
+  'text' | 'fallbackText' | 'previewOnlyText' | 'invitations' | 'attachments' | 'richText'
 > {
   const data = { ...messageObject(envelope), ...payload(value) }
   const invitations = findInvitations(envelope ? [data, envelope] : data)
@@ -180,30 +184,30 @@ export function messageContent(
                   ? body.text
                   : ''
   let text = label
-  let fallbackTextEn: string | undefined
+  let fallbackText: MessageFallback | undefined
   if (!text) {
     if (invitations.length) {
-      text = '邀请你加入官方多人一起听'
-      fallbackTextEn = 'Invited you to a listening room'
+      fallbackText = 'chat.invitation'
     } else if (data.song || data.playlist || data.album) {
-      const [item, type, english] = data.song
-        ? [data.song, '歌曲', 'song']
+      const key = data.song
+        ? 'chat.sharedSong'
         : data.playlist
-          ? [data.playlist, '歌单', 'playlist']
-          : [data.album, '专辑', 'album']
-      text = `[分享${type}] ${item.name || ''}`
-      fallbackTextEn = `[Shared ${english}] ${item.name || ''}`
+          ? 'chat.sharedPlaylist'
+          : 'chat.sharedAlbum'
+      const item = data.song || data.playlist || data.album
+      fallbackText = { key, name: String(item.name || '').slice(0, 10000) }
     } else if (content.attachments?.length) {
       text = content.attachments[0].title
-      fallbackTextEn = content.attachments[0].fallbackTitleEn
+      fallbackText = content.attachments[0].fallbackTitle
     } else {
-      text = '[暂不支持的私信类型]'
-      fallbackTextEn = '[Unsupported message]'
+      fallbackText = 'chat.unsupportedMessage'
     }
+    // Canonical text also feeds identity and echo matching. Localize only for display.
+    text = localizedMessageText(text, fallbackText, 'zh-CN')
   }
   return {
     text: text.slice(0, 10000),
-    ...(fallbackTextEn && { fallbackTextEn: fallbackTextEn.slice(0, 10000) }),
+    ...(fallbackText && { fallbackText }),
     ...((fileEnvelope || (!label && (content.attachments?.length || invitations.length))) && {
       previewOnlyText: true,
     }),
@@ -216,7 +220,7 @@ export function parseConversations(
   selfUid: string,
 ): { conversations: Conversation[]; more: boolean; count: number } {
   if (!Array.isArray(body?.msgs))
-    throw new Error(ui('私信会话响应格式异常，请重试', 'Couldn’t load conversations. Try again.'))
+    throw new Error(t('privateMessages.couldntLoadConversationsTryAgain'))
   const conversations: Conversation[] = []
   for (const raw of body.msgs) {
     if (!raw || typeof raw !== 'object') continue
@@ -229,7 +233,7 @@ export function parseConversations(
       nickname: profile.nickname || '',
       avatar: profile.avatarUrl || '',
       preview: preview.text,
-      ...(preview.fallbackTextEn && { fallbackPreviewEn: preview.fallbackTextEn }),
+      ...(preview.fallbackText && { fallbackPreview: preview.fallbackText }),
       time: Number(raw.lastMsgTime) || 0,
       unread: Math.max(0, Number(raw.newMsgCount) || 0),
     })
@@ -252,8 +256,7 @@ export function mergeConversations(
   return [...values.values()].sort((a, b) => b.time - a.time)
 }
 export function parsePrivatePage(body: any, selfUid: string, peerUid: string): PrivatePage {
-  if (!Array.isArray(body?.msgs))
-    throw new Error(ui('私信内容响应格式异常，请重试', 'Couldn’t load messages. Try again.'))
+  if (!Array.isArray(body?.msgs)) throw new Error(t('privateMessages.couldntLoadMessagesTryAgain'))
   const messages: PrivateMessage[] = []
   const times: number[] = []
   for (const raw of body.msgs) {
@@ -333,7 +336,7 @@ export function mergePrivate(
   return [...values.values()].sort((a, b) => a.time - b.time || a.id.localeCompare(b.id))
 }
 export function inviteText(roomId: string, inviterUid: string): string {
-  return `邀请你来网易云音乐一起听：${invitation({ roomId, inviterUid, role: 'host' })}`
+  return t('private.invitationText', { link: invitation({ roomId, inviterUid, role: 'host' }) })
 }
 export function privateTrace(body: any) {
   return {

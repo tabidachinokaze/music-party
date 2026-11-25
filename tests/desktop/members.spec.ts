@@ -1,9 +1,7 @@
-import { expectRoomHeaderSingleLine, openTool, panelPage } from './windows'
+import { createChineseProfile, expectRoomHeaderSingleLine, openTool, panelPage } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rm } from 'node:fs/promises'
 
 test('members show complete recommendation counts, distinct played occurrences and own pending actions', async () => {
   const wav = Buffer.alloc(44 + 8000 * 2 * 30)
@@ -25,7 +23,7 @@ test('members show complete recommendation counts, distinct played occurrences a
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   const audioUrl = `http://127.0.0.1:${(server.address() as any).port}/audio.wav`,
-    profile = await mkdtemp(join(tmpdir(), 'music-party-members-'))
+    profile = await createChineseProfile('music-party-members-')
   const app = await electron.launch({
     args: [
       '.',

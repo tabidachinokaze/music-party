@@ -1,4 +1,4 @@
-import { ui } from './ui-language'
+import { t } from './ui-language'
 import type { MultiInvitation, MusicianCredit, Room, Song } from './types'
 
 export function parseInvitation(input: string): MultiInvitation {
@@ -10,57 +10,32 @@ export function parseInvitation(input: string): MultiInvitation {
     .replace(/&amp;|&#0*38;|&#x0*26;/gi, '&')
   const destination = normalized.match(/\]\(\s*<?(https:\/\/[^\s<>"\)]+)>?\s*\)/)
   const match = destination || normalized.match(/https:\/\/[^\s<>"“”\]\)]+/)
-  if (!match)
-    throw new Error(
-      ui(
-        '请粘贴网易云多人一起听的完整邀请链接',
-        'Paste the full NetEase Listen Together invitation link',
-      ),
-    )
+  if (!match) throw new Error(t('protocol.pasteTheFullNeteaseListenTogetherInvitationLink'))
   let url: URL
   try {
     url = new URL(destination ? destination[1] : match[0])
   } catch {
-    throw new Error(ui('邀请链接格式不正确', 'Invalid invitation link'))
+    throw new Error(t('protocol.invalidInvitationLink'))
   }
   if (url.hostname !== 'st.music.163.com' || url.username || url.password || url.port)
-    throw new Error(
-      ui('请使用网易云官方多人邀请链接', 'Use an official NetEase group room invitation link'),
-    )
+    throw new Error(t('protocol.useAnOfficialNeteaseGroupRoomInvitationLink'))
   const path = url.pathname.replace(/\/$/, '')
   if (path === '/listen-together/share')
-    throw new Error(
-      ui(
-        '这是双人一起听邀请，请从官方 App 的多人房间复制链接',
-        'This invitation is for two listeners. Copy a group room link from the official app.',
-      ),
-    )
+    throw new Error(t('protocol.thisInvitationIsForTwoListenersCopyA'))
   if (path !== '/listen-together/multishare/index.html')
-    throw new Error(
-      ui('不是受支持的网易云多人邀请链接', 'Unsupported NetEase group invitation link'),
-    )
+    throw new Error(t('protocol.unsupportedNeteaseGroupInvitationLink'))
   if (
     url.searchParams.getAll('roomId').length !== 1 ||
     url.searchParams.getAll('inviterUid').length !== 1 ||
     url.searchParams.getAll('isFLT').length > 1
   )
-    throw new Error(ui('邀请参数重复或缺失', 'Missing or duplicate invitation parameters'))
+    throw new Error(t('protocol.missingOrDuplicateInvitationParameters'))
   if (url.searchParams.has('isFLT') && url.searchParams.get('isFLT') !== 'false')
-    throw new Error(
-      ui(
-        '此链接是跟听模式，目前仅接入官方多人一起听',
-        'This is a follow-along link. Use a Listen Together group invitation.',
-      ),
-    )
+    throw new Error(t('protocol.thisIsAFollowAlongLinkUseA'))
   const roomId = url.searchParams.get('roomId') || ''
   const inviterUid = url.searchParams.get('inviterUid') || ''
   if (!/^[\w-]{1,128}$/.test(roomId) || !/^\d{1,24}$/.test(inviterUid))
-    throw new Error(
-      ui(
-        '邀请缺少有效的 roomId 或 inviterUid',
-        'The invitation does not contain a valid room or inviter ID',
-      ),
-    )
+    throw new Error(t('protocol.theInvitationDoesNotContainAValidRoom'))
   return { roomId, inviterUid, isFLT: false }
 }
 
@@ -89,7 +64,7 @@ export function toSong(song: any): Song {
   const albumId = String(album?.id || '')
   return {
     id: String(song.id),
-    name: song.name || ui('未知歌曲', 'Unknown track'),
+    name: song.name || t('common.unknownTrack'),
     artist: artists.map((credit) => credit.name).join(' / '),
     ...(artists.length ? { artists } : {}),
     ...(composers.length ? { composers } : {}),
@@ -115,14 +90,14 @@ export function redact(value: unknown): unknown {
         /cookie|token|secret|authorization|password|MUSIC_[UA]|csrf|NMTID|qrimg|qrurl|unikey|^key$|avatar|nickname|^url$|^msg$|^text$|msgBody|msgRichText|mainStateText|^content$|^emoji$/i.test(
           key,
         )
-          ? '[已隐藏]'
+          ? t('protocol.valueRedacted')
           : redact(item),
       ]),
     )
   if (typeof value === 'string')
     return value
-      .replace(/https?:\/\/\S+/g, '[链接已隐藏]')
-      .replace(/(?:MUSIC_[UA]|__csrf|NMTID)=[^;\s]+/g, '[凭据已隐藏]')
+      .replace(/https?:\/\/\S+/g, () => t('protocol.linkRedacted'))
+      .replace(/(?:MUSIC_[UA]|__csrf|NMTID)=[^;\s]+/g, () => t('protocol.credentialsRedacted'))
   return value
 }
 

@@ -1,4 +1,4 @@
-import { ui, getUiLanguage } from '../../shared/ui-language'
+import { t, getUiLanguage } from '../../shared/ui-language'
 import { useEffect, useRef, useState } from 'react'
 import type { ChatEmoji, ChatMessage, Room } from '../../shared/types'
 import { CHAT_MAX_LENGTH, mergeChat, parseChatPage } from '../../shared/chat'
@@ -15,7 +15,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
   const [draft, setDraft] = useState('')
   const [more, setMore] = useState(false)
   const [unread, setUnread] = useState(0)
-  const [lastUpdate, setLastUpdate] = useState('')
+  const [lastUpdate, setLastUpdate] = useState<number | null>(null)
   const [visible, setVisibleState] = useState(false)
   const visibleRef = useRef(false)
   visibleRef.current = visible || displayed
@@ -63,7 +63,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
         if (!hasLoaded.current || older) {
           if (page.more && (!page.cursor || page.cursor === cursor)) {
             setMore(false)
-            setError(ui('暂时无法读取更早的聊天记录', 'Older messages are temporarily unavailable'))
+            setError(t('roomChat.olderMessagesAreTemporarilyUnavailable'))
           } else {
             olderCursor.current = page.cursor
             setMore(page.more)
@@ -71,10 +71,10 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
           }
         } else setError('')
         hasLoaded.current = true
-        setLastUpdate(new Date().toLocaleTimeString(getUiLanguage()))
+        setLastUpdate(Date.now())
       } catch (e: any) {
         if (run === epoch.current)
-          setError(e.message || ui('聊天记录暂不可用', 'Chat history is temporarily unavailable'))
+          setError(e.message || t('roomChat.chatHistoryIsTemporarilyUnavailable'))
       } finally {
         if (run === epoch.current) setLoading(false)
       }
@@ -99,7 +99,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
     setUnread(0)
     setSending(false)
     setLoading(false)
-    setLastUpdate('')
+    setLastUpdate(null)
     if (!room || !account) return
     let stopped = false
     let timer: ReturnType<typeof setTimeout>
@@ -124,7 +124,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
     if (!room || !account || !room.chatRoomId || sendLock.current) return
     const text = emoji ? `[${emoji.emojiName}]` : draft.trim()
     if (!text || text.length > CHAT_MAX_LENGTH) {
-      setError(ui('请输入 1–{0} 字的消息', 'Enter a message of 1–{0} characters', CHAT_MAX_LENGTH))
+      setError(t('roomChat.enterAMessageOf1Characters', { limit: CHAT_MAX_LENGTH }))
       return
     }
     const run = epoch.current
@@ -133,7 +133,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
       id: `local:${requestId}`,
       roomId: room.roomId,
       uid: String(account.userId),
-      nickname: account.nickname || ui('我', 'Me'),
+      nickname: account.nickname || t('common.me'),
       avatar: account.avatarUrl || '',
       time: Date.now(),
       text,
@@ -176,18 +176,12 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
       const ambiguous = e.deliveryUnknown === true
       const message =
         e.code === 405
-          ? ui('发送过于频繁，请稍后再发', 'You’re sending too quickly. Try again in a moment.')
+          ? t('roomChat.youreSendingTooQuicklyTryAgainInA')
           : e.code === 407
-            ? ui(
-                '消息未通过服务端检查，请修改后重试',
-                'The server rejected this message. Edit it and try again.',
-              )
+            ? t('roomChat.theServerRejectedThisMessageEditItAnd')
             : ambiguous
-              ? ui(
-                  '发送结果未确认，请等待聊天记录更新后再决定是否重发',
-                  'Delivery unconfirmed. Wait for the chat to update before resending.',
-                )
-              : e.message || ui('发送失败', 'Send failed')
+              ? t('roomChat.deliveryUnconfirmedWaitForTheChatToUpdate')
+              : e.message || t('common.sendFailed')
       update(
         mergeChat(messagesRef.current, [
           { ...local, delivery: ambiguous ? 'uncertain' : 'failed', error: message },
@@ -218,7 +212,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
             id: `local:${receipt.requestId}`,
             roomId: target.roomId,
             uid: receipt.senderUid,
-            nickname: account?.nickname || ui('我', 'Me'),
+            nickname: account?.nickname || t('common.me'),
             avatar: account?.avatarUrl || '',
             time: receipt.time,
             text: receipt.text,
@@ -246,7 +240,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
     setDraft,
     more,
     unread,
-    lastUpdate,
+    lastUpdate: lastUpdate === null ? '' : new Date(lastUpdate).toLocaleTimeString(getUiLanguage()),
     visible,
     setVisible,
     loadOlder: () => fetchMessages(true),

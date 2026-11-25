@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import { rememberRecentStickers } from './recent-stickers'
 import { PrivateHistoryGaps } from '../../shared/private-history-gaps'
 import { useEffect, useRef, useState } from 'react'
@@ -194,12 +194,7 @@ export function usePrivateMessages(
           (!page.count ||
             page.conversations.every((c) => convRef.current.some((old) => old.uid === c.uid)))
         )
-          throw new Error(
-            ui(
-              '会话分页未继续前进，请稍后刷新',
-              'Couldn’t load more conversations. Refresh to try again.',
-            ),
-          )
+          throw new Error(t('privateMessages.couldntLoadMoreConversationsRefreshToTryAgain'))
         updateConversations(
           mergeConversations(
             convRef.current,
@@ -222,7 +217,7 @@ export function usePrivateMessages(
         void refreshPresence([...convRef.current, ...contactsRef.current])
       } catch (e: any) {
         if (epoch === accountEpoch.current)
-          setConversationError(e.message || ui('私信列表加载失败', 'Couldn’t load conversations'))
+          setConversationError(e.message || t('privateMessages.couldntLoadConversations'))
       } finally {
         if (epoch === accountEpoch.current) setConversationBusy(false)
       }
@@ -280,7 +275,7 @@ export function usePrivateMessages(
       if (selectedRef.current?.uid === peer.uid) setReadError('')
     } catch (error: any) {
       if (accountRun === accountEpoch.current && selectedRef.current?.uid === peer.uid)
-        setReadError(error.message || ui('已读状态同步失败', 'Couldn’t sync read receipts'))
+        setReadError(error.message || t('privateMessages.readReceiptSyncFailed'))
     } finally {
       if (accountRun === accountEpoch.current) readPending.current.delete(peer.uid)
     }
@@ -313,12 +308,7 @@ export function usePrivateMessages(
         updateMessages(mergePrivate(messagesRef.current, page.messages))
         if ((older && gapCursor === null) || !initializedHistory.current) {
           if (page.more && (!page.before || (requestBefore && page.before >= requestBefore)))
-            throw new Error(
-              ui(
-                '历史分页没有继续前进，请刷新重试',
-                'Couldn’t load older messages. Refresh to try again.',
-              ),
-            )
+            throw new Error(t('privateMessages.couldntLoadOlderMessagesRefreshToTryAgain'))
           before.current = page.before
           setHistoryMore(page.more)
         }
@@ -343,7 +333,7 @@ export function usePrivateMessages(
         }
       } catch (e: any) {
         if (epoch === historyEpoch.current)
-          setHistoryError(e.message || ui('私信内容加载失败', 'Couldn’t load messages'))
+          setHistoryError(e.message || t('privateMessages.couldntLoadMessages'))
       } finally {
         if (epoch === historyEpoch.current) setHistoryBusy(false)
       }
@@ -561,8 +551,8 @@ export function usePrivateMessages(
           time: Math.max(existing?.time || 0, notice.timestamp),
           preview:
             notice.timestamp >= (existing?.time || 0) ? notice.text : existing?.preview || '',
-          fallbackPreviewEn:
-            notice.timestamp >= (existing?.time || 0) ? undefined : existing?.fallbackPreviewEn,
+          fallbackPreview:
+            notice.timestamp >= (existing?.time || 0) ? undefined : existing?.fallbackPreview,
           unread: Math.max(existing?.unread || 0, records.length),
         }
         updateConversations(mergeConversations(convRef.current, [peer]))
@@ -635,7 +625,7 @@ export function usePrivateMessages(
       const body = await api('follows', { uid: selfUid, offset })
       if (epoch !== accountEpoch.current) return
       if (!Array.isArray(body.follow))
-        throw new Error(ui('关注列表响应异常', 'Couldn’t load the list of people you follow'))
+        throw new Error(t('privateMessages.couldntLoadTheListOfPeopleYouFollow'))
       const people: Conversation[] = body.follow
         .filter((p: any) => /^[1-9]\d*$/.test(String(p.userId)) && String(p.userId) !== selfUid)
         .map((p: any) => ({
@@ -651,7 +641,7 @@ export function usePrivateMessages(
         (!body.follow.length ||
           (older && people.every((person) => contacts.some((old) => old.uid === person.uid))))
       )
-        throw new Error(ui('联系人分页暂不可用', 'More contacts are temporarily unavailable'))
+        throw new Error(t('privateMessages.moreContactsAreTemporarilyUnavailable'))
       contactsOffset.current = offset + body.follow.length
       setContacts((old) => (older ? mergeConversations(old, people) : people))
       setContactsMore(body.more === true)
@@ -739,7 +729,7 @@ export function usePrivateMessages(
                 .map((message) => message.time),
             ),
             preview: text,
-            fallbackPreviewEn: undefined,
+            fallbackPreview: undefined,
           },
         ]),
       )
@@ -748,11 +738,8 @@ export function usePrivateMessages(
       if (userEpoch !== accountEpoch.current) return false
       if (selectedRef.current?.uid === peer.uid) {
         const message = e.deliveryUnknown
-          ? ui(
-              '发送结果未确认，请刷新私信后再决定是否重发',
-              'Delivery unconfirmed. Refresh the conversation before resending.',
-            )
-          : e.message || ui('发送失败，请重试', 'Couldn’t send. Try again.')
+          ? t('privateMessages.deliveryUnconfirmedRefreshTheConversationBeforeResending')
+          : e.message || t('common.couldntSendTryAgain')
         updateMessages(
           mergePrivate(messagesRef.current, [
             { ...local, delivery: e.deliveryUnknown ? 'uncertain' : 'failed', error: message },
@@ -766,7 +753,7 @@ export function usePrivateMessages(
             {
               ...local,
               delivery: e.deliveryUnknown ? 'uncertain' : 'failed',
-              error: e.message || ui('发送失败，请重试', 'Couldn’t send. Try again.'),
+              error: e.message || t('common.couldntSendTryAgain'),
             },
           ])
       }

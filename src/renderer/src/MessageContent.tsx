@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import { useSurfaceActive } from './windows/Surface'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
@@ -22,10 +22,10 @@ import { Overlay } from './player/Overlay'
 
 function resourceLabels(): Record<string, string> {
   return {
-    song: ui('单曲', 'Song'),
-    album: ui('专辑', 'Album'),
-    playlist: ui('歌单', 'Playlist'),
-    artist: ui('歌手', 'Artist'),
+    song: t('messageContent.song'),
+    album: t('common.album'),
+    playlist: t('messageContent.playlist'),
+    artist: t('common.artist'),
     mv: 'MV',
   }
 }
@@ -59,10 +59,8 @@ function Attachment({
   api?: ApiCall
   accountKey?: string
 }) {
-  const title = item.fallbackTitleEn ? ui(item.title, item.fallbackTitleEn) : item.title
-  const subtitle = item.fallbackSubtitleEn
-    ? ui(item.subtitle || '', item.fallbackSubtitleEn)
-    : item.subtitle
+  const title = item.fallbackTitle ? t(item.fallbackTitle) : item.title
+  const subtitle = item.fallbackSubtitle ? t(item.fallbackSubtitle) : item.subtitle
   const active = useSurfaceActive()
   const [failed, setFailed] = useState(false)
   const [preview, setPreview] = useState(false)
@@ -139,10 +137,7 @@ function Attachment({
         })
         if (current.current !== account) return
         if (!reply.ok || !reply.receipt?.emoji)
-          throw new Error(
-            reply.error ||
-              ui('表情保存未确认，请刷新列表', 'Sticker save unconfirmed. Refresh the list.'),
-          )
+          throw new Error(reply.error || t('messageContent.stickerSaveUnconfirmedRefreshTheList'))
         rememberSticker(account, source, reply.receipt.emoji)
       }
       stickersChanged(account)
@@ -150,7 +145,7 @@ function Attachment({
       setMenu(null)
     } catch (error: any) {
       if (current.current === account)
-        setError(error.message || ui('添加表情失败', 'Couldn’t add the sticker'))
+        setError(error.message || t('messageContent.couldntAddTheSticker'))
     } finally {
       if (current.current === account) setSaving(false)
     }
@@ -194,7 +189,7 @@ function Attachment({
           <button
             type="button"
             className="message-image"
-            aria-label={ui('查看图片：{0}', 'View image: {0}', title)}
+            aria-label={t('messageContent.viewImage', { title })}
             onClick={() => setPreview(true)}
             onContextMenu={(event) => {
               if (!source || !api || !accountKey) return
@@ -222,7 +217,7 @@ function Attachment({
         ) : (
           <div className="message-media-missing">
             <ImageOff size={18} />
-            {ui('{0} · 图片暂不可用', '{0} · Image unavailable', title)}
+            {t('messageContent.imageUnavailable', { title })}
           </div>
         )}
         {menu &&
@@ -239,17 +234,17 @@ function Attachment({
                 onClick={saveSticker}
               >
                 {saved
-                  ? ui('已添加到我的表情包', 'Added to my stickers')
+                  ? t('common.addedToMyStickers')
                   : saving
-                    ? ui('正在添加…', 'Adding…')
-                    : ui('添加到我的表情包', 'Add to my stickers')}
+                    ? t('common.adding')
+                    : t('common.addToMyStickers')}
               </button>
             </div>,
             document.body,
           )}
         {error && <small role="alert">{error}</small>}
         {preview && (
-          <Overlay title={ui('图片预览', 'Image preview')} wide onClose={() => setPreview(false)}>
+          <Overlay title={t('messageContent.imagePreview')} wide onClose={() => setPreview(false)}>
             <img
               className="message-image-preview"
               src={item.url}
@@ -264,10 +259,10 @@ function Attachment({
                 onClick={saveSticker}
               >
                 {saved
-                  ? ui('已添加到我的表情包', 'Added to my stickers')
+                  ? t('common.addedToMyStickers')
                   : saving
-                    ? ui('正在添加…', 'Adding…')
-                    : ui('添加到我的表情包', 'Add to my stickers')}
+                    ? t('common.adding')
+                    : t('common.addToMyStickers')}
               </button>
             )}
           </Overlay>
@@ -279,7 +274,7 @@ function Attachment({
       <div className="message-media">
         <small>{title}</small>
         {!item.url || failed ? (
-          <p>{ui('媒体暂不可用', 'Media unavailable')}</p>
+          <p>{t('messageContent.mediaUnavailable')}</p>
         ) : item.kind === 'audio' ? (
           <audio
             ref={audio}
@@ -311,7 +306,7 @@ function Attachment({
         className="message-resource"
         onClick={open}
         disabled={!playableSong && !internalAlbum && !item.actionUrl}
-        aria-label={`${playableSong ? (room ? ui('试听或推歌', 'Preview or recommend') : ui('播放', 'Play')) : internalAlbum ? ui('查看专辑', 'View album') : ui('打开资源', 'Open shared item')} ${title}`}
+        aria-label={`${playableSong ? (room ? t('messageContent.previewOrRecommend') : t('common.play')) : internalAlbum ? t('messageContent.viewAlbum') : t('messageContent.openSharedItem')} ${title}`}
       >
         {item.cover && !failed ? (
           <img
@@ -329,14 +324,14 @@ function Attachment({
         <span className="message-resource-copy">
           <span className="message-resource-kind">
             {resourceLabels()[item.resourceType || ''] ||
-              (item.kind === 'file' ? ui('文件', 'File') : ui('分享', 'Shared item'))}
+              (item.kind === 'file' ? t('common.file') : t('messageContent.sharedItem'))}
           </span>
           <strong>{title}</strong>
           <small>
             {subtitle ||
               (item.kind === 'file'
-                ? ui('文件', 'File')
-                : ui('网易云分享', 'Shared on NetEase Cloud Music'))}
+                ? t('common.file')
+                : t('messageContent.sharedOnNeteaseCloudMusic'))}
           </small>
         </span>
         {playableSong ? (
@@ -354,10 +349,10 @@ function Attachment({
       {room && playableSong && (
         <div className="message-track-actions">
           <button type="button" onClick={() => onAudition(playableSong)}>
-            <Headphones size={13} /> {ui('本机试听', 'Preview locally')}
+            <Headphones size={13} /> {t('messageContent.previewLocally')}
           </button>
           <button type="button" onClick={() => onRecommend(playableSong)}>
-            <ListPlus size={13} /> {ui('推荐到房间', 'Recommend to room')}
+            <ListPlus size={13} /> {t('messageContent.recommendToRoom')}
           </button>
         </div>
       )}
@@ -457,17 +452,12 @@ export function MessageContent({
       {children}
       {error && <small role="alert">{error}</small>}
       {songChoice && (
-        <Overlay title={ui('歌曲操作', 'Song actions')} onClose={() => setSongChoice(null)}>
+        <Overlay title={t('messageContent.songActions')} onClose={() => setSongChoice(null)}>
           <p className="overlay-intro">
             {songChoice.name}
             {songChoice.artist ? ` · ${songChoice.artist}` : ''}
           </p>
-          <p className="overlay-intro">
-            {ui(
-              '试听仅在本机播放，房间继续一起听。',
-              'Play a preview on this device while the room keeps listening.',
-            )}
-          </p>
+          <p className="overlay-intro">{t('messageContent.playAPreviewOnThisDeviceWhileThe')}</p>
           <div className="row-actions">
             <button
               className="secondary"
@@ -476,7 +466,7 @@ export function MessageContent({
                 onAudition(songChoice)
               }}
             >
-              {ui('试听', 'Preview')}
+              {t('common.preview')}
             </button>
             <button
               className="primary"
@@ -485,7 +475,7 @@ export function MessageContent({
                 onSong(songChoice)
               }}
             >
-              {ui('推歌', 'Recommend')}
+              {t('messageContent.recommend')}
             </button>
           </div>
         </Overlay>

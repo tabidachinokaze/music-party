@@ -1,4 +1,5 @@
 import {
+  createChineseProfile,
   expectRoomHeaderSingleLine,
   settingsGroup,
   openTool,
@@ -8,9 +9,7 @@ import {
 } from './windows'
 import { test, expect, _electron as electron, type Locator } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rm } from 'node:fs/promises'
 
 test('application pages keep their controls and content inside small windows at larger font sizes', async () => {
   test.setTimeout(90000)
@@ -198,7 +197,7 @@ test('application pages keep their controls and content inside small windows at 
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   port = (server.address() as any).port
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-layout-'))
+  const profile = await createChineseProfile('music-party-layout-')
   const app = await electron.launch({
     args: [
       '.',

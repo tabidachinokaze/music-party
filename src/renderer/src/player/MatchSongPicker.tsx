@@ -2,7 +2,7 @@ import { Check, Disc3, Heart, Search } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { toSong } from '../../../shared/protocol'
 import type { Song } from '../../../shared/types'
-import { ui } from '../../../shared/ui-language'
+import { t } from '../../../shared/ui-language'
 import { readSearchPage, type ApiCall } from '../music-data'
 import { SearchHistory, useSearchHistory } from '../SearchHistory'
 import { useScrollPagination } from '../useScrollPagination'
@@ -64,11 +64,7 @@ export function MatchSongPicker({
       setResults({ songs: [...songs, ...items.map(toSong)], nextOffset, more })
     } catch (cause) {
       if (run === generation.current)
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : ui('搜索失败，请重试', 'Search failed. Try again.'),
-        )
+        setError(cause instanceof Error ? cause.message : t('matchSongPicker.searchFailedTryAgain'))
     } finally {
       if (run === generation.current) setLoading(false)
     }
@@ -95,21 +91,21 @@ export function MatchSongPicker({
           <input
             ref={input}
             type="search"
-            aria-label={ui('搜索匹配用歌曲', 'Find a song for matching')}
-            placeholder={ui('搜索歌曲或歌手', 'Search songs or artists')}
+            aria-label={t('matchSongPicker.findASongForMatching')}
+            placeholder={t('matchSongPicker.searchSongsOrArtists')}
             value={query}
             onChange={(event) => editQuery(event.target.value)}
           />
         </label>
         <button type="submit" className="secondary" disabled={!query.trim() || loading}>
-          {ui('搜索', 'Search')}
+          {t('common.search')}
         </button>
       </form>
       <div
         className="match-song-list"
         data-list-viewport=""
         role="group"
-        aria-label={ui('匹配歌曲搜索结果', 'Matching song results')}
+        aria-label={t('matchSongPicker.matchingSongResults')}
         aria-busy={loading}
       >
         {!query.trim() && (
@@ -123,7 +119,7 @@ export function MatchSongPicker({
         )}
         {!results && !loading && !error && selected && (
           <p className="match-song-status">
-            {ui('当前选择：{0}', 'Current selection: {0}', selected.name)}
+            {t('matchSongPicker.currentSelection', { name: selected.name })}
           </p>
         )}
         {results?.songs.map((song) => (
@@ -132,7 +128,7 @@ export function MatchSongPicker({
             type="button"
             className="match-song-option"
             aria-current={song.id === selected?.id ? 'true' : undefined}
-            title={ui('选择《{0}》', 'Choose “{0}”', song.name)}
+            title={t('matchSongPicker.choose', { name: song.name })}
             onClick={() => onSelect(song)}
           >
             {song.cover ? (
@@ -152,7 +148,7 @@ export function MatchSongPicker({
                   role="img"
                   data-liked={likes.has(song.id)}
                   aria-label={
-                    likes.has(song.id) ? ui('已红心', 'Liked') : ui('未红心', 'Not liked')
+                    likes.has(song.id) ? t('matchSongPicker.liked') : t('matchSongPicker.notLiked')
                   }
                 />
               )}
@@ -161,20 +157,20 @@ export function MatchSongPicker({
         ))}
         {loading && (
           <p className="match-song-status" role="status">
-            {ui('正在搜索歌曲…', 'Searching for tracks…')}
+            {t('matchSongPicker.searchingForTracks')}
           </p>
         )}
         {error && (
           <div className="match-song-status" role="alert">
             {error}
             <button className="text-btn" onClick={() => void search(!!results?.more)}>
-              {ui('重试', 'Retry')}
+              {t('common.retry')}
             </button>
           </div>
         )}
         {results && !results.songs.length && !loading && !error && (
           <p className="match-song-status" role="status">
-            {ui('没有找到匹配的歌曲', 'No matching songs')}
+            {t('matchSongPicker.noMatchingSongs')}
           </p>
         )}
         <div ref={sentinel} className="pagination-sentinel" aria-hidden="true" />

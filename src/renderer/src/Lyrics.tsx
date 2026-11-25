@@ -1,14 +1,14 @@
-import { getUiLanguage, ui } from '../../shared/ui-language'
+import { getUiLanguage, t } from '../../shared/ui-language'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import { AudioLines, Languages, LoaderCircle, LocateFixed, RotateCcw } from 'lucide-react'
 import { parseLyrics, type ApiCall, type LyricLine } from './music-data'
 
 const lyricMessages = () => ({
-  idle: ui('播放一首歌，让歌词在这里流动', 'Play a track to see its lyrics'),
-  loading: ui('正在加载歌词…', 'Loading lyrics…'),
-  instrumental: ui('纯音乐，请欣赏', 'Instrumental'),
-  missing: ui('这首歌暂时没有歌词', 'Lyrics are unavailable for this track'),
-  failed: ui('歌词暂时无法加载', 'Could not load lyrics'),
+  idle: t('lyrics.playATrackToSeeItsLyrics'),
+  loading: t('lyrics.loadingLyrics'),
+  instrumental: t('common.instrumental'),
+  missing: t('common.lyricsAreUnavailableForThisTrack'),
+  failed: t('lyrics.couldNotLoadLyrics'),
   ready: '',
 })
 
@@ -125,11 +125,9 @@ export function Lyrics({
           <button
             className="translation-switch"
             type="button"
-            aria-label={ui('显示歌词翻译', 'Show lyric translation')}
+            aria-label={t('common.showLyricTranslation')}
             title={
-              showTranslation
-                ? ui('隐藏歌词翻译', 'Hide lyric translation')
-                : ui('显示歌词翻译', 'Show lyric translation')
+              showTranslation ? t('common.hideLyricTranslation') : t('common.showLyricTranslation')
             }
             aria-pressed={showTranslation}
             onClick={() => {
@@ -137,13 +135,13 @@ export function Lyrics({
               toggleTranslation()
             }}
           >
-            {getUiLanguage() === 'en' ? <Languages size={14} aria-hidden="true" /> : '译'}
+            {getUiLanguage() !== 'zh-CN' ? <Languages size={14} aria-hidden="true" /> : '译'}
           </button>
         </div>
       )}
       <div
         className={`lyrics ${lines.length ? '' : 'lyrics-empty'}`}
-        aria-label={ui('当前歌曲歌词', 'Current track lyrics')}
+        aria-label={t('lyrics.currentTrackLyrics')}
         ref={container}
         onWheel={readManually}
         onTouchMove={readManually}
@@ -163,7 +161,7 @@ export function Lyrics({
             <p role="status">{message}</p>
             {status === 'failed' && (
               <button className="text-btn" onClick={retry}>
-                <RotateCcw size={13} /> {ui('重试歌词', 'Retry loading lyrics')}
+                <RotateCcw size={13} /> {t('lyrics.retryLoadingLyrics')}
               </button>
             )}
           </div>
@@ -175,7 +173,7 @@ export function Lyrics({
                   key={`${line.time}-${i}`}
                   aria-current={i === activeIndex ? 'true' : undefined}
                   className={`lyric-line ${i === activeIndex ? 'lyric-active' : ''}`}
-                  aria-label={ui('跳转歌词：{0}', 'Seek to lyric: {0}', line.text)}
+                  aria-label={t('lyrics.seekToLyric', { text: line.text })}
                   onClick={() => {
                     onRead()
                     onSeek(line.time)
@@ -206,7 +204,7 @@ export function Lyrics({
       {!follow && lines.length > 0 && (
         <button className="lyric-follow" onClick={() => setFollow(true)}>
           <LocateFixed size={14} />
-          {ui('回到当前歌词', 'Back to current line')}
+          {t('lyrics.backToCurrentLine')}
         </button>
       )}
     </div>

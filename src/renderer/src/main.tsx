@@ -1,3 +1,5 @@
+import type { DesktopInfo } from '../../shared/desktop'
+import { setUiLanguage, t } from '../../shared/ui-language'
 import { createRoot } from 'react-dom/client'
 import { App } from './App'
 import { watchButtonHints } from './design/button-hints'
@@ -19,7 +21,30 @@ import './design/social.css'
 import './player/room-setup.css'
 import './player-background.css'
 
-createRoot(document.getElementById('root')!).render(<App />)
+const root = createRoot(document.getElementById('root')!)
+let receivedInfo = false
+function render(info: DesktopInfo) {
+  receivedInfo = true
+  setUiLanguage(info.resolvedLanguage)
+  document.documentElement.lang = info.resolvedLanguage
+  root.render(<App desktopInfo={info} />)
+}
+const stopDesktopInfo = window.together.onDesktopInfo(render)
+window.together.desktopInfo().then(
+  (info) => {
+    if (!receivedInfo) render(info)
+  },
+  (error: Error) => {
+    if (!receivedInfo)
+      root.render(
+        <App
+          desktopInfo={null}
+          startupError={error.message || t('desktop.couldNotLoadDesktopSettings')}
+        />,
+      )
+  },
+)
+if (import.meta.hot) import.meta.hot.dispose(stopDesktopInfo)
 const stopWatchingButtonHints = watchButtonHints()
 if (import.meta.hot) import.meta.hot.dispose(stopWatchingButtonHints)
 const stopWatchingScrollbars = watchListScrollbars()

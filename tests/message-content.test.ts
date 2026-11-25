@@ -4,12 +4,19 @@ import {
   parsePrivatePage,
   messageContent,
   conversationName,
+  conversationPreview,
+  parseConversations,
 } from '../src/shared/private-messages'
 import { parseChatPage, mergeChat } from '../src/shared/chat'
-import { musicMessageLink, mediaUrl, richMessageContent } from '../src/shared/message-content'
+import {
+  musicMessageLink,
+  mediaUrl,
+  richMessageContent,
+  localizedMessageText,
+} from '../src/shared/message-content'
 import { multiPayload } from '../src/main/multi-api'
 import { validate } from '../src/main/service'
-import { getUiLanguage, setUiLanguage, ui } from '../src/shared/ui-language'
+import { getUiLanguage, setUiLanguage } from '../src/shared/ui-language'
 import { roomActivityPresentation } from '../src/shared/room-activity-presentation'
 const emoji = {
   emojiId: '1',
@@ -216,10 +223,38 @@ it('changes generated labels while preserving sender text, attachment names and 
     const named = messageContent({
       image: { name: '图片', url: 'https://p1.music.126.net/cover.png' },
     })
-    expect(ui(unnamed.text, unnamed.fallbackTextEn!)).toBe('Image')
+    expect(localizedMessageText(unnamed.text, unnamed.fallbackText)).toBe('Image')
     expect(named.text).toBe('图片')
-    expect(named.fallbackTextEn).toBeUndefined()
-    expect(messageContent({ msg: '邀请你加入官方多人一起听' }).fallbackTextEn).toBeUndefined()
+    expect(named.fallbackText).toBeUndefined()
+    expect(messageContent({ msg: '邀请你加入官方多人一起听' }).fallbackText).toBeUndefined()
+  } finally {
+    setUiLanguage(previous)
+  }
+})
+
+it('renders one serialized conversation preview in all languages without changing shared titles or message identity', () => {
+  const previous = getUiLanguage()
+  const name = '{name} / 私の歌单'
+  const shared = { playlist: { id: 123, name } }
+  const raw = { fromUser: { userId: 7 }, toUser: { userId: 8 }, time: 12, msg: shared }
+  try {
+    const preview = parseConversations({ msgs: [{ ...raw, lastMsg: shared }] }, '8')
+      .conversations[0]
+    const saved = JSON.parse(JSON.stringify(preview))
+    expect(saved.fallbackPreview).toEqual({ key: 'chat.sharedPlaylist', name })
+    const history = () => parsePrivatePage({ msgs: [raw] }, '8', '7').messages[0]
+    const original = history()
+    for (const [language, expected] of [
+      ['zh-CN', `[分享歌单] ${name}`],
+      ['zh-TW', `[分享歌單] ${name}`],
+      ['en', `[Shared playlist] ${name}`],
+      ['ja', `［プレイリストをシェア］${name}`],
+    ] as const) {
+      setUiLanguage(language)
+      expect(conversationPreview(saved)).toBe(expected)
+      expect(history()).toEqual(original)
+      expect(mergePrivate([original], [history()])).toHaveLength(1)
+    }
   } finally {
     setUiLanguage(previous)
   }

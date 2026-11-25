@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, Cloud, Ellipsis, LoaderCircle, RefreshCw, Smile } from 'lucide-react'
 import type { ApiCall } from './music-data'
@@ -17,7 +17,7 @@ export function EmojiPicker({
   accountKey,
   scope,
   recipient,
-  triggerLabel = ui('选择表情', 'Choose a sticker'),
+  triggerLabel = t('emojiPicker.chooseASticker'),
   triggerIcon,
 }: {
   onSticker?(value: ChatEmoji): void
@@ -98,9 +98,9 @@ export function EmojiPicker({
       stickersChanged(accountKey, ids)
       setSelectedIds(new Set())
       setEditing(false)
-      setNotice(ui('已删除 {0} 个表情', 'Deleted stickers: {0}', ids.length))
+      setNotice(t('emojiPicker.deletedStickers', { count: ids.length }))
     } catch (error: any) {
-      setNotice(error.message || ui('删除失败，请重试', 'Couldn’t delete. Try again.'))
+      setNotice(error.message || t('emojiPicker.couldntDeleteTryAgain'))
     } finally {
       setRemoving(false)
     }
@@ -116,8 +116,8 @@ export function EmojiPicker({
       <button
         type="button"
         className="icon-btn"
-        title={ui('刷新自定义表情', 'Refresh custom stickers')}
-        aria-label={ui('刷新自定义表情', 'Refresh custom stickers')}
+        title={t('common.refreshCustomStickers')}
+        aria-label={t('common.refreshCustomStickers')}
         disabled={cloud.loading || removing || editing}
         onClick={() => {
           more.current?.hidePopover()
@@ -137,7 +137,7 @@ export function EmojiPicker({
           setSelectedIds(new Set())
         }}
       >
-        {editing ? ui('取消整理', 'Done') : ui('整理表情', 'Manage stickers')}
+        {editing ? t('emojiPicker.done') : t('emojiPicker.manageStickers')}
       </button>
     </>
   )
@@ -158,7 +158,7 @@ export function EmojiPicker({
       </button>
       {open && (
         <ComposerPanel
-          title={ui('表情', 'Stickers')}
+          title={t('emojiPicker.stickers')}
           anchor={trigger.current}
           onClose={closePicker}
           picker
@@ -171,13 +171,13 @@ export function EmojiPicker({
                     onClick={() => setTab('cloud')}
                   >
                     <Cloud size={14} />
-                    {ui('自定义表情', 'Custom stickers')}
+                    {t('common.customStickers')}
                   </button>
                   <button
                     className={tab === 'recent' ? 'selected' : ''}
                     onClick={() => setTab('recent')}
                   >
-                    {ui('最近使用', 'Recent')}
+                    {t('emojiPicker.recent')}
                   </button>
                 </div>
               )}
@@ -190,15 +190,15 @@ export function EmojiPicker({
                   >
                     <span
                       className="cloud-sticker-count"
-                      title={ui('发送至{0}', 'Send to {0}', recipient)}
+                      title={t('emojiPicker.sendTo', { recipient })}
                     >
-                      <span>{ui('{0} 个表情', 'Stickers: {0}', cloud.items.length)}</span>
+                      <span>{t('emojiPicker.stickerCount', { count: cloud.items.length })}</span>
                       <span className="cloud-sticker-progress">
                         {!!cloud.items.length && cloud.loading && (
                           <span
                             role="status"
-                            aria-label={ui('正在读取更多表情…', 'Loading more stickers…')}
-                            title={ui('正在读取更多表情…', 'Loading more stickers…')}
+                            aria-label={t('common.loadingMoreStickers')}
+                            title={t('common.loadingMoreStickers')}
                           >
                             <LoaderCircle size={14} className="spin" />
                           </span>
@@ -208,8 +208,8 @@ export function EmojiPicker({
                             className="icon-btn"
                             type="button"
                             onClick={cloud.retry}
-                            title={ui('{0} · 重试', '{0} · Retry', cloud.error)}
-                            aria-label={ui('重试', 'Retry')}
+                            title={t('common.errorRetry', { error: cloud.error })}
+                            aria-label={t('common.retry')}
                           >
                             <RefreshCw size={14} />
                             <span role="alert">{cloud.error}</span>
@@ -220,14 +220,12 @@ export function EmojiPicker({
                     <MediaComposer
                       target={{ kind: 'sticker' }}
                       accountKey={accountKey}
-                      label={ui('网易云自定义表情', 'NetEase custom stickers')}
+                      label={t('emojiPicker.neteaseCustomStickers')}
                       disabled={!accountKey || disabled}
                       onMediaPlay={() => {}}
                       onSent={(receipt) => {
                         if (receipt.senderUid === accountKey) {
-                          setNotice(
-                            ui('已添加到网易云自定义表情', 'Added to your NetEase custom stickers'),
-                          )
+                          setNotice(t('emojiPicker.addedToYourNeteaseCustomStickers'))
                         }
                       }}
                     />
@@ -236,7 +234,7 @@ export function EmojiPicker({
                         <button
                           type="button"
                           className="icon-btn sticker-more-trigger"
-                          aria-label={ui('更多表情操作', 'More sticker actions')}
+                          aria-label={t('emojiPicker.moreStickerActions')}
                           popoverTarget={moreId}
                         >
                           <Ellipsis size={16} />
@@ -257,7 +255,7 @@ export function EmojiPicker({
                   {cloud.groups.length > 1 && (
                     <select
                       className="sticker-group-select"
-                      aria-label={ui('表情分组', 'Sticker groups')}
+                      aria-label={t('emojiPicker.stickerGroups')}
                       value={cloud.groupId}
                       disabled={cloud.loading || removing || editing}
                       onChange={(event) => cloud.select(event.target.value)}
@@ -306,8 +304,8 @@ export function EmojiPicker({
                 onClick={removeSelected}
               >
                 {removing
-                  ? ui('正在删除…', 'Deleting…')
-                  : ui('删除所选 ({0})', 'Delete selected ({0})', selectedIds.size)}
+                  ? t('emojiPicker.deleting')
+                  : t('emojiPicker.deleteSelected', { count: selectedIds.size })}
               </button>
             )
           }
@@ -316,15 +314,14 @@ export function EmojiPicker({
             <>
               {!cloud.items.length && cloud.loading && (
                 <div className="cloud-sticker-loading" role="status">
-                  <LoaderCircle size={15} className="spin" />{' '}
-                  {ui('正在读取表情…', 'Loading stickers…')}
+                  <LoaderCircle size={15} className="spin" /> {t('emojiPicker.loadingStickers')}
                 </div>
               )}
               {!cloud.items.length && cloud.error && (
                 <p className="private-error" role="alert">
                   {cloud.error}
                   <button type="button" className="text-btn" onClick={cloud.retry}>
-                    {ui('重试', 'Retry')}
+                    {t('common.retry')}
                   </button>
                 </p>
               )}
@@ -334,7 +331,10 @@ export function EmojiPicker({
                   key={stickerKey(item)}
                   data-sticker-key={stickerKey(item)}
                   title={!editing && item.restricted ? item.restriction : undefined}
-                  aria-label={`${editing ? ui('选择删除', 'Select for deletion') : ui('发送自定义表情', 'Send custom sticker')} ${item.emojiName}`}
+                  aria-label={t(
+                    editing ? 'emojiPicker.selectForDeletion' : 'emojiPicker.sendCustomSticker',
+                    { name: item.emojiName },
+                  )}
                   aria-pressed={editing ? selectedIds.has(item.emojiId) : undefined}
                   disabled={
                     removing ||
@@ -362,32 +362,24 @@ export function EmojiPicker({
                       {selectedIds.has(item.emojiId) && <Check size={12} />}
                     </span>
                   )}
-                  {item.restricted && <small>{ui('暂不可用', 'Unavailable')}</small>}
+                  {item.restricted && <small>{t('emojiPicker.unavailable')}</small>}
                 </button>
               ))}
               <div ref={stickerPages} className="pagination-sentinel" aria-hidden="true" />
               {accountKey && !cloud.loading && !cloud.error && !cloud.items.length && (
                 <p className="chat-empty">
                   {cloud.groups.length
-                    ? ui(
-                        '还没有自定义表情，上传一张喜欢的图片吧',
-                        'No custom stickers yet. Upload an image to get started.',
-                      )
-                    : ui(
-                        '暂未读取到自定义表情分组，可以刷新或上传图片。',
-                        'No sticker groups found. Refresh or upload an image.',
-                      )}
+                    ? t('emojiPicker.noCustomStickersYetUploadAnImageTo')
+                    : t('emojiPicker.noStickerGroupsFoundRefreshOrUploadAn')}
                 </p>
               )}
               {!!cloud.unavailable && (
                 <p className="muted">
-                  {ui('有 {0} 个表情暂无法读取', 'Unavailable stickers: {0}', cloud.unavailable)}
+                  {t('emojiPicker.unavailableStickers', { count: cloud.unavailable })}
                 </p>
               )}
               {!accountKey && (
-                <p className="chat-empty">
-                  {ui('登录后同步自定义表情', 'Sign in to sync custom stickers')}
-                </p>
+                <p className="chat-empty">{t('emojiPicker.signInToSyncCustomStickers')}</p>
               )}
             </>
           )}
@@ -397,7 +389,7 @@ export function EmojiPicker({
                 <button
                   type="button"
                   key={item.emojiId === '0' ? item.emojiImgUrl : item.emojiId}
-                  aria-label={ui('发送表情 {0}', 'Send sticker {0}', item.emojiName)}
+                  aria-label={t('emojiPicker.sendSticker', { emojiName: item.emojiName })}
                   onClick={() => {
                     onSticker(item)
                     setOpen(false)
@@ -413,10 +405,7 @@ export function EmojiPicker({
               ))}
               {!recent.length && (
                 <p className="chat-empty">
-                  {ui(
-                    '最近使用和收到的图片表情会显示在这里',
-                    'Stickers you use or receive will appear here',
-                  )}
+                  {t('emojiPicker.stickersYouUseOrReceiveWillAppearHere')}
                 </p>
               )}
             </>

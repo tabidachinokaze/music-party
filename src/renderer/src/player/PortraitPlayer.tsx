@@ -1,4 +1,4 @@
-import { getUiLanguage, ui } from '../../../shared/ui-language'
+import { getUiLanguage, t } from '../../../shared/ui-language'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { MusicianNames } from '../MusicianNames'
 import { AlbumArtwork } from './AlbumArtwork'
@@ -70,7 +70,7 @@ export function Playhead({
   const value = Math.max(0, Math.min(duration, preview ?? position))
   const commit = (raw: string) => {
     setPreview(null)
-    if (!disabled) void act(ui('跳转进度', 'Seek'), () => p.seek(Number(raw)))
+    if (!disabled) void act(t('portraitPlayer.seek'), () => p.seek(Number(raw)))
   }
   return (
     <div
@@ -84,7 +84,7 @@ export function Playhead({
             className="scrub-hint"
             style={{ left: ((preview ?? hover ?? 0) / duration) * 100 + '%' }}
           >
-            {preview !== null && ui('松开跳转 ', 'Release to seek ')}
+            {preview !== null && t('portraitPlayer.releaseToSeek')}
             {time(preview ?? hover ?? 0)}
           </output>
         )}
@@ -99,9 +99,9 @@ export function Playhead({
           min={0}
           max={duration || 1}
           step={1}
-          aria-label={ui('播放进度', 'Playback progress')}
+          aria-label={t('portraitPlayer.playbackProgress')}
           aria-valuetext={
-            duration ? time(value) + ' / ' + time(duration) : ui('尚未选歌', 'No track selected')
+            duration ? time(value) + ' / ' + time(duration) : t('common.noTrackSelected')
           }
           value={value}
           disabled={disabled}
@@ -171,22 +171,22 @@ interface PlayerProps extends TransportProps, SongActions {
 
 function Transport({ party: p, act }: TransportProps) {
   const transport = p.auditioning
-    ? ui('停止试听', 'Stop preview')
+    ? t('portraitPlayer.stopPreview')
     : p.playing
       ? p.room
-        ? ui('本机暂停', 'Pause locally')
-        : ui('暂停', 'Pause')
+        ? t('portraitPlayer.pauseLocally')
+        : t('common.pause')
       : p.room
-        ? ui('恢复同听', 'Resume listening')
-        : ui('播放', 'Play')
+        ? t('portraitPlayer.resumeListening')
+        : t('common.play')
   return (
     <>
       <IconButton
         className="icon-btn"
-        label={p.auditioning ? ui('重播试听', 'Replay preview') : ui('上一首', 'Previous')}
+        label={p.auditioning ? t('common.replayPreview') : t('common.previous')}
         disabled={(!p.auditioning && (!!p.room || !p.personalQueue.length)) || !!p.busy}
         onClick={() =>
-          act(ui('上一首', 'Previous'), () => (p.auditioning ? p.seek(0) : p.nextLocal(-1)))
+          act(t('common.previous'), () => (p.auditioning ? p.seek(0) : p.nextLocal(-1)))
         }
       >
         <SkipBack fill="currentColor" />
@@ -211,16 +211,14 @@ function Transport({ party: p, act }: TransportProps) {
         className="icon-btn"
         title={
           p.auditioning
-            ? ui('返回房间当前歌曲', 'Return to the room track')
+            ? t('common.returnToTheRoomTrack')
             : p.room
-              ? ui('请求房间下一首', 'Request next track')
-              : ui('下一首', 'Next')
+              ? t('common.requestNextTrack')
+              : t('common.next')
         }
-        label={
-          p.auditioning ? ui('返回房间当前歌曲', 'Return to the room track') : ui('下一首', 'Next')
-        }
+        label={p.auditioning ? t('common.returnToTheRoomTrack') : t('common.next')}
         disabled={!p.current || !!p.busy}
-        onClick={() => act(ui('下一首', 'Next'), () => (p.room ? p.nextSong() : p.nextLocal(1)))}
+        onClick={() => act(t('common.next'), () => (p.room ? p.nextSong() : p.nextLocal(1)))}
       >
         <SkipForward fill="currentColor" />
       </IconButton>
@@ -241,8 +239,8 @@ function TrackActions({
         className="icon-btn"
         label={
           liked
-            ? ui('取消喜欢当前歌曲', 'Remove current track from Liked Songs')
-            : ui('喜欢当前歌曲', 'Like current track')
+            ? t('portraitPlayer.removeCurrentTrackFromLikedSongs')
+            : t('portraitPlayer.likeCurrentTrack')
         }
         aria-pressed={liked}
         disabled={!current || !likeReady}
@@ -252,7 +250,7 @@ function TrackActions({
       </IconButton>
       <IconButton
         className="icon-btn"
-        label={ui('添加当前歌曲到歌单', 'Add current track to playlist')}
+        label={t('portraitPlayer.addCurrentTrackToPlaylist')}
         disabled={!current}
         onClick={onAdd}
       >
@@ -281,7 +279,7 @@ function SongCredits({
         (albumId ? (
           <button
             className="song-album"
-            title={ui('打开专辑《{0}》', 'Open album “{0}”', song.album)}
+            title={t('common.openAlbum', { album: song.album })}
             onClick={() => onAlbum(albumId, song.album)}
           >
             {song.album}
@@ -295,9 +293,9 @@ function SongCredits({
 
 function PlaybackMode({ party: p }: { party: Party }) {
   const modeLabels = {
-    order: ui('顺序播放', 'In order'),
-    loop: ui('列表循环', 'Repeat all'),
-    single: ui('单曲循环', 'Repeat one'),
+    order: t('common.inOrder'),
+    loop: t('common.repeatAll'),
+    single: t('common.repeatOne'),
   } as const
   const modes = ['order', 'loop', 'single'] as const
   const next = modes[(modes.indexOf(p.repeatMode) + 1) % modes.length]
@@ -306,8 +304,8 @@ function PlaybackMode({ party: p }: { party: Party }) {
   return (
     <IconButton
       className="icon-btn playback-mode"
-      title={label + ui(' · 切换到', ' · Switch to ') + modeLabels[next]}
-      label={ui('播放方式：', 'Playback mode: ') + label}
+      title={t('portraitPlayer.switchTo', { current: label, next: modeLabels[next] })}
+      label={t('portraitPlayer.playbackMode', { mode: label })}
       onClick={() => p.changeRepeat(next)}
     >
       <Icon />
@@ -321,18 +319,14 @@ function VolumeControl({ party: p, onControls }: { party: Party; onControls(): v
     <div className="transport-volume" ref={ref}>
       <IconButton
         className="icon-btn"
-        label={ui('播放调节', 'Playback controls')}
-        title={
-          ui('音量 ', 'Volume ') +
-          Math.round(p.volume * 100) +
-          ui('% · 播放调节', '% · Playback controls')
-        }
+        label={t('common.playbackControls')}
+        title={t('portraitPlayer.volume', { percent: Math.round(p.volume * 100) })}
         onClick={onControls}
       >
         <Volume2 />
       </IconButton>
       <input
-        aria-label={ui('音量', 'Volume')}
+        aria-label={t('common.volume')}
         aria-valuetext={Math.round(p.volume * 100) + '%'}
         type="range"
         min="0"
@@ -393,9 +387,7 @@ export function PlayerFooter({
 }) {
   const roomCount = p.room ? p.onlineCount : null
   const roomLabel =
-    roomCount === null
-      ? ui('一起听', 'Listen Together')
-      : ui('{0} 人一起听', '{0} listening', roomCount)
+    roomCount === null ? t('common.listenTogether') : t('room.listeningCount', { count: roomCount })
   const roomSong = p.roomPlayback?.song
   const { liked: likedRoomSong, count: roomLikes } = p.roomReaction
   const progress = <Playhead party={p} position={position} act={act} />
@@ -403,7 +395,7 @@ export function PlayerFooter({
     <footer
       className="adaptive-player-bar"
       data-now={nowOpen}
-      aria-label={ui('底部播放栏', 'Playback bar')}
+      aria-label={t('portraitPlayer.playbackBar')}
     >
       {nowOpen && progress}
       <div className="footer-identity">
@@ -411,29 +403,29 @@ export function PlayerFooter({
           <>
             <button
               className="footer-track footer-thumb"
-              aria-label={ui('展开正在播放', 'Open Now Playing')}
-              title={ui('展开正在播放', 'Open Now Playing')}
+              aria-label={t('common.openNowPlaying')}
+              title={t('common.openNowPlaying')}
               onClick={onNow}
             >
               <AlbumArtwork song={p.current} className="footer-art" />
               <ChevronUp size={18} />
-              {p.auditioning && <small className="footer-audition">{ui('试听', 'Preview')}</small>}
+              {p.auditioning && <small className="footer-audition">{t('common.preview')}</small>}
             </button>
             <div className="footer-track-copy">
               <button
                 className="footer-title"
                 title={
                   p.current?.name
-                    ? ui('展开正在播放 · {0}', 'Open Now Playing · {0}', p.current.name)
-                    : ui('展开正在播放', 'Open Now Playing')
+                    ? t('portraitPlayer.openNowPlaying', { name: p.current.name })
+                    : t('common.openNowPlaying')
                 }
                 onClick={onNow}
               >
-                <strong>{p.current?.name || ui('尚未选歌', 'No track selected')}</strong>
+                <strong>{p.current?.name || t('common.noTrackSelected')}</strong>
               </button>
               <SongCredits song={p.current} onAlbum={onAlbum} onArtist={onArtist} />
               {p.auditioning && (
-                <small className="audition-label">{ui('本机试听', 'Local preview')}</small>
+                <small className="audition-label">{t('common.localPreview')}</small>
               )}
             </div>
           </>
@@ -444,16 +436,16 @@ export function PlayerFooter({
             <button
               type="button"
               className="icon-btn footer-translation"
-              aria-label={ui('显示歌词翻译', 'Show lyric translation')}
+              aria-label={t('common.showLyricTranslation')}
               title={
                 translation.enabled
-                  ? ui('隐藏歌词翻译', 'Hide lyric translation')
-                  : ui('显示歌词翻译', 'Show lyric translation')
+                  ? t('common.hideLyricTranslation')
+                  : t('common.showLyricTranslation')
               }
               aria-pressed={translation.enabled}
               onClick={translation.toggle}
             >
-              {getUiLanguage() === 'en' ? <Languages size={14} aria-hidden="true" /> : '译'}
+              {getUiLanguage() !== 'zh-CN' ? <Languages size={14} aria-hidden="true" /> : '译'}
             </button>
           )}
         </div>
@@ -468,7 +460,7 @@ export function PlayerFooter({
       <div className="footer-actions">
         <IconButton
           className="icon-btn footer-room"
-          label={ui('一起听', 'Listen Together')}
+          label={t('common.listenTogether')}
           title={roomLabel}
           aria-description={roomCount === null ? undefined : roomLabel}
           data-joined={!!p.room}
@@ -489,7 +481,7 @@ export function PlayerFooter({
             ) : (
               <>
                 <span className="footer-room-count">{roomCount}</span>
-                {ui(' 人一起听', ' listening')}
+                {t('portraitPlayer.listening')}
               </>
             )}
           </span>
@@ -497,19 +489,17 @@ export function PlayerFooter({
         {p.room && roomSong && (
           <IconButton
             className="icon-btn footer-room-like"
-            label={ui('为房间当前歌曲点赞', 'Like this room track')}
-            title={ui(
-              '{0} · {1} 赞',
-              '{0} · Likes: {1}',
-              likedRoomSong
-                ? ui('已点赞，可继续点赞', 'Liked. Click to like again.')
-                : ui('为房间当前歌曲点赞', 'Like this room track'),
-              roomLikes,
-            )}
+            label={t('common.likeThisRoomTrack')}
+            title={t('room.likeSummary', {
+              action: likedRoomSong
+                ? t('portraitPlayer.likedClickToLikeAgain')
+                : t('common.likeThisRoomTrack'),
+              count: roomLikes,
+            })}
             aria-pressed={likedRoomSong}
-            aria-description={ui('当前歌曲共 {0} 赞', 'Likes on this track: {0}', roomLikes)}
+            aria-description={t('portraitPlayer.likesOnThisTrack', { count: roomLikes })}
             disabled={!!p.busy || p.auditioning || p.roomReaction.loading}
-            onClick={() => act(ui('一起听点赞', 'Like room track'), p.likeRoomSong)}
+            onClick={() => act(t('portraitPlayer.likeRoomTrack'), p.likeRoomSong)}
           >
             <ThumbsUp />
             <small className="transport-count" aria-hidden="true">
@@ -520,17 +510,17 @@ export function PlayerFooter({
         <VolumeControl party={p} onControls={onControls} />
         <IconButton
           className="icon-btn footer-lyrics"
-          label={ui('歌词', 'Lyrics')}
+          label={t('common.lyrics')}
           aria-expanded={lyricsOpen}
           disabled={lyricsUnavailable}
           onClick={onLyrics}
         >
-          {getUiLanguage() === 'en' ? <Captions size={16} aria-hidden="true" /> : '词'}
+          {getUiLanguage() !== 'zh-CN' ? <Captions size={16} aria-hidden="true" /> : '词'}
         </IconButton>
         {p.room && (
           <IconButton
             className="icon-btn"
-            label={ui('房间聊天', 'Room chat')}
+            label={t('common.roomChat')}
             aria-expanded={chatOpen}
             onClick={onChat}
           >
@@ -542,7 +532,7 @@ export function PlayerFooter({
         )}
         <IconButton
           className="icon-btn footer-queue"
-          label={ui('播放队列', 'Play queue')}
+          label={t('common.playQueue')}
           aria-expanded={queueOpen}
           onClick={onQueue}
         >
@@ -575,7 +565,7 @@ export function PlaybackControls({
   return (
     <div className="tool-stack">
       <div className="song-identity">
-        <strong>{p.current?.name || ui('尚未选歌', 'No track selected')}</strong>
+        <strong>{p.current?.name || t('common.noTrackSelected')}</strong>
         <span>
           <MusicianNames
             credits={p.current?.artists}
@@ -583,14 +573,14 @@ export function PlaybackControls({
             onOpen={onArtist}
           />
         </span>
-        {p.auditioning && <small>{ui('本机试听', 'Local preview')}</small>}
+        {p.auditioning && <small>{t('common.localPreview')}</small>}
       </div>
       <Playhead party={p} position={position} act={act} />
       <div className="volume-row" ref={ref}>
         <Volume2 size={18} />
         <input
           type="range"
-          aria-label={ui('音量', 'Volume')}
+          aria-label={t('common.volume')}
           aria-valuetext={Math.round(p.volume * 100) + '%'}
           min="0"
           max="1"
@@ -598,18 +588,20 @@ export function PlaybackControls({
           value={p.volume}
           onChange={(e) => p.setVolume(Number(e.target.value))}
         />
-        <output aria-label={ui('当前音量', 'Current volume')}>{Math.round(p.volume * 100)}%</output>
+        <output aria-label={t('portraitPlayer.currentVolume')}>
+          {Math.round(p.volume * 100)}%
+        </output>
       </div>
       {!p.room && (
         <label className="control-row">
-          {ui('播放方式', 'Playback mode')}
+          {t('portraitPlayer.playbackModeLabel')}
           <select
             value={p.repeatMode}
             onChange={(e) => p.changeRepeat(e.target.value as typeof p.repeatMode)}
           >
-            <option value="order">{ui('顺序播放', 'In order')}</option>
-            <option value="loop">{ui('列表循环', 'Repeat all')}</option>
-            <option value="single">{ui('单曲循环', 'Repeat one')}</option>
+            <option value="order">{t('common.inOrder')}</option>
+            <option value="loop">{t('common.repeatAll')}</option>
+            <option value="single">{t('common.repeatOne')}</option>
           </select>
         </label>
       )}
@@ -618,16 +610,14 @@ export function PlaybackControls({
           <span>{p.error}</span>
           {retry && (
             <button className="text-btn" disabled={!!p.busy} onClick={retry.run}>
-              {ui('重试{0}', 'Retry {0}', retry.label)}
+              {t('common.retryAction', { action: retry.label })}
             </button>
           )}
         </div>
       )}
       <button className="secondary" onClick={toggleFullScreen}>
         <AppWindow size={16} />
-        {fullScreen
-          ? ui('退出系统全屏', 'Exit fullscreen')
-          : ui('进入系统全屏', 'Enter fullscreen')}
+        {fullScreen ? t('portraitPlayer.exitFullscreen') : t('portraitPlayer.enterFullscreen')}
       </button>
     </div>
   )

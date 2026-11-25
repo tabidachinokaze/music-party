@@ -8,6 +8,7 @@ import {
   parseConversations,
   parsePrivatePage,
 } from '../src/shared/private-messages'
+import { getUiLanguage, setUiLanguage } from '../src/shared/ui-language'
 import type { PrivateMessage } from '../src/shared/types'
 const link =
   'https://st.music.163.com/listen-together/multishare/index.html?roomId=official-room&inviterUid=456&isFLT=false'
@@ -30,6 +31,24 @@ it('recognizes escaped links inside text and JSON cards and the verified officia
     expect(findInvitations(value)).toEqual([
       { roomId: 'official-room', inviterUid: '456', isFLT: false },
     ])
+})
+it('localizes a new invitation while keeping its official link readable in every language', () => {
+  const previous = getUiLanguage()
+  try {
+    const invitations = new Set<string>()
+    for (const language of ['zh-CN', 'zh-TW', 'en', 'ja'] as const) {
+      setUiLanguage(language)
+      const message = inviteText('official-room', '456')
+      expect(message.endsWith(link)).toBe(true)
+      expect(findInvitations(message)).toEqual([
+        { roomId: 'official-room', inviterUid: '456', isFLT: false },
+      ])
+      invitations.add(message)
+    }
+    expect(invitations.size).toBe(4)
+  } finally {
+    setUiLanguage(previous)
+  }
 })
 it('does not turn pair/follow/foreign URLs or arbitrary roomId properties into multi invitations', () => {
   for (const value of [

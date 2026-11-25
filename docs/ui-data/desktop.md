@@ -58,24 +58,25 @@
 | `windowAction`            | `window-action`           | `'minimize' / 'toggle-maximize' / 'close' → void`                         | 自定义标题栏的最小化、最大化／还原和关闭                                                                      |
 | `onNavigate`              | `navigate`                | 订阅 `'back' / 'forward'`                                                 | 原生前进、返回事件交给应用导航历史，渲染端同时处理鼠标侧键并去重                                              |
 | `setFullScreen`           | `desktop-fullscreen`      | `boolean / 'toggle' → DesktopInfo`                                        | 控制原生窗口全屏。播放页展开是独立的渲染状态                                                                  |
-| `updatePreferences`       | `desktop-settings`        | `Partial<Preferences> → DesktopInfo`                                      | 保存修改后的偏好，失败时可恢复当前显示值。playerBackground 要传完整对象                                       |
+| `updatePreferences`       | `desktop-settings`        | `PreferencesUpdate → DesktopInfo`                                         | 保存修改后的偏好。playerBackground 接受完整背景、单独的透明度字段，或图片及其全部裁切参数                     |
 | `preparePlayerBackground` | `player-background-image` | `bytes:Uint8Array → {image,width,height}`                                 | 将本地选择的背景规范化为可保存 PNG，仅准备图片。用户保存时再提交偏好                                          |
 | `updateMedia`             | `desktop-media`           | `DesktopMediaState → void`                                                | 将歌曲标题、歌手、播放状态、可用动作和房间 ID 送往托盘／系统控制                                              |
 | `onPlayerCommand`         | `desktop-command`         | 订阅 `toggle / play / pause / next / previous / settings / lyrics / show` | 外部桌面命令复用现有播放和导航行为，结合跟听、试听模式决定可用动作                                            |
 | `onLifecycle`             | `lifecycle`               | 订阅 `suspend / resume`                                                   | 系统挂起时停止旧房间同步，恢复时确认房间并补取私信事件。浏览器另提供 online/offline                           |
 | `quit`                    | `desktop-quit`            | 无 → void                                                                 | 显式退出应用；窗口关闭时按 closeToTray 与托盘可用性处理。退出应用或安装更新会释放本机连接，保留服务端房间关系 |
 
-`DesktopInfo` 包含 `preferences,trayAvailable,maximized,fullScreen,fullScreenRevision,resolvedTheme,platform,persistenceError`。`DesktopMediaState` 包含 `title,artist,playing,canToggle,canNext,canPrevious,roomId`，其中 roomId 可以为 null。[桌面类型与校验](../../src/shared/desktop.ts) · [状态与系统命令](../../src/renderer/src/useDesktop.ts)
+`DesktopInfo` 包含 `preferences,trayAvailable,maximized,fullScreen,fullScreenRevision,resolvedLanguage,resolvedTheme,platform,persistenceError`。`DesktopMediaState` 包含 `title,artist,playing,canToggle,canNext,canPrevious,roomId`，其中 roomId 可以为 null。[桌面类型与校验](../../src/shared/desktop.ts) · [状态与系统命令](../../src/renderer/src/useDesktop.ts)
 
 渲染层还把 `current.name/artist/album/cover`、播放状态和秒级进度投给浏览器的 `navigator.mediaSession`。系统媒体键的播放、暂停、上一首和下一首复用与页面相同的控制。seek 仅在个人或试听时启用。把播放按钮移到别处时，仍要保留这一处系统绑定和共用的 audio 元素。[Media Session 接入](../../src/renderer/src/useDesktop.ts)
 
-| Preferences 字段           | 默认值和范围                                                                                                                                                                      |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `closeToTray`、`theme`     | closeToTray 默认 true。theme 默认 light，可选 light、dark、system。实际绘制使用 resolvedTheme                                                                                     |
-| `language`、`mediaKeys`    | 界面与桌面菜单语言默认为 zh-CN，可选 en。系统媒体快捷键默认为 true                                                                                                                |
-| `volume`、`repeatMode`     | 0.6，范围 0–1。默认 order，也支持 loop、single                                                                                                                                    |
-| `fontScale`、`accentColor` | fontScale 为整套界面显示比例，默认 100，范围为整数 80–150%。accentColor 默认 null，亦接受 `#rrggbb`                                                                               |
-| `playerBackground`         | `{image:null,zoom:100,opacity:48,layoutTransparency:100,componentTransparency:16,popupTransparency:12,blur:0,x:50,y:50}`。zoom 为 100–300%，blur 为 0–30 px，焦点 x/y 各为 0–100% |
+| Preferences 字段           | 默认值和范围                                                                                                                                                                                                                  |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `closeToTray`、`theme`     | closeToTray 默认 true。theme 默认 light，可选 light、dark、system。实际绘制使用 resolvedTheme                                                                                                                                 |
+| `language`                 | 默认 `system`。主进程按系统语言的优先顺序选择简体中文（`zh-CN`）、繁體中文（`zh-TW`）、英语（`en`）或日语（`ja`），没有匹配时使用英语。用户也可固定其中一种。`resolvedLanguage` 是播放器、桌面菜单与后台 API 实际使用的语言。 |
+| `mediaKeys`                | 系统媒体快捷键默认为 true。                                                                                                                                                                                                   |
+| `volume`、`repeatMode`     | 0.6，范围 0–1。默认 order，也支持 loop、single                                                                                                                                                                                |
+| `fontScale`、`accentColor` | fontScale 为整套界面显示比例，默认 100，范围为整数 80–150%。accentColor 默认 null，亦接受 `#rrggbb`                                                                                                                           |
+| `playerBackground`         | `{image:null,zoom:100,opacity:48,layoutTransparency:100,componentTransparency:16,popupTransparency:12,blur:0,x:50,y:50}`。zoom 为 100–300%，blur 为 0–30 px，焦点 x/y 各为 0–100%                                             |
 
 背景的 `opacity` 存的是图片本身的不透明度，界面上的「图片透明度」显示 `100 - opacity`。布局、组件、弹窗的 Transparency 字段都直接代表透明度，0% 为完全不透明，100% 为全透明。壁纸铺设于整个窗口底层。默认 image 为 null，使用主题底色。导入 PNG、JPEG、GIF 或 WebP 时，输入限 20 MiB，转为最长边 2048 像素、最大 2 MiB 的静态 PNG data URL。[背景导入](../../src/renderer/src/background-import.ts) · [整窗背景](../../src/renderer/src/PlayerBackground.tsx)
 

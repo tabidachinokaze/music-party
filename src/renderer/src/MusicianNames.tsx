@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import { Fragment } from 'react'
 import type { MusicianCredit } from '../../shared/types'
 
@@ -21,8 +21,8 @@ export function MusicianNames({
         <button
           type="button"
           className="musician-link"
-          title={ui('查看音乐人 {0}', 'View artist {0}', name)}
-          aria-label={ui('查看音乐人 {0}', 'View artist {0}', name)}
+          title={t('common.viewArtist', { name })}
+          aria-label={t('common.viewArtist', { name })}
           onClick={() => onOpen(id, name)}
           onDoubleClick={(event) => event.stopPropagation()}
         >

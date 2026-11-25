@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import type { ChatEmoji } from '../../shared/types'
 import {
   parseStickerGroups,
@@ -90,7 +90,7 @@ export class StickerLibrary {
         if (!page.loaded || page.dirty || refresh) await this.load(api, true)
       }
     } catch (error: any) {
-      this.error = error.message || ui('读取自定义表情失败', 'Couldn’t load custom stickers')
+      this.error = error.message || t('common.couldntLoadCustomStickers')
       this.notify()
     }
   }
@@ -115,15 +115,11 @@ export class StickerLibrary {
         seen.add(cursor)
         const result = await api('stickerPage', { groupId: id, ...(cursor ? { cursor } : {}) })
         if (!Array.isArray(result.data?.emojis))
-          throw new Error(
-            ui('表情列表响应异常，请重试', 'Couldn’t read the sticker list. Try again.'),
-          )
+          throw new Error(t('stickerCache.couldntReadTheStickerListTryAgain'))
         more = result.data.page?.more === true
         const next = result.data.page?.cursor
         if (more && (typeof next !== 'string' || !next || seen.has(next)))
-          throw new Error(
-            ui('表情分页没有继续前进，请重试', 'Couldn’t load more stickers. Try again.'),
-          )
+          throw new Error(t('stickerCache.couldntLoadMoreStickersTryAgain'))
         unavailable += Number(result.data.unavailable) || 0
         for (const item of result.data.emojis as SavedSticker[]) {
           if ((this.removed.get(item.emojiId) ?? -1) > atRevision) continue
@@ -154,7 +150,7 @@ export class StickerLibrary {
     try {
       await operation
     } catch (error: any) {
-      this.error = error.message || ui('读取自定义表情失败', 'Couldn’t load custom stickers')
+      this.error = error.message || t('common.couldntLoadCustomStickers')
     } finally {
       page.pending = null
       this.notify()

@@ -773,7 +773,7 @@
       "result": {
         "maximized": false,
         "preferences": {
-          "language": "zh-CN",
+          "language": "system",
           "closeToTray": true,
           "mediaKeys": true,
           "theme": "system",
@@ -796,6 +796,7 @@
         "trayAvailable": true,
         "fullScreen": false,
         "fullScreenRevision": 0,
+        "resolvedLanguage": "zh-CN",
         "resolvedTheme": "dark",
         "platform": "linux",
         "persistenceError": ""
@@ -806,7 +807,7 @@
       "result": {
         "phase": "current",
         "currentVersion": "0.13.0",
-        "message": "已是最新版本"
+        "message": "updates.upToDate"
       }
     }
   ],

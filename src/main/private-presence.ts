@@ -1,4 +1,4 @@
-import { ui } from '../shared/ui-language'
+import { t } from '../shared/ui-language'
 import { neteaseAssetUrl } from '../shared/media'
 import type { PrivatePeer } from '../shared/private-notices'
 
@@ -35,13 +35,11 @@ export class PrivatePresence {
 
   get(uid: string): Promise<PrivatePeer> {
     if (!/^[1-9]\d{0,23}$/.test(uid))
-      return Promise.reject(new Error(ui('私信联系人无效', 'Invalid message recipient.')))
+      return Promise.reject(new Error(t('privatePresence.invalidMessageRecipient')))
     const session = this.session()
     if (!session.cookie) {
       this.clear()
-      return Promise.reject(
-        new Error(ui('请先登录网易云账号', 'Sign in to your NetEase account first.')),
-      )
+      return Promise.reject(new Error(t('privatePresence.signInToYourNeteaseAccountFirst')))
     }
     if (this.account?.epoch !== session.epoch || this.account?.cookie !== session.cookie) {
       this.clear()
@@ -77,11 +75,7 @@ export class PrivatePresence {
     this.cache.clear()
     this.queue = []
     for (const job of this.pending.values())
-      job.reject(
-        new Error(
-          ui('账号已变更，请重新查询在线状态', 'The account changed. Check online status again.'),
-        ),
-      )
+      job.reject(new Error(t('common.theAccountChangedCheckOnlineStatusAgain')))
     this.pending.clear()
   }
 
@@ -99,11 +93,7 @@ export class PrivatePresence {
     while (this.active < CONCURRENCY && this.queue.length) {
       const job = this.queue.shift()!
       if (!this.current(job)) {
-        job.reject(
-          new Error(
-            ui('账号已变更，请重新查询在线状态', 'The account changed. Check online status again.'),
-          ),
-        )
+        job.reject(new Error(t('common.theAccountChangedCheckOnlineStatusAgain')))
         if (this.pending.get(job.uid) === job) this.pending.delete(job.uid)
         continue
       }
@@ -125,12 +115,9 @@ export class PrivatePresence {
           noCookie: true,
           timeout: 12000,
         })
-        if (!this.current(job))
-          throw new Error(
-            ui('账号已变更，请重新查询在线状态', 'The account changed. Check online status again.'),
-          )
+        if (!this.current(job)) throw new Error(t('common.theAccountChangedCheckOnlineStatusAgain'))
         if (Number(body?.code) !== 200 || !body.data || typeof body.data !== 'object')
-          throw new Error(ui('在线状态查询暂时不可用', 'Online status is temporarily unavailable.'))
+          throw new Error(t('privatePresence.onlineStatusIsTemporarilyUnavailable'))
         const data = body.data
         const profile = data.personalHomepage?.userProfileData
         const verified = String(profile?.userId ?? '') === job.uid
@@ -148,10 +135,7 @@ export class PrivatePresence {
         }
         expires = Date.now() + PRIVATE_PRESENCE_TTL
       } catch (error) {
-        if (!this.current(job))
-          throw new Error(
-            ui('账号已变更，请重新查询在线状态', 'The account changed. Check online status again.'),
-          )
+        if (!this.current(job)) throw new Error(t('common.theAccountChangedCheckOnlineStatusAgain'))
         const previous = this.cache.get(job.uid)?.peer
         peer = {
           uid: job.uid,
@@ -161,19 +145,14 @@ export class PrivatePresence {
         }
         expires = Date.now() + PRIVATE_PRESENCE_RETRY_DELAY
       }
-      if (!this.current(job))
-        throw new Error(
-          ui('账号已变更，请重新查询在线状态', 'The account changed. Check online status again.'),
-        )
+      if (!this.current(job)) throw new Error(t('common.theAccountChangedCheckOnlineStatusAgain'))
       this.cache.delete(job.uid)
       this.cache.set(job.uid, { peer, expires })
       if (this.cache.size > CACHE_LIMIT) this.cache.delete(this.cache.keys().next().value!)
       job.resolve({ ...peer })
     } catch (error) {
       job.reject(
-        error instanceof Error
-          ? error
-          : new Error(ui('在线状态查询失败', 'Could not check online status.')),
+        error instanceof Error ? error : new Error(t('privatePresence.couldNotCheckOnlineStatus')),
       )
     } finally {
       this.active--

@@ -1,4 +1,5 @@
 import {
+  createChineseProfile,
   showPrivateList,
   settingsGroup,
   openTool,
@@ -8,8 +9,7 @@ import {
 } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
 test('private attachment previews, upload retry, recording, video and fixed recipients', async () => {
@@ -56,7 +56,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     res.end(JSON.stringify(body))
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-media-'))
+  const profile = await createChineseProfile('music-party-media-')
   const app = await electron.launch({
     args: [
       '.',

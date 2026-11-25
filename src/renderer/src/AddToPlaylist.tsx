@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import { useEffect, useRef, useState } from 'react'
 import { Disc3, Library, LoaderCircle, RefreshCw, Search } from 'lucide-react'
 import type { Playlist, Song } from '../../shared/types'
@@ -77,8 +77,7 @@ export function AddToPlaylist({
           name,
           state: 'failed',
           reason:
-            write.reason?.message ||
-            ui('未能确认添加结果', 'Could not confirm whether the track was added'),
+            write.reason?.message || t('addToPlaylist.couldNotConfirmWhetherTheTrackWasAdded'),
         })
       }
     })
@@ -95,8 +94,8 @@ export function AddToPlaylist({
       const { name, state } = completed[0]
       onComplete(
         state === 'exists'
-          ? ui('歌曲已在“{0}”中', 'Already in “{0}”', name)
-          : ui('已添加到“{0}”', 'Added to “{0}”', name),
+          ? t('addToPlaylist.alreadyIn', { name })
+          : t('addToPlaylist.addedTo', { name }),
       )
       return
     }
@@ -104,11 +103,11 @@ export function AddToPlaylist({
     const existed = completed.length - added
     onComplete(
       [
-        added && ui('已添加到 {0} 个歌单', 'Added to {0} playlists', added),
-        existed && ui('{0} 个歌单已收录', 'Already in {0} playlists', existed),
+        added && t('playlist.addedCount', { count: added }),
+        existed && t('playlist.existingCount', { count: existed }),
       ]
         .filter(Boolean)
-        .join(ui('，', ', ')),
+        .join(t('addToPlaylist.value')),
     )
   }
   return (
@@ -116,7 +115,7 @@ export function AddToPlaylist({
       <PanelHeader>
         <div className="playlist-add-actions">
           <IconButton
-            label={ui('刷新歌单', 'Refresh playlists')}
+            label={t('addToPlaylist.refreshPlaylists')}
             disabled={busy || loading}
             onClick={onRefresh}
           >
@@ -127,7 +126,7 @@ export function AddToPlaylist({
             disabled={!targets.length || busy}
             onClick={() => void submit()}
           >
-            {busy ? ui('正在添加…', 'Adding…') : ui('确认添加', 'Add')}
+            {busy ? t('common.adding') : t('addToPlaylist.add')}
             {targets.length > 0 && `（${targets.length}）`}
           </button>
         </div>
@@ -144,8 +143,8 @@ export function AddToPlaylist({
           <Search size={16} aria-hidden="true" />
           <input
             type="search"
-            aria-label={ui('搜索可添加的歌单', 'Search available playlists')}
-            placeholder={ui('搜索我创建的歌单', 'Search my playlists')}
+            aria-label={t('addToPlaylist.searchAvailablePlaylists')}
+            placeholder={t('addToPlaylist.searchMyPlaylists')}
             disabled={busy}
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -155,19 +154,11 @@ export function AddToPlaylist({
           data-list-viewport=""
           className="playlist-target-list"
           role="group"
-          aria-label={ui('我创建的歌单', 'My playlists')}
+          aria-label={t('addToPlaylist.myPlaylists')}
         >
           {(failedCount > 0 || error) && (
             <div className="alert error" role="alert">
-              {[
-                failedCount &&
-                  ui(
-                    '{0} 个歌单添加失败，可重试',
-                    'Failed to add to {0} playlists. Try again.',
-                    failedCount,
-                  ),
-                error,
-              ]
+              {[failedCount && t('playlist.failedCount', { count: failedCount }), error]
                 .filter(Boolean)
                 .join('；')}
             </div>
@@ -181,14 +172,10 @@ export function AddToPlaylist({
                 <span>
                   <strong>{playlist.name}</strong>
                   <small>
-                    {ui(
-                      '{0} 首',
-                      playlist.count === 1 ? '{0} track' : '{0} tracks',
-                      playlist.count,
-                    )}
+                    {t('music.trackCount', { count: playlist.count })}
                     {result?.state === 'failed' && ` · ${result.reason}`}
-                    {result?.state === 'added' && ui(' · 已添加', ' · Added')}
-                    {result?.state === 'exists' && ui(' · 已收录', ' · Already added')}
+                    {result?.state === 'added' && t('addToPlaylist.added')}
+                    {result?.state === 'exists' && t('addToPlaylist.alreadyAdded')}
                   </small>
                 </span>
                 <input
@@ -203,17 +190,14 @@ export function AddToPlaylist({
           {loading && (
             <p className="loading">
               <LoaderCircle size={16} className="spin" />
-              {ui('正在读取歌单…', 'Loading playlists…')}
+              {t('addToPlaylist.loadingPlaylists')}
             </p>
           )}
           {!loading && !error && !visible.length && (
             <p className="playlist-add-empty">
               {query.trim()
-                ? ui('没有找到匹配歌单', 'No matching playlists')
-                : ui(
-                    '没有可添加的歌单，请先在网易云创建歌单',
-                    'No available playlists. Create a playlist in NetEase Cloud Music first.',
-                  )}
+                ? t('common.noMatchingPlaylists')
+                : t('addToPlaylist.noAvailablePlaylistsCreateAPlaylistInNetease')}
             </p>
           )}
         </div>

@@ -1,4 +1,5 @@
 import {
+  createChineseProfile,
   expectQueueHeaderFits,
   expectRoomHeaderSingleLine,
   settingsGroup,
@@ -11,9 +12,7 @@ import {
 } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { rm } from 'node:fs/promises'
 import packageInfo from '../../package.json'
 
 type RoomSong = { songId: string; songBizId: string; songRcmdUid: string | number }
@@ -445,7 +444,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
   })
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   port = (server.address() as any).port
-  const profile = await mkdtemp(join(tmpdir(), 'music-party-test-'))
+  const profile = await createChineseProfile('music-party-test-')
   const launch = () =>
     electron.launch({
       args: [

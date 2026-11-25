@@ -3,7 +3,7 @@
 // at b01525f. See THIRD_PARTY_NOTICES.md.
 import { parseRoomQueue } from '../../shared/playback-queue'
 import type { RoomQueueEntry } from '../../shared/types'
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import type { ApiCall } from './music-data'
 
 export type RoomQueueMethod = 'multiQueue' | 'multiPlayed'
@@ -29,12 +29,7 @@ export class RoomQueuePages {
     )
     if (page.more) {
       if (!page.cursor || this.cursors.has(page.cursor) || this.cursors.size >= 1000)
-        throw new Error(
-          ui(
-            '列表分页没有继续前进，请刷新重试',
-            'The list stopped loading. Refresh and try again.',
-          ),
-        )
+        throw new Error(t('roomQueuePages.theListStoppedLoadingRefreshAndTryAgain'))
       this.cursors.add(page.cursor)
       this.cursor = page.cursor
     }

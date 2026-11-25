@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import {
   CheckCircle2,
@@ -11,6 +11,7 @@ import {
   X,
 } from 'lucide-react'
 import { conversationName, conversationPreview } from '../../shared/private-messages'
+import type { DesktopInfo } from '../../shared/desktop'
 import type { MultiInvitation, Song, Conversation } from '../../shared/types'
 import type { PanelId } from '../../shared/panels'
 import { invitation } from '../../shared/protocol'
@@ -58,7 +59,13 @@ import type { MusicSource } from './MusicBrowser'
 import { mediaDrafts } from './media-drafts'
 import './browser-navigation.css'
 
-export function App() {
+export function App({
+  desktopInfo,
+  startupError,
+}: {
+  desktopInfo: DesktopInfo | null
+  startupError?: string
+}) {
   const p = useParty(),
     panels = useAdaptiveNavigation(!!p.current, p.room?.roomId ?? null)
   useShellKeyboard(panels)
@@ -119,7 +126,7 @@ export function App() {
     }
   })
   useLayoutEffect(() => selectRoutePeer(), [uid, privateShown, panels.peer])
-  const desktop = useDesktop(p, (id) => open(id))
+  const desktop = useDesktop(p, (id) => open(id), desktopInfo, startupError)
   const position = useDisplayedPosition(p)
   const [backgroundDraft, setBackgroundDraft] = useState<PlayerBackgroundValues | null>(null)
   const background = backgroundDraft ?? desktop.info?.preferences.playerBackground
@@ -241,7 +248,7 @@ export function App() {
   function login(intent: PanelId) {
     setLoginIntent(intent)
     panels.show('login')
-    if (!p.qr && !p.busy) void p.act(ui('生成登录二维码', 'Generate sign-in QR code'), p.login)
+    if (!p.qr && !p.busy) void p.act(t('common.generateSignInQrCode'), p.login)
   }
   function openSource(source: MusicSource) {
     const id = ('detail-' + source.key.replace(':', '-')) as PanelId
@@ -281,18 +288,13 @@ export function App() {
       .catch((e) => p.setError(e.message))
   }
   async function join(invite: MultiInvitation) {
-    await p.act(ui('加入邀请房间', 'Join invited room'), async () => {
+    await p.act(t('app.joinInvitedRoom'), async () => {
       const preview = await p.api('multiPreview', {
         roomId: invite.roomId,
         inviterUid: invite.inviterUid,
       })
       if (preview.data?.roomStatus !== 'AVAILABLE')
-        throw new Error(
-          ui(
-            '邀请已失效或房间状态无法确认，请刷新后重试',
-            'The invitation expired or the room could not be verified. Try again.',
-          ),
-        )
+        throw new Error(t('app.theInvitationExpiredOrTheRoomCouldNot'))
       if (p.room?.roomId !== invite.roomId) {
         if (p.room) await p.leaveRoom(false)
         await p.joinRoom(invitation({ ...invite, role: 'guest' }))
@@ -306,9 +308,7 @@ export function App() {
     panels.reply(peer)
   }
   const onPlay = (song: Song, ids?: string[]) =>
-    p.act(p.room ? ui('推送歌曲', 'Recommend track') : ui('播放歌曲', 'Play track'), () =>
-      p.playSong(song, ids),
-    )
+    p.act(p.room ? t('app.recommendTrack') : t('app.playTrack'), () => p.playSong(song, ids))
   const onAudition = (song: Song) => p.auditionSong(song).catch((e) => p.setError(e.message))
   const onAlbum = (id: string, title: string) =>
     openSource({ key: 'album:' + id, title, albumId: id })
@@ -385,16 +385,16 @@ export function App() {
             {...browser}
             initialSource={{
               key: 'recent:' + recentIds.join(','),
-              title: ui('最近播放', 'Recently played'),
+              title: t('common.recentlyPlayed'),
               ids: recentIds,
             }}
           />
         ) : (
           <div className="empty">
             <Headphones size={26} />
-            <strong>{ui('最近还没有播放过歌曲', 'No recently played tracks')}</strong>
+            <strong>{t('app.noRecentlyPlayedTracks')}</strong>
             <button className="secondary" onClick={() => open('search')}>
-              {ui('搜索音乐', 'Search music')}
+              {t('app.searchMusic')}
             </button>
           </div>
         )
@@ -479,7 +479,7 @@ export function App() {
           />
         ) : (
           <button className="secondary" onClick={() => open('room')}>
-            {ui('加入一起听', 'Join Listen Together')}
+            {t('common.joinListenTogether')}
           </button>
         )
       case 'chat':
@@ -494,7 +494,7 @@ export function App() {
           />
         ) : (
           <button className="secondary" onClick={() => open('room')}>
-            {ui('加入一起听', 'Join Listen Together')}
+            {t('common.joinListenTogether')}
           </button>
         )
       case 'private':
@@ -533,7 +533,7 @@ export function App() {
         return (
           <Diagnostics
             traces={p.traces}
-            onExport={() => p.act(ui('导出记录', 'Export log'), p.exportTrace)}
+            onExport={() => p.act(t('common.exportLog'), p.exportTrace)}
           />
         )
       case 'login':
@@ -541,13 +541,10 @@ export function App() {
           <div className="login-dialog">
             <p className="mp-qr-instruction">
               <ScanLine size={17} />
-              {ui(
-                '使用网易云音乐 App 扫码登录',
-                'Scan with the NetEase Cloud Music app to sign in',
-              )}
+              {t('app.scanWithTheNeteaseCloudMusicAppTo')}
             </p>
             {p.qr && !['scanned', 'confirmed'].includes(p.qrStatus.phase) ? (
-              <img alt={ui('网易云登录二维码', 'NetEase sign-in QR code')} src={p.qr.qrimg} />
+              <img alt={t('app.neteaseSignInQrCode')} src={p.qr.qrimg} />
             ) : (
               <div className="qr-placeholder" data-phase={p.qrStatus.phase}>
                 {p.qrStatus.phase === 'scanned' || p.qrStatus.phase === 'confirmed' ? (
@@ -561,25 +558,25 @@ export function App() {
             )}
             <small className="mp-qr-status" role="status">
               {p.qrStatus.phase === 'scanned'
-                ? ui('已扫码，请在手机上确认登录', 'Code scanned. Confirm sign-in on your phone.')
+                ? t('app.codeScannedConfirmSignInOnYourPhone')
                 : p.qrStatus.phase === 'confirmed'
-                  ? ui('正在读取登录账号…', 'Loading account…')
+                  ? t('app.loadingAccount')
                   : p.qrStatus.phase === 'expired'
-                    ? ui('二维码已过期', 'QR code expired')
+                    ? t('app.qrCodeExpired')
                     : p.qrStatus.phase === 'error'
                       ? p.qrStatus.message
                       : p.qr
-                        ? ui('等待扫码', 'Waiting for scan')
+                        ? t('app.waitingForScan')
                         : p.busy
-                          ? ui('正在生成二维码…', 'Generating QR code…')
+                          ? t('app.generatingQrCode')
                           : ''}
             </small>
             {!p.qr && !p.busy && p.qrStatus.phase !== 'confirmed' && (
               <button
                 className="primary"
-                onClick={() => p.act(ui('生成登录二维码', 'Generate sign-in QR code'), p.login)}
+                onClick={() => p.act(t('common.generateSignInQrCode'), p.login)}
               >
-                {ui('重新生成二维码', 'Generate a new code')}
+                {t('app.generateANewCode')}
               </button>
             )}
             {p.error && <p role="alert">{p.error}</p>}
@@ -609,20 +606,10 @@ export function App() {
             <div className="mp-confirm">
               <p>
                 {confirm.kind === 'leave'
-                  ? ui(
-                      '离开一起听房间？房间的已播、当前和待播歌曲将成为你的个人队列。',
-                      'Leave this room? Its history, current song, and upcoming songs will become your personal queue.',
-                    )
+                  ? t('app.leaveThisRoomItsHistoryCurrentSongAnd')
                   : confirm.kind === 'leaveAvailable'
-                    ? ui(
-                        '让账号退出这个房间？本机将保留当前播放和队列。',
-                        'Leave this room? Playback and the queue on this device will be preserved.',
-                      )
-                    : ui(
-                        '将《{0}》从我喜欢的音乐中移除？',
-                        'Remove “{0}” from Liked Songs?',
-                        confirm.song.name,
-                      )}
+                    ? t('app.leaveThisRoomPlaybackAndTheQueueOn')
+                    : t('app.removeFromLikedSongs', { name: confirm.song.name })}
               </p>
               {confirmError && <p role="alert">{confirmError}</p>}
               <div className="row-actions">
@@ -631,7 +618,7 @@ export function App() {
                   disabled={confirmPending}
                   onClick={() => panels.hide(id)}
                 >
-                  {ui('取消', 'Cancel')}
+                  {t('common.cancel')}
                 </button>
                 <button
                   className="primary mp-destructive"
@@ -658,8 +645,8 @@ export function App() {
                   }}
                 >
                   {confirm.kind !== 'unlike'
-                    ? ui('确认离开', 'Leave room')
-                    : ui('确认取消喜欢', 'Remove from Liked Songs')}
+                    ? t('app.leaveRoom')
+                    : t('app.confirmRemoveFromLikedSongs')}
                 </button>
               </div>
             </div>
@@ -674,7 +661,7 @@ export function App() {
   function signIn() {
     return (
       <button className="primary" onClick={() => login('login')}>
-        {ui('扫码登录', 'Sign in with QR code')}
+        {t('common.signInWithQrCode')}
       </button>
     )
   }
@@ -709,14 +696,14 @@ export function App() {
   const previous = panels.previous
   const backLabel =
     previous === 'settings'
-      ? ui('返回设置分类', 'Back to settings categories')
+      ? t('app.backToSettingsCategories')
       : previous === 'private'
-        ? ui('返回私信列表', 'Back to conversations')
+        ? t('app.backToConversations')
         : previous === 'members'
-          ? ui('返回成员列表', 'Back to members')
+          ? t('app.backToMembers')
           : previous
-            ? ui('返回', 'Back to ') + stepTitle(previous)
-            : ui('返回上一页', 'Go back')
+            ? t('app.backTo', { page: stepTitle(previous) })
+            : t('app.goBack')
   const { layout, pane, drawer, dialog } = panels
   const path = panels.path.map((step, level) => ({
     id: panelOf(step),
@@ -791,10 +778,10 @@ export function App() {
         const title =
           id === 'confirm' && confirm
             ? confirm.kind === 'leaveAvailable'
-              ? ui('退出当前房间？', 'Leave current room?')
+              ? t('app.leaveCurrentRoom')
               : confirm.kind === 'leave'
-                ? ui('离开多人房间？', 'Leave this room?')
-                : ui('取消喜欢这首歌？', 'Remove this track from Liked Songs?')
+                ? t('app.leaveThisRoom')
+                : t('app.removeThisTrackFromLikedSongs')
             : stepTitle(id)
         const trail =
           placement === 'page'
@@ -862,15 +849,11 @@ export function App() {
         />
       </div>
       {!dialog && noticeKey && inbox.notificationInbox.length > 0 && (
-        <aside
-          className="private-toast"
-          data-notice="private"
-          aria-label={ui('新私信', 'New message')}
-        >
+        <aside className="private-toast" data-notice="private" aria-label={t('common.newMessage')}>
           <div className="toast-heading">
-            <strong role="status">{ui('新私信', 'New message')}</strong>
+            <strong role="status">{t('common.newMessage')}</strong>
             <IconButton
-              label={ui('关闭新私信', 'Dismiss message notification')}
+              label={t('app.dismissMessageNotification')}
               onClick={() => setNoticeKey('')}
             >
               <X size={15} />
@@ -880,13 +863,13 @@ export function App() {
             {inbox.notificationInbox.slice(0, 3).map((peer) => (
               <button
                 key={peer.uid}
-                title={ui('快速回复 {0}', 'Quick reply to {0}', conversationName(peer))}
+                title={t('app.quickReplyTo', { nickname: conversationName(peer) })}
                 onClick={() => reply(peer)}
               >
                 <UserAvatar name={conversationName(peer)} src={peer.avatar} />
                 <span className="mp-notice-copy">
                   <strong>{conversationName(peer)}</strong>
-                  <small>{conversationPreview(peer) || ui('新私信', 'New message')}</small>
+                  <small>{conversationPreview(peer) || t('common.newMessage')}</small>
                 </span>
                 {peer.unread > 1 ? (
                   <UnreadBadge count={peer.unread} />
@@ -918,12 +901,12 @@ export function App() {
                 open('controls')
               }}
             >
-              {ui('播放调节', 'Playback controls')}
+              {t('common.playbackControls')}
             </button>
           )}
           <button
             className="icon-btn"
-            aria-label={ui('关闭播放提示', 'Dismiss playback notification')}
+            aria-label={t('app.dismissPlaybackNotification')}
             onClick={() => {
               setFeedback('')
               p.setError('')

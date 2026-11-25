@@ -1,4 +1,4 @@
-import { ui } from './ui-language'
+import { t } from './ui-language'
 import type { MessageAttachment, ChatEmoji } from './types'
 export type MediaKind = 'image' | 'voice' | 'video' | 'file'
 export type MediaTarget =
@@ -48,17 +48,21 @@ export const MEDIA_LIMITS: Record<MediaKind, number> = {
 export function validateMediaRequest(value: unknown): MediaRequest {
   const v = value as MediaRequest
   if (!v || typeof v.requestId !== 'string' || !/^[0-9a-f-]{36}$/i.test(v.requestId))
-    throw new Error(ui('附件请求标识无效', 'Invalid attachment request ID'))
-  const t = v.target
+    throw new Error(t('media.invalidAttachmentRequestId'))
+  const target = v.target
   if (
-    !t ||
+    !target ||
     !(
-      (t.kind === 'room' && typeof t.roomId === 'string' && /^[\w-]{1,128}$/.test(t.roomId)) ||
-      (t.kind === 'private' && typeof t.uid === 'string' && /^[1-9]\d{0,23}$/.test(t.uid)) ||
-      t.kind === 'sticker'
+      (target.kind === 'room' &&
+        typeof target.roomId === 'string' &&
+        /^[\w-]{1,128}$/.test(target.roomId)) ||
+      (target.kind === 'private' &&
+        typeof target.uid === 'string' &&
+        /^[1-9]\d{0,23}$/.test(target.uid)) ||
+      target.kind === 'sticker'
     )
   )
-    throw new Error(ui('附件收件人无效', 'Invalid attachment recipient'))
+    throw new Error(t('media.invalidAttachmentRecipient'))
   const f = v.file
   if (
     !f ||
@@ -68,24 +72,20 @@ export function validateMediaRequest(value: unknown): MediaRequest {
     f.name.length > 200 ||
     /[\x00-\x1f/\\]/.test(f.name)
   )
-    throw new Error(ui('附件文件名或类型无效', 'Invalid attachment name or type'))
+    throw new Error(t('media.invalidAttachmentNameOrType'))
   if (
     !(f.data instanceof Uint8Array) ||
     !(f.data.buffer instanceof ArrayBuffer) ||
     !f.data.byteLength ||
     f.data.byteLength > MEDIA_LIMITS[f.kind]
   )
-    throw new Error(
-      ui('附件为空或超过大小限制', 'The attachment is empty or exceeds the size limit'),
-    )
-  if (t.kind === 'room' && f.kind !== 'image')
-    throw new Error(
-      ui('房间聊天仅支持图片和表情附件', 'Room chat supports image and sticker attachments'),
-    )
-  if (t.kind === 'sticker' && f.kind !== 'image')
-    throw new Error(ui('自定义表情只能上传图片或 GIF', 'Choose an image or GIF for your sticker'))
+    throw new Error(t('media.theAttachmentIsEmptyOrExceedsTheSize'))
+  if (target.kind === 'room' && f.kind !== 'image')
+    throw new Error(t('media.roomChatSupportsImageAndStickerAttachments'))
+  if (target.kind === 'sticker' && f.kind !== 'image')
+    throw new Error(t('media.chooseAnImageOrGifForYourSticker'))
   if (typeof f.mime !== 'string' || !/^[\w.+-]+\/[\w.+-]+$/.test(f.mime) || f.mime.length > 100)
-    throw new Error(ui('附件格式无效', 'Unsupported attachment format'))
+    throw new Error(t('media.unsupportedAttachmentFormat'))
   const signature = (text: string, offset = 0) =>
     [...text].every((c, i) => f.data[offset + i] === c.charCodeAt(0))
   if (
@@ -97,23 +97,21 @@ export function validateMediaRequest(value: unknown): MediaRequest {
       (f.mime === 'image/webp' && signature('RIFF') && signature('WEBP', 8))
     )
   )
-    throw new Error(
-      ui('请选择 PNG、JPEG、GIF 或 WebP 图片', 'Choose a PNG, JPEG, GIF, or WebP image'),
-    )
+    throw new Error(t('common.chooseAPngJpegGifOrWebpImage'))
   if (f.kind === 'video' && !(f.mime === 'video/mp4' && signature('ftyp', 4)))
-    throw new Error(ui('请选择 MP4 视频', 'Choose an MP4 video'))
+    throw new Error(t('common.chooseAnMp4Video'))
   if (f.kind === 'voice' && !(f.mime === 'audio/wav' && signature('RIFF') && signature('WAVE', 8)))
-    throw new Error(ui('录音数据格式无效', 'Invalid recording format'))
+    throw new Error(t('media.invalidRecordingFormat'))
   if (
     ['voice', 'video'].includes(f.kind) &&
     (!Number.isFinite(f.duration) || f.duration! <= 0 || f.duration! > 3600000)
   )
-    throw new Error(ui('无法读取音视频时长', 'Could not read the media duration'))
+    throw new Error(t('media.couldNotReadTheMediaDuration'))
   if (
     ['image', 'video'].includes(f.kind) &&
     [f.width, f.height].some((n) => !Number.isSafeInteger(n) || n! <= 0 || n! > 30000)
   )
-    throw new Error(ui('无法读取图片或视频尺寸', 'Could not read the image or video dimensions'))
+    throw new Error(t('media.couldNotReadTheImageOrVideoDimensions'))
   if (
     f.cover &&
     (!(f.cover instanceof Uint8Array) ||
@@ -121,15 +119,15 @@ export function validateMediaRequest(value: unknown): MediaRequest {
       f.cover[0] !== 255 ||
       f.cover[1] !== 216)
   )
-    throw new Error(ui('视频封面无效', 'Invalid video thumbnail'))
+    throw new Error(t('media.invalidVideoThumbnail'))
   return {
     requestId: v.requestId,
     target:
-      t.kind === 'room'
-        ? { kind: 'room', roomId: t.roomId }
-        : t.kind === 'sticker'
+      target.kind === 'room'
+        ? { kind: 'room', roomId: target.roomId }
+        : target.kind === 'sticker'
           ? { kind: 'sticker' }
-          : { kind: 'private', uid: t.uid },
+          : { kind: 'private', uid: target.uid },
     file: {
       name: f.name,
       mime: f.mime,

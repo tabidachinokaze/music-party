@@ -1,4 +1,5 @@
-import { ui } from '../../shared/ui-language'
+import { localizedMessageText } from '../../shared/message-content'
+import { t } from '../../shared/ui-language'
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { ArrowDown, Sticker } from 'lucide-react'
 import type { Member, Room, Song } from '../../shared/types'
@@ -83,34 +84,29 @@ export function RoomChat({
     <aside
       hidden={!chat.visible}
       className="chat-drawer"
-      aria-label={ui('官方房间聊天', 'Room chat')}
+      aria-label={t('roomChat.roomChat')}
       data-closing={!chat.visible}
       aria-hidden={!chat.visible}
       inert={!chat.visible}
     >
       {!room ? (
-        <div className="chat-empty">
-          {ui(
-            '加入官方多人房间后，与听友聊天',
-            'Join a listening room to chat with other listeners',
-          )}
-        </div>
+        <div className="chat-empty">{t('roomChat.joinAListeningRoomToChatWithOther')}</div>
       ) : (
         <>
           <div className="chat-status" role="status" data-error={Boolean(chat.error)}>
             {chat.error ||
               (chat.loading
-                ? ui('正在读取聊天记录…', 'Loading chat history…')
+                ? t('roomChat.loadingChatHistory')
                 : chat.lastUpdate
-                  ? ui('更新于 {0}', 'Updated at {0}', chat.lastUpdate)
-                  : ui('正在连接聊天', 'Connecting to chat'))}
+                  ? t('roomChat.updatedAt', { lastUpdate: chat.lastUpdate })
+                  : t('roomChat.connectingToChat'))}
           </div>
           <div className="chat-history-frame">
             <div
               data-list-viewport=""
               className="chat-messages"
               role="log"
-              aria-label={ui('聊天消息', 'Chat messages')}
+              aria-label={t('roomChat.chatMessages')}
               aria-live="polite"
               ref={list}
               onScroll={() => {
@@ -123,7 +119,7 @@ export function RoomChat({
             >
               <div ref={historyPages} className="pagination-sentinel" aria-hidden="true" />
               {!chat.loading && !chat.messages.length && (
-                <div className="chat-empty">{ui('还没有聊天消息', 'No messages yet')}</div>
+                <div className="chat-empty">{t('roomChat.noMessagesYet')}</div>
               )}
               {chat.messages.map((message) => {
                 const activity =
@@ -138,13 +134,10 @@ export function RoomChat({
                   >
                     {message.error ||
                       {
-                        sending: ui('发送中…', 'Sending…'),
-                        submitted: ui(
-                          '已提交，等待房间回显',
-                          'Sent. Waiting for the room to confirm.',
-                        ),
-                        failed: ui('发送失败', 'Send failed'),
-                        uncertain: ui('结果未确认', 'Delivery unconfirmed'),
+                        sending: t('common.sending'),
+                        submitted: t('roomChat.sentWaitingForTheRoomToConfirm'),
+                        failed: t('common.sendFailed'),
+                        uncertain: t('common.deliveryUnconfirmed'),
                       }[message.delivery]}
                   </small>
                 )
@@ -154,7 +147,7 @@ export function RoomChat({
                     id={message.id}
                     message={message}
                     onAuthor={
-                      message.uid !== '0'
+                      message.uid !== '0' && message.nickname
                         ? () => composer.current?.insertText(`@${message.nickname} `)
                         : undefined
                     }
@@ -166,10 +159,14 @@ export function RoomChat({
                     key={message.id}
                     id={message.id}
                     mine={message.uid === uid}
-                    author={message.nickname}
+                    author={message.nickname || t('common.listener')}
                     avatar={message.avatar || members.find((m) => m.uid === message.uid)?.avatar}
                     time={message.time}
-                    onAuthor={() => composer.current?.insertText(`@${message.nickname} `)}
+                    onAuthor={
+                      message.nickname
+                        ? () => composer.current?.insertText(`@${message.nickname} `)
+                        : undefined
+                    }
                     mentioned={
                       Boolean(viewerNickname) && message.text.includes(`@${viewerNickname} `)
                     }
@@ -180,9 +177,7 @@ export function RoomChat({
                       text={
                         message.previewOnlyText
                           ? ''
-                          : message.fallbackTextEn
-                            ? ui(message.text, message.fallbackTextEn)
-                            : message.text
+                          : localizedMessageText(message.text, message.fallbackText)
                       }
                       attachments={message.attachments}
                       richText={message.richText}
@@ -201,8 +196,8 @@ export function RoomChat({
             {showLatest && (
               <button
                 className="back-to-latest"
-                aria-label={ui('回到最新消息', 'Jump to latest')}
-                title={ui('回到最新消息', 'Jump to latest')}
+                aria-label={t('common.jumpToLatest')}
+                title={t('common.jumpToLatest')}
                 onClick={() => {
                   if (list.current) list.current.scrollTop = list.current.scrollHeight
                   nearBottom.current = true
@@ -219,23 +214,13 @@ export function RoomChat({
             className="chat-compose"
             value={chat.draft}
             onChange={chat.setDraft}
-            label={ui('聊天内容', 'Chat message')}
-            placeholder={ui(
-              '聊聊这首歌，输入 @ 提及成员…',
-              'Talk about this song, or type @ to mention someone…',
-            )}
+            label={t('roomChat.chatMessage')}
+            placeholder={t('roomChat.talkAboutThisSongOrTypeToMention')}
             maxLength={CHAT_MAX_LENGTH}
             busy={chat.sending}
             disabled={!room.chatRoomId}
             members={members}
-            notice={
-              !room.chatRoomId
-                ? ui(
-                    '正在等待官方聊天室信息，连接后将自动更新。',
-                    'Waiting for the chat room to connect.',
-                  )
-                : undefined
-            }
+            notice={!room.chatRoomId ? t('roomChat.waitingForTheChatRoomToConnect') : undefined}
             onSubmit={() => {
               nearBottom.current = true
               return chat.send()
@@ -246,8 +231,8 @@ export function RoomChat({
                   api={chat.api}
                   accountKey={uid}
                   scope="room"
-                  recipient={ui('当前一起听房间', 'Current listening room')}
-                  triggerLabel={ui('表情包', 'Stickers')}
+                  recipient={t('common.currentListeningRoom')}
+                  triggerLabel={t('common.stickers')}
                   triggerIcon={<Sticker size={16} />}
                   disabled={chat.sending || !room.chatRoomId}
                   onSticker={(emoji) => {
@@ -258,7 +243,7 @@ export function RoomChat({
                 <MediaComposer
                   accountKey={uid}
                   target={{ kind: 'room', roomId: room.roomId }}
-                  label={ui('当前一起听房间', 'Current listening room')}
+                  label={t('common.currentListeningRoom')}
                   disabled={chat.sending || !room.chatRoomId}
                   onSent={chat.acceptMedia}
                   onMediaPlay={onMediaPlay}

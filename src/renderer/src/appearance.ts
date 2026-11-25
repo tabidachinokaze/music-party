@@ -1,4 +1,4 @@
-import { ui } from '../../shared/ui-language'
+import { t } from '../../shared/ui-language'
 import type { Preferences } from '../../shared/desktop'
 
 // The dark swatch is the persisted identifier so one selection follows both themes.
@@ -6,7 +6,7 @@ export const ACCENT_PRESETS = [
   {
     id: 'violet',
     get name() {
-      return ui('雾紫', 'Violet')
+      return t('appearance.violet')
     },
     dark: '#a99bf2',
     light: '#6351b8',
@@ -14,7 +14,7 @@ export const ACCENT_PRESETS = [
   {
     id: 'jade',
     get name() {
-      return ui('翡翠', 'Jade')
+      return t('appearance.jade')
     },
     dark: '#6fd4b5',
     light: '#1f7a61',
@@ -22,7 +22,7 @@ export const ACCENT_PRESETS = [
   {
     id: 'amber',
     get name() {
-      return ui('琥珀', 'Amber')
+      return t('appearance.amber')
     },
     dark: '#f0b27a',
     light: '#a35719',
@@ -30,7 +30,7 @@ export const ACCENT_PRESETS = [
   {
     id: 'sky',
     get name() {
-      return ui('晴空', 'Sky')
+      return t('appearance.sky')
     },
     dark: '#8abdf7',
     light: '#295fa6',
@@ -39,7 +39,7 @@ export const ACCENT_PRESETS = [
 
 type Color = readonly [number, number, number]
 function color(hex: string): Color {
-  if (!/^#[\da-f]{6}$/i.test(hex)) throw new Error(ui('主题颜色无效', 'Invalid accent color'))
+  if (!/^#[\da-f]{6}$/i.test(hex)) throw new Error(t('appearance.invalidAccentColor'))
   return [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16)) as unknown as Color
 }
 function hex(value: Color) {
