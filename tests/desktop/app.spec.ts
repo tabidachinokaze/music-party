@@ -1,4 +1,14 @@
-import { settingsGroup, openTool, panelPage, loginFixture, serveArtwork } from './windows'
+import {
+  expectQueueHeaderFits,
+  expectRoomHeaderSingleLine,
+  settingsGroup,
+  openTool,
+  panelPage,
+  loginFixture,
+  serveArtwork,
+  serveSeekableWav,
+  widenPanel,
+} from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -6,17 +16,23 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import packageInfo from '../../package.json'
 
+type RoomSong = { songId: string; songBizId: string; songRcmdUid: string | number }
+
 test('official multiplayer lifecycle with three members, remote song changes and add-song semantics', async () => {
   test.setTimeout(90000)
   let active = false,
     currentSong = '111',
     version = 1,
     port = 0
-  let queue: any[] = []
+  let queue: RoomSong[] = []
+  let played: RoomSong[] = []
+  let historyUnavailable = false
+  let queueUnavailable = false
   const roomLikes = new Set<string>(),
     roomLikeCounts = new Map<string, number>(),
     roomUps = new Set<string>()
   let heartbeatSeconds = 1,
+    lastHeartbeatSeconds = 0,
     boundaryChecks = -1
   let synchronizationGate: Promise<void> | null = null
   let releaseSynchronization: () => void = () => {}
@@ -25,6 +41,8 @@ test('official multiplayer lifecycle with three members, remote song changes and
   let releaseLikeResponse: () => void = () => {}
   let liked = ['111', '112']
   let memberIds = [123, 456, 789]
+  let creatorId = 123
+  let onlineCount = memberIds.length
   const chatStart = Date.now()
   const peerNickname = '听友456 · 喜欢在一起听房间分享音乐的超长完整昵称'
   const chatRecords: any[] = [
@@ -51,11 +69,24 @@ test('official multiplayer lifecycle with three members, remote song changes and
   const snapshot = () => ({
     roomId: 'multi-test-room',
     roomPlaySongInfo: songInfo(),
-    multiRoomInfoDTO: { chatRoomId: '99887766', roomType: 'MULTI_MATCH_SONG' },
+    multiRoomInfoDTO: { chatRoomId: '99887766', roomType: 'MULTI_MATCH_SONG', creatorId },
     multiLtRoomUserAgg: {
-      onlineNums: memberIds.length,
+      onlineNums: onlineCount,
       onlineUserInfos: memberIds.map((uid) => ({ uid, nickname: `听友${uid}`, avatar: '' })),
     },
+  })
+  const roomQueueRow = (song: RoomSong) => ({
+    songInfo: {
+      resourceId: song.songId,
+      bizId: song.songBizId,
+      title: `测试歌曲${song.songId}`,
+      artistName: ['测试歌手'],
+      coverUrl: '',
+    },
+    rcmdUid: song.songRcmdUid,
+    selfRcmd: String(song.songRcmdUid) === '123',
+    uped: roomUps.has(song.songBizId),
+    nickname: `听友${song.songRcmdUid}`,
   })
   const pcm = Buffer.alloc(44 + 8000 * 2 * 30)
   pcm.write('RIFF')
@@ -73,20 +104,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
   const server = createServer(async (req, res) => {
     const path = new URL(req.url!, 'http://localhost').pathname
     if (path === '/audio.wav') {
-      res.setHeader('Content-Type', 'audio/wav')
-      res.setHeader('Accept-Ranges', 'bytes')
-      const range = req.headers.range?.match(/bytes=(\d+)-(\d*)/)
-      if (range) {
-        const start = Number(range[1]),
-          end = range[2] ? Math.min(Number(range[2]), pcm.length - 1) : pcm.length - 1
-        res.statusCode = 206
-        res.setHeader('Content-Range', `bytes ${start}-${end}/${pcm.length}`)
-        res.setHeader('Content-Length', end - start + 1)
-        res.end(pcm.subarray(start, end + 1))
-      } else {
-        res.setHeader('Content-Length', pcm.length)
-        res.end(pcm)
-      }
+      serveSeekableWav(req, res, pcm)
       return
     }
     const chunks: Buffer[] = []
@@ -129,10 +147,12 @@ test('official multiplayer lifecycle with three members, remote song changes and
         break
       case '/api/listen/together/multi/room/create':
         active = true
+        creatorId = 123
         body = { code: 200, data: { success: true, multiLtRoomSnapshot: snapshot() } }
         break
       case '/api/listen/together/multi/match/ack':
         active = true
+        creatorId = 789
         body = { code: 200, data: { success: true, multiLtRoomSnapshot: snapshot() } }
         break
       case '/api/listen/together/multi/played/song/info':
@@ -144,22 +164,34 @@ test('official multiplayer lifecycle with three members, remote song changes and
           },
         }
         break
+      case '/api/listen/together/multi/match/played/song/list': {
+        if (!active) {
+          body = { code: 403, message: '已离开房间' }
+          break
+        }
+        if (historyUnavailable) {
+          body = { code: 500, message: '读取已播记录失败' }
+          break
+        }
+        const offset = Number(JSON.parse(args.data.page).cursor || 0)
+        const more = offset + 2 < played.length
+        body = {
+          code: 200,
+          data: {
+            songLists: played.slice(offset, offset + 2).map(roomQueueRow),
+            page: { more, cursor: more ? String(offset + 2) : '' },
+          },
+        }
+        break
+      }
       case '/api/listen/together/multi/match/wait/song/list': {
+        if (queueUnavailable) {
+          body = { code: 500, message: '读取待播列表失败' }
+          break
+        }
         const cursor = JSON.parse(args.data.page).cursor
         const offset = Number(cursor || 0)
-        const list = [songInfo().playSong, ...queue].map((song) => ({
-          songInfo: {
-            resourceId: song.songId,
-            bizId: song.songBizId,
-            title: `测试歌曲${song.songId}`,
-            artistName: ['测试歌手'],
-            coverUrl: '',
-          },
-          rcmdUid: song.songRcmdUid,
-          selfRcmd: String(song.songRcmdUid) === '123',
-          uped: roomUps.has(String(song.songBizId)),
-          nickname: `听友${song.songRcmdUid}`,
-        }))
+        const list = [songInfo().playSong, ...queue].map(roomQueueRow)
         body = {
           code: 200,
           data: {
@@ -191,9 +223,10 @@ test('official multiplayer lifecycle with three members, remote song changes and
           heldHeartbeats++
           await synchronizationGate
         }
+        lastHeartbeatSeconds = heartbeatSeconds
         body = {
           code: 200,
-          data: { heartBeatDuration: heartbeatSeconds, roomPlaySongInfo: songInfo() },
+          data: { heartBeatDuration: lastHeartbeatSeconds, roomPlaySongInfo: songInfo() },
         }
         break
       case '/api/listen/together/multi/match/song/operate':
@@ -308,7 +341,13 @@ test('official multiplayer lifecycle with three members, remote song changes and
             .map((id) => ({
               id,
               name: `测试歌曲${id}`,
-              ar: [{ name: '测试歌手' }],
+              ar:
+                id === '221'
+                  ? [
+                      { id: 921, name: '音乐人甲' },
+                      { id: 922, name: '音乐人乙' },
+                    ]
+                  : [{ name: '测试歌手' }],
               al: { name: '测试专辑' },
               dt: 30000,
             })),
@@ -322,7 +361,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
           playlist: Array.from({ length: offset === 0 ? 50 : 1 }, (_, i) => ({
             id: offset + i + 1,
             name: `歌单${offset + i + 1}`,
-            trackCount: 205,
+            trackCount: offset + i + 1 === 10 ? 2599 : 205,
             creator: { userId: i % 2 === 0 ? 123 : 456, nickname: '歌单作者' },
           })),
         }
@@ -331,7 +370,11 @@ test('official multiplayer lifecycle with three members, remote song changes and
       case '/playlist/detail':
         body = {
           code: 200,
-          playlist: { trackIds: Array.from({ length: 205 }, (_, i) => ({ id: 5000 + i })) },
+          playlist: {
+            trackIds: Array.from({ length: Number(args.id) === 10 ? 2599 : 205 }, (_, i) => ({
+              id: 5000 + i,
+            })),
+          },
         }
         break
       case '/likelist':
@@ -403,21 +446,23 @@ test('official multiplayer lifecycle with three members, remote song changes and
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
   port = (server.address() as any).port
   const profile = await mkdtemp(join(tmpdir(), 'music-party-test-'))
-  const app = await electron.launch({
-    args: [
-      '.',
-      `--ozone-platform=${process.env.WAYLAND_DISPLAY ? 'wayland' : 'x11'}`,
-      '--password-store=basic',
-    ],
-    env: {
-      ...process.env,
-      MUSIC_PARTY_API_URL: `http://127.0.0.1:${port}`,
-      MUSIC_PARTY_PROFILE: profile,
-      ELECTRON_RENDERER_URL: '',
-    },
-  })
+  const launch = () =>
+    electron.launch({
+      args: [
+        '.',
+        `--ozone-platform=${process.env.WAYLAND_DISPLAY ? 'wayland' : 'x11'}`,
+        '--password-store=basic',
+      ],
+      env: {
+        ...process.env,
+        MUSIC_PARTY_API_URL: `http://127.0.0.1:${port}`,
+        MUSIC_PARTY_PROFILE: profile,
+        ELECTRON_RENDERER_URL: '',
+      },
+    })
+  let app = await launch()
   try {
-    const player = await app.firstWindow()
+    let player = await app.firstWindow()
     let page = player.locator('body')
     await serveArtwork(
       app,
@@ -452,9 +497,9 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await page
       .getByLabel('一起听邀请链接')
       .fill('https://st.music.163.com/listen-together/share/?roomId=pair&inviterId=1')
-    await page.getByRole('button', { name: '加入房间', exact: true }).click()
+    await page.getByRole('button', { name: '通过链接加入', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText('双人一起听')
-    await expect(page.getByRole('button', { name: '创建', exact: true })).toBeDisabled()
+    await expect(page.getByRole('button', { name: '用当前歌曲创建', exact: true })).toBeDisabled()
     await page.getByRole('button', { name: '关闭一起听' }).click()
     page = await openTool(app, player, 'search')
     await expect(page.locator('.panel-titlebar').getByLabel('搜索音乐库')).toBeVisible()
@@ -466,7 +511,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
       .toBe(true)
     await page.getByRole('button', { name: '播放 测试歌曲111' }).click()
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('测试歌曲111')
     await player.screenshot({
       path: 'test-results/header-search-global.png',
@@ -476,7 +521,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
     const audioElement = await player.locator('audio').elementHandle()
     await expect(page.getByLabel('搜索音乐库')).toHaveValue('111')
     await expect(lyrics.getByLabel('当前歌曲歌词')).toContainText('第二句')
-    const translation = lyrics.getByRole('button', { name: '显示歌词翻译' })
+    const translation = player.getByRole('button', { name: '显示歌词翻译' })
     await expect(lyrics.locator('.lyric-translation')).toHaveText('第一句译文')
     await translation.click()
     await expect(lyrics.locator('.lyric-translation')).toHaveCount(0)
@@ -490,6 +535,35 @@ test('official multiplayer lifecycle with three members, remote song changes and
     })
     await expect(lyrics.locator('.lyric-active')).toContainText('第3行歌词')
     await expect(lyrics.locator('.lyric-active')).toBeInViewport()
+    await test.step('taller playback windows reveal more lyric rows and keep the active line centered', async () => {
+      const original = await (
+        await app.browserWindow(player)
+      ).evaluate((win) => win.getContentSize())
+      const reader = lyrics.getByLabel('当前歌曲歌词')
+      const visibleRows = () =>
+        reader.evaluate((node) => {
+          const view = node.getBoundingClientRect()
+          return [...node.querySelectorAll('.lyric-line')].filter((line) => {
+            const row = line.getBoundingClientRect()
+            return row.top >= view.top && row.bottom <= view.bottom
+          }).length
+        })
+      await widenPanel(app, player, 1100, 590)
+      await expect.poll(() => player.evaluate(() => innerHeight)).toBe(590)
+      const shortCount = await visibleRows()
+      await widenPanel(app, player, 1100, 980)
+      await expect.poll(visibleRows).toBeGreaterThan(shortCount + 2)
+      await expect
+        .poll(() =>
+          reader.evaluate((node) => {
+            const view = node.getBoundingClientRect()
+            const active = node.querySelector('.lyric-active')!.getBoundingClientRect()
+            return Math.abs(active.top + active.height / 2 - view.top - view.height / 2)
+          }),
+        )
+        .toBeLessThanOrEqual(1)
+      await widenPanel(app, player, original[0], original[1])
+    })
     const loginNotice = player.getByRole('button', { name: '关闭播放提示' })
     if (await loginNotice.isVisible()) await loginNotice.click()
     await player.screenshot({
@@ -532,10 +606,15 @@ test('official multiplayer lifecycle with three members, remote song changes and
     expect(await mainWindow.evaluate((w) => w.getBounds())).toEqual(fixed)
     await player.screenshot({ path: 'test-results/music-party-player-solo.png' })
     page = await openTool(app, player, 'room')
-    await page.getByRole('button', { name: '创建', exact: true }).click()
-    await expect(rooms.getByText('3 人一起听', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '用当前歌曲创建', exact: true }).click()
+    await expect(rooms.getByRole('button', { name: '查看房间成员', exact: true })).toContainText(
+      '3 人',
+    )
     const chat = await openTool(app, player, 'chat')
-    const roomLike = chat.getByRole('button', { name: '一起听点赞', exact: true })
+    const roomLike = player
+      .locator('.adaptive-player-bar')
+      .getByRole('button', { name: '为房间当前歌曲点赞', exact: true })
+    await expect(chat.getByRole('button', { name: /点赞/ })).toHaveCount(0)
     const roomTop = (await chat.locator('.panel-titlebar').boundingBox())!.y
     await roomLike.click()
     await expect(roomLike).toBeDisabled()
@@ -549,16 +628,58 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await openTool(app, player, 'room')
     await rooms.getByRole('button', { name: '查看房间成员' }).click()
     page = await panelPage(app, 'members')
-    memberIds = [123, 456, 789, 1000]
-    await page.getByRole('button', { name: '刷新成员', exact: true }).click()
-    await expect(page.locator('.member-directory-row')).toHaveCount(4)
-    memberIds = [123, 456, 789]
-    await page.getByRole('button', { name: '刷新成员', exact: true }).click()
-    await expect(page.locator('.member-directory-row')).toHaveCount(3)
+    const roomButton = player.locator('.adaptive-player-bar .footer-room')
+    const originalButtonBounds = await roomButton.boundingBox()
+    const memberHeader = page.locator('.panel-titlebar')
+    const originalHeader = await memberHeader.boundingBox()
+    const firstMember = page.locator('.member-directory-row').first()
+    const firstMemberY = (await firstMember.boundingBox())!.y
+    const roomLabel = roomButton.locator('.footer-room-label')
+    const expandedRoom = await player.evaluate(() => matchMedia('(min-width: 1040px)').matches)
+    await expect(roomLabel).toBeVisible({ visible: expandedRoom })
+    await expect(roomButton.locator('.transport-count')).toBeVisible({ visible: !expandedRoom })
+    const fullDirectory = [123, 456, 789, ...Array.from({ length: 9 }, (_, i) => 1000 + i)]
+    for (const [index, update] of [
+      { count: 1, directory: [123] },
+      { count: 12, directory: [123] }, // Online total can precede profile data.
+      { count: 12, directory: fullDirectory },
+      { count: 3, directory: [123, 456, 789] },
+    ].entries()) {
+      memberIds = update.directory
+      onlineCount = update.count
+      await mainWindow.evaluate((win, payload) => win.webContents.send('room-members', payload), {
+        roomId: 'multi-test-room',
+        version: index + 1,
+        onlineCount,
+        members: memberIds.map((id) => ({ uid: String(id), nickname: `听友${id}`, avatar: '' })),
+      })
+      await expect(page.locator('.member-directory-row')).toHaveCount(memberIds.length)
+      if (expandedRoom) await expect(roomLabel).toHaveText(`${onlineCount} 人一起听`)
+      else await expect(roomButton.locator('.transport-count')).toHaveText(String(onlineCount))
+      await expect(roomButton).toHaveAccessibleDescription(`${onlineCount} 人一起听`)
+      expect(await roomButton.boundingBox()).toEqual(originalButtonBounds)
+      expect(await memberHeader.boundingBox()).toEqual(originalHeader)
+      expect((await firstMember.boundingBox())!.y).toBe(firstMemberY)
+      await expectRoomHeaderSingleLine(page)
+    }
+    const playingTitle = player.locator(
+      '.footer-track-copy strong:visible, .immersive-song-heading h1:visible',
+    )
+    const originalTrack = await playingTitle.textContent()
+    await player.evaluate(() => window.together.updatePreferences({ language: 'en' }))
+    await expect(player.locator('html')).toHaveAttribute('lang', 'en')
+    await expect(page.locator('.panel-titlebar h1')).toHaveText('Room members')
+    await expect(roomButton).toHaveAccessibleName('Listen Together')
+    await expect(roomButton).toHaveAccessibleDescription('3 listening')
+    await expect(playingTitle).toHaveText(originalTrack!)
+    await player.evaluate(() => window.together.updatePreferences({ language: 'zh-CN' }))
     await page.getByRole('button', { name: '关闭房间成员' }).click()
     expect(calls.filter((call) => call.path === '/api/middle/im/chatroom/send')).toHaveLength(0)
     await openTool(app, player, 'room')
-    await rooms.getByRole('button', { name: '房间聊天', exact: true }).click()
+    await player
+      .locator('.adaptive-player-bar')
+      .getByRole('button', { name: '房间聊天', exact: true })
+      .click()
     page = chat
     await expect(page.getByRole('log')).toContainText('手机端的聊天内容 <b>原样显示</b>')
     expect(await page.locator('.chat-bubble b').count()).toBe(0)
@@ -590,7 +711,12 @@ test('official multiplayer lifecycle with three members, remote song changes and
     expect(calls.filter((call) => call.path === '/api/middle/im/chatroom/send')).toHaveLength(0)
     await page.getByRole('button', { name: '发送', exact: true }).click()
     await expect(page.getByLabel('聊天内容')).toHaveValue('')
-    await page.getByRole('button', { name: '刷新聊天', exact: true }).click()
+    const historyAfterSend = calls.filter((call) => call.path.endsWith('/msg/history')).length
+    await expect
+      .poll(() => calls.filter((call) => call.path.endsWith('/msg/history')).length, {
+        timeout: 10000,
+      })
+      .toBeGreaterThan(historyAfterSend)
     await expect(page.locator('.chat-bubble').filter({ hasText: '桌面端发送测试' })).toHaveCount(1)
     const outgoingCard = page.locator('article.chat-message.mine').filter({
       hasText: '桌面端发送测试',
@@ -686,9 +812,10 @@ test('official multiplayer lifecycle with three members, remote song changes and
         },
       },
     )
-    await page.getByRole('button', { name: '刷新聊天', exact: true }).click()
     const recommendation = page.locator('article.chat-activity[data-activity="recommend"]')
-    await expect(recommendation.locator('.chat-activity-heading')).toContainText('推荐')
+    await expect(recommendation.locator('.chat-activity-heading')).toContainText('推荐', {
+      timeout: 10000,
+    })
     await expect(recommendation.locator('.chat-activity-icon svg')).toHaveCount(1)
     await expect(recommendation.locator('.chat-activity-heading time')).toBeVisible()
     await expect(recommendation.locator('.chat-activity-text')).toContainText(
@@ -771,15 +898,15 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await editor.fill('前后')
     await editor.evaluate((node: HTMLTextAreaElement) => node.setSelectionRange(1, 1))
     await page.getByRole('button', { name: 'Emoji', exact: true }).click()
-    const textPicker = page.locator('.composer-text-picker:popover-open')
+    const textPicker = player.getByRole('dialog', { name: 'Emoji', exact: true })
     await expect(textPicker).toBeVisible()
     await textPicker.getByRole('button', { name: '😊', exact: true }).click()
     await expect(editor).toHaveValue('前😊后')
     await editor.press('Enter')
     await expect(editor).toHaveValue('前😊\n后')
     await page.getByRole('button', { name: '颜文字', exact: true }).click()
-    await page
-      .locator('.composer-text-picker:popover-open')
+    await player
+      .getByRole('dialog', { name: '颜文字', exact: true })
       .getByRole('button', { name: '(T_T)', exact: true })
       .click()
     await expect(editor).toHaveValue('前😊\n(T_T)后')
@@ -839,30 +966,31 @@ test('official multiplayer lifecycle with three members, remote song changes and
       item.click(item, undefined, {} as any)
     })
     await expect(player.getByRole('button', { name: '恢复同听' })).toBeVisible()
-    // Hold an actual heartbeat in flight so the manual synchronization stays pending.
+    await openTool(app, player, 'room')
+    const roomHeader = rooms.locator('.panel-titlebar')
+    const beforeHeartbeat = await roomHeader.boundingBox()
+    // Background heartbeats must preserve the header geometry and local pause state.
     synchronizationGate = new Promise<void>((resolve) => {
       releaseSynchronization = resolve
     })
     const heldBeforeSynchronization = heldHeartbeats
     await expect.poll(() => heldHeartbeats).toBeGreaterThan(heldBeforeSynchronization)
-    await openTool(app, player, 'room')
-    const synchronizing = rooms.getByRole('button', { name: '立即同步' })
-    const synchronizationTop = (await rooms.locator('.panel-titlebar').boundingBox())!.y
-    await synchronizing.click()
-    await expect(synchronizing).toBeDisabled()
-    await expect(page.locator('.busy')).toHaveCount(0)
-    expect(
-      Math.abs((await rooms.locator('.panel-titlebar').boundingBox())!.y - synchronizationTop),
-    ).toBeLessThan(1)
+    await expectRoomHeaderSingleLine(rooms)
+    await expect(rooms.locator('.busy')).toHaveCount(0)
+    expect(await roomHeader.boundingBox()).toEqual(beforeHeartbeat)
+    const heartbeatCalls = calls.filter((call) => call.path.endsWith('/heartbeat')).length
     synchronizationGate = null
     releaseSynchronization()
-    await expect(synchronizing).toBeEnabled()
+    await expect
+      .poll(() => calls.filter((call) => call.path.endsWith('/heartbeat')).length)
+      .toBeGreaterThan(heartbeatCalls)
+    expect(await roomHeader.boundingBox()).toEqual(beforeHeartbeat)
     expect(await player.locator('audio').evaluate((a: HTMLAudioElement) => a.paused)).toBe(true)
     await player.getByRole('button', { name: '恢复同听' }).click()
     currentSong = '222'
     version++ // A different official-client member changes the room song.
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('测试歌曲222', {
       timeout: 10000,
     })
@@ -881,7 +1009,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
       powerMonitor.emit('resume')
     })
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('测试歌曲555', {
       timeout: 10000,
     })
@@ -898,7 +1026,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
     version++
     await player.evaluate(() => window.dispatchEvent(new Event('online')))
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('测试歌曲222', {
       timeout: 10000,
     })
@@ -912,19 +1040,21 @@ test('official multiplayer lifecycle with three members, remote song changes and
     const feedback = await panelPage(app, 'feedback')
     await expect(feedback.getByText('已推送「测试歌曲333」到官方多人房间')).toBeVisible()
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('测试歌曲222')
     await expect(player.getByLabel('播放进度')).toBeDisabled()
     await player.getByRole('button', { name: '下一首', exact: true }).click()
     await expect(feedback.getByRole('alert')).toHaveText(/没有切歌权限/)
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('测试歌曲222')
     await player.screenshot({ path: 'test-results/music-party-multiplayer.png' })
     page = await openTool(app, player, 'settings')
     await settingsGroup(page, '更新与帮助')
     await page.getByRole('button', { name: '观测记录' }).click()
     page = await panelPage(app, 'diagnostics')
+    await expect(page.getByRole('checkbox')).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '导出记录' })).toBeVisible()
     expect(await page.locator('.panel-content').innerText()).not.toContain('mock-secret')
     const chatTrace = page
       .locator('.trace-list button')
@@ -934,27 +1064,116 @@ test('official multiplayer lifecycle with three members, remote song changes and
     expect(await page.locator('pre').innerText()).not.toContain('桌面端发送测试')
     expect(await page.locator('pre').innerText()).not.toContain('失败测试')
     await expect(lyrics.getByRole('button', { name: /^跳转歌词/ })).toHaveCount(0)
+    // Newest first, including the current occurrence and two earlier performances of track 221.
+    played = [
+      songInfo().playSong,
+      { songId: '221', songBizId: '888', songRcmdUid: 456 },
+      { songId: '222', songBizId: '777', songRcmdUid: 789 },
+      { songId: '221', songBizId: '666', songRcmdUid: 123 },
+    ]
+    historyUnavailable = true
     page = await openTool(app, player, 'queue')
     await expect(page.getByRole('dialog', { name: '房间待播列表' })).toBeVisible()
+    await test.step('room history keeps distinct plays, supports retry and returns from an artist to the same tab', async () => {
+      const listening = page.getByRole('tab', { name: '正在听', exact: true })
+      const history = page.getByRole('tab', { name: '听过的', exact: true })
+      const pending = page.getByRole('tabpanel', { name: '正在听', exact: true })
+      const heard = page.getByRole('tabpanel', { name: '听过的', exact: true })
+      const streams = () => calls.filter((call) => call.path === '/song/url/v1').length
+      const before = streams()
+      await expect(listening).toHaveAttribute('aria-selected', 'true')
+      await expect(pending.locator('.queue-playing-copy strong')).toHaveText('测试歌曲222')
+      await expect(pending.locator('.queue-track-copy strong')).toHaveText('测试歌曲333')
+      await history.click()
+      const retry = heard.getByRole('alert').getByRole('button', { name: '重试' })
+      await expect(retry).toBeVisible()
+      historyUnavailable = false
+      await retry.click()
+      await expect(heard.locator('.queue-track-copy strong')).toHaveText([
+        '测试歌曲221',
+        '测试歌曲222',
+        '测试歌曲221',
+      ])
+      await expect(heard.locator('.queue-track-overline')).toHaveText([
+        '听友456 推荐',
+        '听友789 推荐',
+        '听友123 推荐',
+      ])
+      await expect(heard.getByRole('button', { name: /顶歌|删除推荐/ })).toHaveCount(0)
+      const duet = heard.locator('.queue-track').first()
+      await expect(duet.getByRole('button', { name: '查看音乐人 音乐人甲' })).toBeVisible()
+      await duet.getByRole('button', { name: '查看音乐人 音乐人乙' }).click()
+      const artist = await panelPage(app, 'detail-artist-922')
+      await expect(artist.locator('.panel-titlebar h1')).toHaveText('音乐人乙')
+      await artist
+        .getByRole('navigation', { name: '页面导航' })
+        .getByRole('button', { name: /^返回/ })
+        .click()
+      await expect(history).toHaveAttribute('aria-selected', 'true')
+      await expect(heard.locator('.queue-track')).toHaveCount(3)
+      await listening.click()
+      await expect(pending.locator('.queue-playing-copy strong')).toHaveText('测试歌曲222')
+      await expect(pending.locator('.queue-track-copy strong')).toHaveText('测试歌曲333')
+      expect(await player.locator('audio').evaluate((a: HTMLAudioElement) => a.paused)).toBe(false)
+      expect(streams()).toBe(before)
+    })
     expect(app.windows()).toHaveLength(1)
     await player.keyboard.press('Escape')
     await expect(page.getByRole('dialog', { name: '房间待播列表' })).toBeHidden()
     await openTool(app, player, 'room')
-    await rooms.getByRole('button', { name: '离开房间', exact: true }).click()
+    await rooms.getByRole('button', { name: '退出房间', exact: true }).click()
     const confirm = await panelPage(app, 'confirm')
     expect(calls.filter((call) => call.path.endsWith('/exit'))).toHaveLength(0)
     await player.keyboard.press('Escape')
-    await expect(confirm.getByRole('dialog', { name: '离开多人房间？' })).toHaveCount(0)
+    await expect(player.getByRole('dialog', { name: '离开多人房间？', exact: true })).toHaveCount(0)
     await expect(player.getByLabel('底部播放栏', { exact: true })).toBeVisible()
     await openTool(app, player, 'room')
-    await rooms.getByRole('button', { name: '离开房间', exact: true }).click()
+    await rooms.getByRole('button', { name: '退出房间', exact: true }).click()
+    const audio = player.locator('audio')
+    await expect
+      .poll(() => audio.evaluate((a: HTMLAudioElement) => !a.paused && a.currentTime > 4))
+      .toBe(true)
+    await audio.evaluate((element) => {
+      element.addEventListener('loadstart', () => element.setAttribute('data-reloaded', ''), {
+        once: true,
+      })
+    })
     await confirm.getByRole('button', { name: '确认离开' }).click()
     await expect(feedback.getByText('已离开多人房间', { exact: true })).toBeVisible()
+    expect(await audio.evaluate((a: HTMLAudioElement) => a.paused)).toBe(false)
+    const leavePosition = await audio.evaluate((a: HTMLAudioElement) => a.currentTime)
+    expect(leavePosition).toBeGreaterThan(4)
+    await expect
+      .poll(() => audio.evaluate((a: HTMLAudioElement) => a.currentTime))
+      .toBeGreaterThan(leavePosition)
+    await expect(audio).not.toHaveAttribute('data-reloaded', '')
     page = await openTool(app, player, 'queue')
-    await expect(page.getByRole('dialog', { name: '播放队列', exact: true })).toBeVisible()
-    await expect(page.locator('.queue-track-copy strong')).toHaveText('测试歌曲111')
+    await expect(page.getByRole('dialog', { name: '个人播放队列', exact: true })).toBeVisible()
+    await expect(page.getByRole('tablist')).toHaveCount(0)
+    await expect(page.locator('.queue-track-copy strong')).toHaveText([
+      '测试歌曲221',
+      '测试歌曲222',
+      '测试歌曲221',
+      '测试歌曲222',
+      '测试歌曲333',
+    ])
+    await expect(page.locator('.queue-track').nth(3)).toHaveAttribute('aria-current', 'true')
     await expect(page.getByRole('button', { name: '清空队列', exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '关闭播放队列' }).click()
+    await page.getByRole('button', { name: '关闭个人播放队列' }).click()
+    const localTitle = player.locator('.footer-title:visible, .immersive-song-heading h1:visible')
+    await player.getByRole('button', { name: '上一首', exact: true }).click()
+    await expect(localTitle).toHaveText('测试歌曲221')
+    await player.getByRole('button', { name: '下一首', exact: true }).click()
+    await expect(localTitle).toHaveText('测试歌曲222')
+    await expect(player.getByRole('button', { name: '下一首', exact: true })).toBeEnabled()
+    await expect
+      .poll(() => audio.evaluate((a: HTMLAudioElement) => !a.paused && a.duration > 0))
+      .toBe(true)
+    await audio.evaluate((a: HTMLAudioElement) => {
+      a.currentTime = a.duration - 0.1
+    })
+    await expect(localTitle).toHaveText('测试歌曲333')
+    played = []
     const add = calls.find(
       (call) => call.path.endsWith('/song/operate') && call.args.data.operate === 1,
     )!
@@ -974,35 +1193,49 @@ test('official multiplayer lifecycle with three members, remote song changes and
       .fill(
         String.raw`[官方多人邀请](https://st.music.163.com/listen-together/multishare/index.html?roomId=multi-test-room\&inviterUid=456\&isFLT=false)`,
       )
-    await page.getByRole('button', { name: '加入房间', exact: true }).click()
-    await expect(rooms.getByText('3 人一起听', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: '通过链接加入', exact: true }).click()
+    await expect(rooms.getByRole('button', { name: '查看房间成员', exact: true })).toContainText(
+      '3 人',
+    )
+    // The invitation was shared by 456 and the first listed member is 123.
+    // The room identifies 789 as the person who created it.
+    await expect(
+      rooms.locator('.room-facts > div').filter({ hasText: '创建者' }).locator('dd'),
+    ).toHaveText('听友789')
     expect(calls.find((call) => call.path.endsWith('/ack'))!.args.data).toMatchObject({
       roomId: 'multi-test-room',
       inviterUid: '456',
       agree: true,
     })
     await openTool(app, player, 'room')
-    await rooms.getByRole('button', { name: '离开房间', exact: true }).click()
+    await rooms.getByRole('button', { name: '退出房间', exact: true }).click()
     await confirm.getByRole('button', { name: '确认离开' }).click()
     await expect(feedback.getByText('已离开多人房间', { exact: true })).toBeVisible()
     // Account is now already in a room on the official phone app. Restore must load music and queue.
     active = true
     currentSong = '444'
+    roomLikeCounts.set('1000444', 4) // Four likes from other listeners.
     version++
     page = await openTool(app, player, 'room')
+    await expect(page.getByRole('button', { name: '恢复当前房间' })).toBeVisible({ timeout: 15000 })
     await page.getByRole('button', { name: '恢复当前房间' }).click()
-    await expect(rooms.getByText('3 人一起听', { exact: true })).toBeVisible()
+    await expect(rooms.getByRole('button', { name: '查看房间成员', exact: true })).toContainText(
+      '3 人',
+    )
     page = await openTool(app, player, 'queue')
     await expect(page.getByRole('dialog', { name: '房间待播列表' })).toBeVisible()
-    await expect(page.getByText('1 首待播', { exact: true })).toBeVisible()
-    await expect(page.locator('.queue-playing .queue-track-overline')).toHaveText('听友123')
+    await expectRoomHeaderSingleLine(page)
+    await expect(page.locator('.queue-track')).toHaveCount(1)
+    await expect(page.locator('.queue-playing .queue-track-overline')).toHaveText('听友123 推荐')
     await expect(page.locator('.queue-playing .equalizer')).toBeVisible()
-    const currentSongLike = page.getByRole('button', {
-      name: '点赞正在播放歌曲 测试歌曲444',
+    await expect(page.getByRole('button', { name: /点赞/ })).toHaveCount(0)
+    const currentSongLike = player.locator('.adaptive-player-bar').getByRole('button', {
+      name: '为房间当前歌曲点赞',
       exact: true,
     })
     await expect(currentSongLike).toBeEnabled()
     await expect(currentSongLike).toHaveAttribute('aria-pressed', 'false')
+    await expect(currentSongLike.locator('small')).toHaveText('4')
     likeResponseGate = new Promise<void>((resolve) => {
       releaseLikeResponse = resolve
     })
@@ -1011,20 +1244,20 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await expect(page.locator('.busy')).toHaveCount(0)
     // The server has counted this like, but the mutation reply is still pending.
     // A concurrent heartbeat must not make the eventual reply count it again.
-    await expect.poll(() => roomLikeCounts.get('1000444')).toBe(1)
-    await expect(currentSongLike.locator('small')).toHaveText('1')
+    await expect.poll(() => roomLikeCounts.get('1000444')).toBe(5)
+    await expect(currentSongLike.locator('small')).toHaveText('5')
     await expect(currentSongLike).toHaveAttribute('aria-pressed', 'false')
     await expect(currentSongLike).toBeDisabled()
     likeResponseGate = null
     releaseLikeResponse()
     await expect(currentSongLike).toHaveAttribute('aria-pressed', 'true')
     await expect(currentSongLike).toBeEnabled()
-    await expect(currentSongLike.locator('small')).toHaveText('1')
+    await expect(currentSongLike.locator('small')).toHaveText('5')
     await currentSongLike.click()
     await expect(currentSongLike).toBeDisabled()
     await expect(currentSongLike).toBeEnabled()
     await expect(currentSongLike).toHaveAttribute('aria-pressed', 'true')
-    await expect(currentSongLike.locator('small')).toHaveText('2')
+    await expect(currentSongLike.locator('small')).toHaveText('6')
     const currentSongLikes = calls.filter(
       (call) =>
         call.path.endsWith('/song/operate') &&
@@ -1044,12 +1277,24 @@ test('official multiplayer lifecycle with three members, remote song changes and
       songBizId: String(900000 + i),
       songRcmdUid: i === 44 ? '0' : '123',
     }))
+    queueUnavailable = true
     version++
-    await page.getByRole('button', { name: '刷新待播列表' }).click()
-    await expect(page.getByText('45 首待播', { exact: true })).toBeVisible()
+    const queueError = page.getByRole('alert')
+    await expect(queueError.getByRole('button', { name: '重试' })).toBeVisible()
+    await expectRoomHeaderSingleLine(page)
+    queueUnavailable = false
+    await queueError.getByRole('button', { name: '重试' }).click()
     await expect(page.locator('.queue-track')).toHaveCount(45)
-    await expect(page.locator('.queue-track-overline').first()).toHaveText('听友123')
-    await expect(page.locator('.queue-track-overline').last()).toHaveText('系统推荐')
+    await expect(queueError).toHaveCount(0)
+    await expect(page.locator('.queue-track-overline').first()).toHaveText('听友123 推荐')
+    const systemRecommendation = page.locator('.queue-track-overline').last()
+    await expect(systemRecommendation).toHaveText('系统推荐')
+    const centerOffset = await systemRecommendation.evaluate((label) => {
+      const icon = label.querySelector('svg')!.getBoundingClientRect()
+      const text = label.querySelector('span')!.getBoundingClientRect()
+      return Math.abs(icon.y + icon.height / 2 - (text.y + text.height / 2))
+    })
+    expect(centerOffset).toBeLessThanOrEqual(1)
     await page.locator('.queue-track').nth(2).getByRole('button', { name: /^顶歌/ }).click()
     await expect(page.locator('.queue-track-copy strong').first()).toHaveText('测试歌曲702')
     await expect(
@@ -1064,7 +1309,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
       calls.filter((call) => call.path.endsWith('/song/operate') && call.args.data.operate === 7),
     ).toHaveLength(0)
     await page.getByRole('button', { name: '确认删除推荐' }).click()
-    await expect(page.getByText('44 首待播', { exact: true })).toBeVisible()
+    await expect(page.locator('.queue-track')).toHaveCount(44)
     expect(queue.filter((song) => song.songId === '702')).toHaveLength(8)
 
     expect(
@@ -1076,20 +1321,16 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await expect(page.getByRole('button', { name: '清空队列', exact: true })).toHaveCount(0)
     await expect(page.getByLabel('播放模式', { exact: true })).toHaveCount(0)
     await player.screenshot({ path: 'test-results/music-party-room-queue.png' })
-    await page.getByRole('button', { name: '关闭播放队列' }).click()
+    await page.getByRole('button', { name: '关闭房间待播列表' }).click()
     await expect(player.locator('[data-panel="queue"]')).toBeHidden()
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('测试歌曲444')
     await player.screenshot({ path: test.info().outputPath('player-room.png') })
     heartbeatSeconds = 30
     await openTool(app, player, 'room')
-    const beforeRegular = calls.filter((call) => call.path.endsWith('/heartbeat')).length
-    await rooms.getByRole('button', { name: '立即同步' }).click()
-    await expect
-      .poll(() => calls.filter((call) => call.path.endsWith('/heartbeat')).length)
-      .toBeGreaterThan(beforeRegular)
-    await expect(rooms.getByRole('button', { name: '立即同步' })).toBeEnabled()
+    // A heartbeat may already have negotiated the slower interval while the drawer opened.
+    await expect.poll(() => lastHeartbeatSeconds).toBe(30)
     const beforeBoundaryMutations = calls.filter((call) =>
       call.path.endsWith('/song/operate'),
     ).length
@@ -1100,7 +1341,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
       audio.dispatchEvent(new Event('ended'))
     })
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('测试歌曲666', {
       timeout: 5000,
     })
@@ -1113,9 +1354,11 @@ test('official multiplayer lifecycle with three members, remote song changes and
     currentSong = '444'
     version++
     await openTool(app, player, 'room')
-    await rooms.getByRole('button', { name: '立即同步' }).click()
+    await app.evaluate(({ powerMonitor }) => {
+      powerMonitor.emit('resume')
+    })
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('测试歌曲444')
 
     await expect
@@ -1156,7 +1399,10 @@ test('official multiplayer lifecycle with three members, remote song changes and
         .filter((call) => call.path.endsWith('/song/operate') && call.args.data.operate === 1)
         .at(-1)!.args.data.songId,
     ).toBe('5000')
-    await page.locator('.panel-titlebar').getByRole('button', { name: /^关闭/ }).click()
+    await page
+      .getByRole('navigation', { name: '页面导航' })
+      .getByRole('button', { name: /^返回/ })
+      .click()
     page = await openTool(app, player, 'library')
     await expect(page.locator('.panel-titlebar h1')).toHaveText('音乐库')
     await expect(page.getByLabel('搜索当前歌单列表')).toHaveValue('歌单1')
@@ -1170,10 +1416,14 @@ test('official multiplayer lifecycle with three members, remote song changes and
     page = await panelPage(app, 'liked')
     await expect(page.getByText('已加载 2 / 2 首')).toBeVisible()
     await page.getByRole('button', { name: '取消喜欢 测试歌曲111', exact: true }).click()
-    await expect(confirm.getByRole('dialog', { name: '取消喜欢这首歌？' })).toBeVisible()
+    await expect(
+      player.getByRole('dialog', { name: '取消喜欢这首歌？', exact: true }),
+    ).toBeVisible()
     expect(calls.filter((call) => call.path === '/like')).toHaveLength(0)
     await confirm.getByRole('button', { name: '取消', exact: true }).click()
-    await expect(confirm.getByRole('dialog', { name: '取消喜欢这首歌？' })).toHaveCount(0)
+    await expect(player.getByRole('dialog', { name: '取消喜欢这首歌？', exact: true })).toHaveCount(
+      0,
+    )
     await expect(
       page.getByRole('button', { name: '取消喜欢 测试歌曲111', exact: true }),
     ).toBeVisible()
@@ -1184,40 +1434,88 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await openTool(app, player, 'lyrics')
     await expect(lyrics.getByLabel('当前歌曲歌词')).toContainText('第二句')
     await openTool(app, player, 'room')
-    await rooms.getByRole('button', { name: '离开房间', exact: true }).click()
+    await rooms.getByRole('button', { name: '退出房间', exact: true }).click()
     await confirm.getByRole('button', { name: '确认离开' }).click()
     await expect(feedback.getByText('已离开多人房间', { exact: true })).toBeVisible()
     page = await openTool(app, player, 'library')
-    await page.getByRole('button', { name: /^歌单1 205/ }).click()
-    page = await panelPage(app, 'detail-playlist-1')
+    await page.getByRole('button', { name: /^歌单10 2599/ }).click()
+    page = await panelPage(app, 'detail-playlist-10')
     await expect(page.getByRole('button', { name: '播放全部' })).toBeEnabled()
     await page.getByRole('button', { name: '播放全部' }).click()
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('测试歌曲5000')
     await player.locator('audio').evaluate((audio: HTMLAudioElement) => {
       audio.currentTime = audio.duration
       audio.dispatchEvent(new Event('ended'))
     })
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('测试歌曲5001', {
       timeout: 10000,
     })
     page = await openTool(app, player, 'queue')
-    await expect(page.getByText('205 首', { exact: true })).toBeVisible()
+    await expect(page.getByText('2599 首', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '个人播放队列' })).toBeVisible()
     await expect(page.getByRole('button', { name: '显示更多', exact: true })).toHaveCount(0)
-    await expect(page.locator('.queue-track')).toHaveCount(100)
-    await page.locator('.queue-drawer-list').evaluate((element) => {
-      element.scrollTop = element.scrollHeight
-    })
-    await expect.poll(() => page.locator('.queue-track').count()).toBeGreaterThanOrEqual(200)
-    await page.locator('.queue-drawer-list').evaluate((element) => {
-      element.scrollTop = element.scrollHeight
-    })
-    await expect(page.locator('.queue-track')).toHaveCount(205)
+    const queueList = page.locator('.queue-drawer-list')
+    const queueRows = queueList.locator('.queue-track')
+    await expect(queueRows).toHaveCount(100)
+    await expect
+      .poll(
+        async () => {
+          await queueList.evaluate((element) => {
+            element.scrollTop = element.scrollHeight
+          })
+          return queueRows.count()
+        },
+        { intervals: [25, 50, 100], timeout: 15000 },
+      )
+      .toBe(2599)
+    const originalSize = await player.evaluate(() => [innerWidth, innerHeight])
+    await player.evaluate(() => window.together.updatePreferences({ fontScale: 150 }))
+    for (const [width, height] of [
+      [321, 682],
+      [740, 590],
+    ]) {
+      await widenPanel(app, player, width, height)
+      await expectQueueHeaderFits(page)
+      await queueRows.last().scrollIntoViewIfNeeded()
+      const bounds = await queueList.evaluate((list) => {
+        const rows = list.querySelectorAll('.queue-track')
+        return [99, 100, 999, 1000, 2599].map((n) => {
+          const index = rows[n - 1].querySelector('.queue-index')!
+          const digits = document.createRange()
+          digits.selectNodeContents(index)
+          return {
+            right: digits.getBoundingClientRect().right,
+            cover: index.nextElementSibling!.getBoundingClientRect().left,
+          }
+        })
+      })
+      for (const row of bounds) {
+        expect(row.right).toBeCloseTo(bounds[0].right, 0)
+        expect(row.cover - row.right).toBeGreaterThanOrEqual(7)
+      }
+      const toolbar = page.locator('.queue-toolbar')
+      const centers = await toolbar.evaluate((el) => {
+        const bar = el.getBoundingClientRect()
+        return [...el.children].map((child) => {
+          const rect = child.getBoundingClientRect()
+          return rect.y + rect.height / 2 - bar.y - bar.height / 2
+        })
+      })
+      for (const offset of centers) expect(Math.abs(offset)).toBeLessThanOrEqual(1)
+      // At fractional zoom the bottom border can land between device pixels.
+      const lastRow = await queueRows.last().boundingBox()
+      const viewport = await queueList.boundingBox()
+      expect(lastRow!.y).toBeGreaterThanOrEqual(viewport!.y - 1)
+      expect(lastRow!.y + lastRow!.height).toBeLessThanOrEqual(viewport!.y + viewport!.height + 1)
+    }
+    await player.evaluate(() => window.together.updatePreferences({ fontScale: 100 }))
+    await widenPanel(app, player, originalSize[0], originalSize[1])
     await player.screenshot({ path: 'test-results/music-party-library.png' })
-    await page.getByRole('button', { name: '关闭播放队列' }).click()
+    await page.getByRole('button', { name: '关闭个人播放队列' }).click()
     page = await openTool(app, player, 'search')
     await page.getByLabel('搜索音乐库').fill('分页测试')
     await page
@@ -1282,7 +1580,10 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await page.getByRole('button', { name: '清空列表搜索', exact: true }).click()
     await expect(artistSearch).toHaveValue('')
     await expect(page.getByRole('button', { name: '播放 歌手歌曲' })).toBeVisible()
-    await page.locator('.panel-titlebar').getByRole('button', { name: /^关闭/ }).click()
+    await page
+      .getByRole('navigation', { name: '页面导航' })
+      .getByRole('button', { name: /^返回/ })
+      .click()
     page = await openTool(app, player, 'search')
     const searches = calls.filter((call) => call.path === '/cloudsearch').length
     await page.getByRole('button', { name: '删除搜索记录 111', exact: true }).click()
@@ -1294,10 +1595,7 @@ test('official multiplayer lifecycle with three members, remote song changes and
     await page.getByRole('button', { name: '清空搜索记录' }).click()
     await expect(page.locator('.search-history')).toHaveCount(0)
     page = await openTool(app, player, 'library')
-    await player
-      .locator('.main-sidebar')
-      .getByRole('button', { name: '收藏的专辑', exact: true })
-      .click()
+    await page.getByRole('button', { name: '收藏的专辑', exact: true }).click()
     page = await panelPage(app, 'albums')
     await expect(page.getByText('全部专辑 · 51 张')).toBeVisible()
     await expect(page.locator('.panel-titlebar h1')).toHaveText('收藏的专辑')
@@ -1319,11 +1617,14 @@ test('official multiplayer lifecycle with three members, remote song changes and
       .toBe('6100')
     page = await openTool(app, player, 'queue')
     await expect(page.getByText('1 首', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: '关闭播放队列' }).click()
+    await page.getByRole('button', { name: '关闭个人播放队列' }).click()
     page = await panelPage(app, 'detail-album-8000')
     await page.getByLabel('搜索当前歌单或专辑').press('Escape')
     await expect(page.getByRole('button', { name: '播放 专辑第二首', exact: true })).toBeVisible()
-    await page.locator('.panel-titlebar').getByRole('button', { name: /^关闭/ }).click()
+    await page
+      .getByRole('navigation', { name: '页面导航' })
+      .getByRole('button', { name: /^返回/ })
+      .click()
     page = await panelPage(app, 'albums')
     await expect(page.getByLabel('搜索当前专辑列表')).toHaveValue('收藏专辑1')
     await page.getByLabel('搜索当前专辑列表').fill('没有这个专辑')
@@ -1336,6 +1637,82 @@ test('official multiplayer lifecycle with three members, remote song changes and
       window.together.call({ method: 'multiStatus', args: { cookie: 'bad' } }),
     )
     expect(invalid.ok).toBe(false)
+    await test.step('quitting preserves the room; leaving while paused persists its queue and cursor', async () => {
+      async function reopenPlayer() {
+        app = await launch()
+        player = await app.firstWindow()
+        const signedIn = await player.evaluate(async () => {
+          const reply = await window.together.call({ method: 'account' })
+          return !!reply.data?.data?.profile
+        })
+        if (!signedIn) await loginFixture(app, player)
+      }
+      const exits = () => calls.filter((call) => call.path.endsWith('/match/exit')).length
+      const previousExits = exits()
+      const displayedTrack = () =>
+        player.locator('.footer-title:visible, .immersive-song-heading h1:visible')
+      const setup = await openTool(app, player, 'room')
+      const matchPicker = () => player.getByRole('dialog', { name: '切换歌曲', exact: true })
+      const rememberedSearch = '重启后选歌'
+      await setup.getByRole('button', { name: '切换歌曲', exact: true }).click()
+      await matchPicker().getByRole('searchbox').fill(rememberedSearch)
+      await matchPicker().getByRole('searchbox').press('Enter')
+      await player.keyboard.press('Escape')
+      await setup.getByRole('button', { name: '用当前歌曲创建', exact: true }).click()
+      await expect(setup.locator('.room-count')).toBeVisible()
+      await app.close()
+      expect(exits()).toBe(previousExits)
+      expect(active).toBe(true)
+      currentSong = '987654'
+      played = [{ songId: '987653', songBizId: '73', songRcmdUid: 456 }]
+      queue = [{ songId: '987655', songBizId: '75', songRcmdUid: 789 }]
+      version++
+      await reopenPlayer()
+      await expect(displayedTrack()).toHaveText('测试歌曲987654')
+      await player.getByRole('button', { name: '本机暂停', exact: true }).click()
+      await expect(player.getByRole('button', { name: '恢复同听', exact: true })).toBeVisible()
+      const pausedPosition = await player
+        .locator('audio')
+        .evaluate((a: HTMLAudioElement) => a.currentTime)
+      const restored = await openTool(app, player, 'room')
+      await restored.getByRole('button', { name: '切换歌曲', exact: true }).click()
+      await expect(
+        matchPicker().getByRole('button', { name: rememberedSearch, exact: true }),
+      ).toBeVisible()
+      await matchPicker()
+        .getByRole('button', { name: `删除搜索记录 ${rememberedSearch}`, exact: true })
+        .click()
+      await expect(
+        matchPicker().getByRole('button', { name: rememberedSearch, exact: true }),
+      ).toHaveCount(0)
+      await player.keyboard.press('Escape')
+      await restored.getByRole('button', { name: '退出房间', exact: true }).click()
+      await player.getByRole('button', { name: '确认离开' }).click()
+      await expect(player.getByText('已离开多人房间', { exact: true })).toBeVisible()
+      await expect(displayedTrack()).toHaveText('测试歌曲987654')
+      expect(
+        await player.locator('audio').evaluate((element) => (element as HTMLAudioElement).paused),
+      ).toBe(true)
+      expect(
+        await player.locator('audio').evaluate((a: HTMLAudioElement) => a.currentTime),
+      ).toBeCloseTo(pausedPosition, 1)
+      await app.close()
+      await reopenPlayer()
+      const personalQueue = await openTool(app, player, 'queue')
+      await expect(personalQueue.getByRole('heading', { name: '个人播放队列' })).toBeVisible()
+      await expect(personalQueue.locator('.queue-track-copy strong')).toHaveText([
+        '测试歌曲987653',
+        '测试歌曲987654',
+        '测试歌曲987655',
+      ])
+      await expect(personalQueue.locator('.queue-track[aria-current=true]')).toContainText(
+        '测试歌曲987654',
+      )
+      await personalQueue.getByRole('button', { name: '清空队列' }).click()
+      await player.reload()
+      await expect((await openTool(app, player, 'queue')).getByText('队列还是空的')).toBeVisible()
+      expect(exits()).toBe(previousExits + 1)
+    })
   } finally {
     synchronizationGate = null
     releaseSynchronization()

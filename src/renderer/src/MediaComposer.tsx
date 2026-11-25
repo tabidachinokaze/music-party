@@ -1,3 +1,4 @@
+import { ui } from '../../shared/ui-language'
 import { useSurfaceActive } from './windows/Surface'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { ImagePlus, Mic, Paperclip, Square, Video } from 'lucide-react'
@@ -9,7 +10,7 @@ import {
   type MediaReceipt,
   type MediaTarget,
 } from '../../shared/media'
-import { Overlay } from './player/Overlay'
+import { ComposerPanel } from './ComposerPanel'
 import { clipboardImage } from './clipboard-image'
 import { imageFormat } from '../../shared/image-format'
 import { startRecording } from './recording'
@@ -18,7 +19,13 @@ import { rememberSticker, stickersChanged } from './sticker-cache'
 type Draft = MediaDraftEntry & { url: string }
 async function inspect(file: File, kind: MediaKind): Promise<MediaFile> {
   if (file.size > MEDIA_LIMITS[kind])
-    throw new Error(`文件不能超过 ${MEDIA_LIMITS[kind] / 1024 / 1024} MB`)
+    throw new Error(
+      ui(
+        '文件不能超过 {0} MB',
+        'The file must be {0} MB or smaller',
+        MEDIA_LIMITS[kind] / 1024 / 1024,
+      ),
+    )
   const data = new Uint8Array(await file.arrayBuffer()),
     value: MediaFile = {
       data,
@@ -28,7 +35,10 @@ async function inspect(file: File, kind: MediaKind): Promise<MediaFile> {
     }
   if (kind === 'image') {
     const format = imageFormat(data)
-    if (!format) throw new Error('请选择 PNG、JPEG、GIF 或 WebP 图片')
+    if (!format)
+      throw new Error(
+        ui('请选择 PNG、JPEG、GIF 或 WebP 图片', 'Choose a PNG, JPEG, GIF, or WebP image'),
+      )
     value.mime = format.mime
     if (!file.name || !/\.[a-z0-9]+$/i.test(file.name)) value.name = `clipboard.${format.extension}`
   }
@@ -41,7 +51,7 @@ async function inspect(file: File, kind: MediaKind): Promise<MediaFile> {
       value.width = img.naturalWidth
       value.height = img.naturalHeight
     } else if (kind === 'video') {
-      if (file.type !== 'video/mp4') throw new Error('请选择 MP4 视频')
+      if (file.type !== 'video/mp4') throw new Error(ui('请选择 MP4 视频', 'Choose an MP4 video'))
       const video = document.createElement('video')
       video.preload = 'auto'
       video.muted = true
@@ -49,7 +59,7 @@ async function inspect(file: File, kind: MediaKind): Promise<MediaFile> {
         await new Promise<void>((resolve, reject) => {
           const timer = setTimeout(() => {
             cleanup()
-            reject(new Error('读取视频超时'))
+            reject(new Error(ui('读取视频超时', 'Video loading timed out')))
           }, 15000)
           const cleanup = () => {
             clearTimeout(timer)
@@ -62,7 +72,14 @@ async function inspect(file: File, kind: MediaKind): Promise<MediaFile> {
           }
           video.onerror = () => {
             cleanup()
-            reject(new Error('无法读取此视频，请使用可播放的 MP4 文件'))
+            reject(
+              new Error(
+                ui(
+                  '无法读取此视频，请使用可播放的 MP4 文件',
+                  'Couldn’t read this video. Choose a playable MP4 file.',
+                ),
+              ),
+            )
           }
           video.src = url
         })
@@ -171,7 +188,7 @@ export function MediaComposer({
             pending.id,
             {
               uncertain: true,
-              error: '附件操作尚未确认，正在等待结果',
+              error: ui('附件操作尚未确认，正在等待结果', 'Waiting for attachment confirmation'),
             },
             request.current,
           )
@@ -211,7 +228,7 @@ export function MediaComposer({
       recorder.current = null
       setRecording(false)
       setBusy(false)
-      setError('录音已取消')
+      setError(ui('录音已取消', 'Recording canceled'))
     }
     const visibility = () => {
       if (document.visibilityState === 'hidden') stop()
@@ -241,7 +258,12 @@ export function MediaComposer({
         progress: null,
       })
     ) {
-      setError('附件草稿暂时无法保留，请稍后重试或更换附件')
+      setError(
+        ui(
+          '附件草稿暂时无法保留，请稍后重试或更换附件',
+          'Couldn’t save the attachment draft. Try again or choose a different file.',
+        ),
+      )
       setOpen(true)
       return
     }
@@ -328,7 +350,10 @@ export function MediaComposer({
       if (run === selection.current)
         setError(
           error.name === 'NotAllowedError'
-            ? '麦克风权限未开启，请在系统设置中允许后重试'
+            ? ui(
+                '麦克风权限未开启，请在系统设置中允许后重试',
+                'Allow microphone access in system settings and try again.',
+              )
             : error.message,
         )
     } finally {
@@ -344,12 +369,12 @@ export function MediaComposer({
     setRecording(false)
     if (!result) return
     if (result.duration < 300) {
-      setError('录音太短，请重新录制')
+      setError(ui('录音太短，请重新录制', 'Recording too short. Record again.'))
       return
     }
     stage({
       kind: 'voice',
-      name: `录音-${Date.now()}.wav`,
+      name: ui('录音-{0}.wav', 'Recording-{0}.wav', Date.now()),
       mime: 'audio/wav',
       data: result.data,
       duration: result.duration,
@@ -392,7 +417,7 @@ export function MediaComposer({
           chosen.id,
           {
             requestId: '',
-            error: reply.error || '附件发送失败',
+            error: reply.error || ui('附件发送失败', 'Couldn’t send the attachment'),
             uncertain: reply.deliveryUnknown === true,
             progress: null,
           },
@@ -415,7 +440,7 @@ export function MediaComposer({
       setOpen(false)
       setProgress(null)
     } catch (error: any) {
-      const message = error.message || '附件操作未确认'
+      const message = error.message || ui('附件操作未确认', 'Attachment unconfirmed')
       mediaDrafts.update(
         account,
         chosen.target,
@@ -442,7 +467,7 @@ export function MediaComposer({
         ref={input}
         type="file"
         className="attachment-input"
-        aria-label="选择聊天附件"
+        aria-label={ui('选择聊天附件', 'Choose an attachment')}
         onChange={(event) => {
           const file = event.target.files?.[0]
           event.target.value = ''
@@ -452,21 +477,29 @@ export function MediaComposer({
       <button
         ref={trigger}
         type="button"
-        className="icon-btn"
-        aria-label={savingSticker ? '上传自定义表情' : '发送图片或表情包'}
-        title={savingSticker ? '上传到网易云自定义表情' : '图片 / GIF 表情包'}
+        className={savingSticker ? 'icon-btn sticker-upload' : 'icon-btn'}
+        aria-label={
+          savingSticker
+            ? ui('上传自定义表情', 'Upload custom sticker')
+            : ui('发送图片或表情包', 'Send an image or sticker')
+        }
+        title={
+          savingSticker
+            ? ui('上传到网易云自定义表情', 'Upload to NetEase custom stickers')
+            : ui('图片 / GIF 表情包', 'Image / GIF sticker')
+        }
         disabled={disabled || busy || recording}
         onClick={() => pick('image')}
       >
         <ImagePlus size={18} />
-        {savingSticker && <span>上传表情</span>}
+        {savingSticker && <span>{ui('上传表情', 'Upload sticker')}</span>}
       </button>
       {target.kind === 'private' && (
         <>
           <button
             type="button"
             className="icon-btn"
-            aria-label="录制语音"
+            aria-label={ui('录制语音', 'Record voice message')}
             disabled={disabled || busy || recording}
             onClick={record}
           >
@@ -475,7 +508,7 @@ export function MediaComposer({
           <button
             type="button"
             className="icon-btn"
-            aria-label="发送视频"
+            aria-label={ui('发送视频', 'Send video')}
             disabled={disabled || busy || recording}
             onClick={() => pick('video')}
           >
@@ -484,7 +517,7 @@ export function MediaComposer({
           <button
             type="button"
             className="icon-btn"
-            aria-label="发送本地文件"
+            aria-label={ui('发送本地文件', 'Send file')}
             disabled={disabled || busy || recording}
             onClick={() => pick('file')}
           >
@@ -493,53 +526,122 @@ export function MediaComposer({
         </>
       )}
       {!open && (draft || busy || error) && (
-        <button type="button" className="text-btn attachment-status" onClick={() => setOpen(true)}>
+        <button
+          type="button"
+          className="text-btn attachment-status"
+          title={ui('查看附件详情', 'View attachment details')}
+          onClick={() => setOpen(true)}
+        >
           {busy
-            ? '附件上传中…'
+            ? ui('附件上传中…', 'Uploading attachment…')
             : draft
               ? savingSticker
-                ? '待上传表情'
-                : '待发送附件'
-              : '附件提示'}
+                ? ui('待上传表情', 'Sticker ready to upload')
+                : ui('待发送附件', 'Attachment ready to send')
+              : ui('附件提示', 'Attachment status')}
         </button>
       )}
       {open && active && (
-        <Overlay
-          title={recording ? '录制语音' : savingSticker ? '上传自定义表情' : '发送附件'}
+        <ComposerPanel
+          title={
+            recording
+              ? ui('录制语音', 'Record voice message')
+              : savingSticker
+                ? ui('上传自定义表情', 'Upload custom sticker')
+                : ui('发送附件', 'Send attachment')
+          }
           onClose={close}
-          sideAnchor={trigger.current}
+          anchor={trigger.current}
+          actions={
+            recording ? (
+              <>
+                <button className="primary" onClick={finishRecording}>
+                  <Square size={14} />
+                  {ui('停止录音并预览', 'Stop and preview')}
+                </button>
+                <button className="text-btn" onClick={close}>
+                  {ui('取消录音', 'Cancel recording')}
+                </button>
+              </>
+            ) : (
+              draft && (
+                <>
+                  {busy && progress?.phase === 'uploading' ? (
+                    <button
+                      className="secondary"
+                      onClick={() => {
+                        const current = mediaDrafts.get(accountKey, target)
+                        if (current?.requestId)
+                          window.together.cancelMedia(current.requestId).catch(() => {})
+                      }}
+                    >
+                      {ui('取消上传', 'Cancel upload')}
+                    </button>
+                  ) : (
+                    <button className="secondary" onClick={close}>
+                      {savingSticker
+                        ? ui('稍后上传', 'Upload later')
+                        : ui('稍后发送', 'Send later')}
+                    </button>
+                  )}
+                  {!busy && (
+                    <button
+                      className="text-btn"
+                      onClick={() => {
+                        mediaDrafts.remove(accountKey, target, draft.id)
+                        setOpen(false)
+                      }}
+                    >
+                      {ui('移除附件', 'Remove attachment')}
+                    </button>
+                  )}
+                  <button className="primary" disabled={busy} onClick={send}>
+                    {savingSticker
+                      ? uncertain
+                        ? ui('已确认未保存，重新上传', 'I checked it wasn’t saved. Upload again.')
+                        : error
+                          ? ui('重试上传表情', 'Retry sticker upload')
+                          : ui('确认上传表情', 'Upload sticker')
+                      : uncertain
+                        ? ui('已确认未收到，重新发送', 'I checked it wasn’t received. Send again.')
+                        : error
+                          ? ui('重试发送附件', 'Retry sending attachment')
+                          : ui('确认发送附件', 'Send attachment')}
+                  </button>
+                </>
+              )
+            )
+          }
         >
           <p className="overlay-intro">
             {savingSticker
-              ? '保存到网易云账号的自定义表情包'
-              : '发送给：' + (draft?.label || label)}
+              ? ui('保存到网易云账号的自定义表情包', 'Save to your NetEase custom stickers')
+              : ui('发送给：', 'Send to: ') + (draft?.label || label)}
           </p>
           {recording ? (
             <div className="recording-panel">
               <span className="recording-dot" />
-              <strong>{seconds} / 60 秒</strong>
-              <button className="primary" onClick={finishRecording}>
-                <Square size={14} />
-                停止录音并预览
-              </button>
-              <button className="text-btn" onClick={close}>
-                取消录音
-              </button>
+              <strong>{ui('{0} / 60 秒', '{0} / 60 s', seconds)}</strong>
             </div>
           ) : draft ? (
             <>
               <div className="attachment-preview" ref={previewElement}>
                 {draft.file.kind === 'image' ? (
-                  <img src={draft.url} alt="待发送图片" />
+                  <img src={draft.url} alt={ui('待发送图片', 'Image to send')} />
                 ) : draft.file.kind === 'voice' ? (
-                  <audio controls onPlay={onMediaPlay} src={draft.url} aria-label="录音预览" />
+                  <audio
+                    controls
+                    onPlay={onMediaPlay}
+                    src={draft.url}
+                    aria-label={ui('录音预览', 'Recording preview')}
+                  />
                 ) : draft.file.kind === 'video' ? (
                   <video
                     controls
                     onPlay={onMediaPlay}
                     preload="metadata"
                     src={draft.url}
-                    aria-label="视频预览"
+                    aria-label={ui('视频预览', 'Video preview')}
                   />
                 ) : (
                   <Paperclip size={30} />
@@ -548,7 +650,12 @@ export function MediaComposer({
                 <small>{(draft.file.data.byteLength / 1024 / 1024).toFixed(2)} MB</small>
               </div>
               {draft.file.kind === 'file' && (
-                <p className="attachment-note">文件将上传至网易云存储，并通过私信发送下载链接。</p>
+                <p className="attachment-note">
+                  {ui(
+                    '文件将上传至网易云存储，并通过私信发送下载链接。',
+                    'The file will be uploaded to NetEase storage and a download link sent by direct message.',
+                  )}
+                </p>
               )}
               {progress && (
                 <div className="attachment-progress">
@@ -556,69 +663,33 @@ export function MediaComposer({
                   <span>
                     {progress.phase === 'sending'
                       ? savingSticker
-                        ? '正在保存表情…'
-                        : '正在发送…'
-                      : `正在上传 ${progress.percent}%`}
+                        ? ui('正在保存表情…', 'Saving sticker…')
+                        : ui('正在发送…', 'Sending…')
+                      : ui('正在上传 {0}%', 'Uploading {0}%', progress.percent)}
                   </span>
                 </div>
               )}
-              <div className="row-actions">
-                {busy && progress?.phase === 'uploading' ? (
-                  <button
-                    className="secondary"
-                    onClick={() => {
-                      const current = mediaDrafts.get(accountKey, target)
-                      if (current?.requestId)
-                        window.together.cancelMedia(current.requestId).catch(() => {})
-                    }}
-                  >
-                    取消上传
-                  </button>
-                ) : (
-                  <button className="secondary" onClick={close}>
-                    {savingSticker ? '稍后上传' : '稍后发送'}
-                  </button>
-                )}
-                {!busy && (
-                  <button
-                    className="text-btn"
-                    onClick={() => {
-                      mediaDrafts.remove(accountKey, target, draft.id)
-                      setOpen(false)
-                    }}
-                  >
-                    移除附件
-                  </button>
-                )}
-                <button className="primary" disabled={busy} onClick={send}>
-                  {savingSticker
-                    ? uncertain
-                      ? '已确认未保存，重新上传'
-                      : error
-                        ? '重试上传表情'
-                        : '确认上传表情'
-                    : uncertain
-                      ? '已确认未收到，重新发送'
-                      : error
-                        ? '重试发送附件'
-                        : '确认发送附件'}
-                </button>
-              </div>
             </>
           ) : busy ? (
-            <p>正在准备麦克风或附件…</p>
+            <p>{ui('正在准备麦克风或附件…', 'Preparing microphone or attachment…')}</p>
           ) : null}
           {error && (
             <p className="private-error" role="alert">
               {error}
               {uncertain
                 ? savingSticker
-                  ? '；请先刷新自定义表情，确认未保存后再试。'
-                  : '；请先刷新会话，确认对方未收到后再重发。'
+                  ? ui(
+                      '；请先刷新自定义表情，确认未保存后再试。',
+                      '. Refresh your custom stickers and check before uploading again.',
+                    )
+                  : ui(
+                      '；请先刷新会话，确认对方未收到后再重发。',
+                      '. Refresh the conversation and check before sending again.',
+                    )
                 : ''}
             </p>
           )}
-        </Overlay>
+        </ComposerPanel>
       )}
     </>
   )

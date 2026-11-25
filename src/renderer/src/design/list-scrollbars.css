@@ -1,0 +1,29 @@
+@import 'overlayscrollbars/overlayscrollbars.css' layer(scrollbars);
+
+/* React measures lists and restores their scroll position before observers run. */
+.classic-list-scrollbars [data-list-viewport] {
+  scrollbar-width: none !important;
+}
+
+.scrollbar-probe {
+  position: fixed;
+  inset: 0 auto auto 0;
+  width: 40px;
+  height: 40px;
+  overflow: scroll;
+  visibility: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+
+.mp-list-scrollbar {
+  --os-size: 8px;
+  --os-padding-perpendicular: 2px;
+  --os-padding-axis: 2px;
+  --os-handle-border-radius: 99px;
+  --os-handle-bg: color-mix(in srgb, var(--mp-text-muted) 52%, transparent);
+  --os-handle-bg-hover: var(--mp-text-secondary);
+  --os-handle-bg-active: var(--mp-primary);
+  --os-handle-interactive-area-offset: 2px;
+  z-index: 1;
+}

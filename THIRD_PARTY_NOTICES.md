@@ -16,6 +16,7 @@
 - `src/renderer/src/composer-text.ts`
 - `src/renderer/src/chat-composer.css`
 - `src/renderer/src/member-recommendations.ts`
+- `src/renderer/src/room-queue-pages.ts`
 - 对应的 Mini、私信通知、共享连接、房间动态与输入框测试。
 
 完整许可文本随应用分发，见 [licenses/folium-mod-music-party-AGPL-3.0.txt](licenses/folium-mod-music-party-AGPL-3.0.txt)。移植时去除了插件宿主类型，增加 Electron 事件订阅接口；没有包含官方 APK、反编译源码、账号凭据或私信原文。
@@ -24,4 +25,6 @@
 
 其他新增功能依据协议说明和本项目已有实现编写；上述声明保留移植模块的来源，不为本项目其余文件另行指定许可证。各 npm 依赖保留其自身许可证。
 
-播放器随应用提供 Geist 和 Archivo 的拉丁字形。两套字体使用 SIL Open Font License 1.1，许可文本位于 [Geist](licenses/geist-OFL.txt) 和 [Archivo](licenses/archivo-OFL.txt)。封面过渡使用 Anime.js，其许可见 [Anime.js MIT](licenses/animejs-MIT.txt)。
+播放器随应用提供 Inter 拉丁字形，其 SIL Open Font License 1.1 文本见 [Inter](licenses/inter-OFL.txt)。封面过渡使用 Anime.js，其许可见 [Anime.js MIT](licenses/animejs-MIT.txt)。
+
+系统使用占宽滚动条时，播放器用 OverlayScrollbars 显示浮动滚动条。许可文本见 [OverlayScrollbars MIT](licenses/overlayscrollbars-MIT.txt)。

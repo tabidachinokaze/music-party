@@ -1,7 +1,8 @@
 import { EventEmitter } from 'node:events'
 import { expect, it, vi } from 'vitest'
 import { UpdateController } from '../src/main/updates'
-import { plainReleaseNotes, updateSupport } from '../src/shared/updates'
+import { localizedUpdateMessage, plainReleaseNotes, updateSupport } from '../src/shared/updates'
+import { getUiLanguage, setUiLanguage } from '../src/shared/ui-language'
 class FakeUpdater extends EventEmitter {
   checkForUpdates = vi.fn(async () => {})
   downloadUpdate = vi.fn(async () => {})
@@ -13,6 +14,23 @@ it('supports packaged AppImage and Windows, explains unsupported deployment mode
   expect(updateSupport(false, 'linux')).toContain('开发模式')
   expect(updateSupport(true, 'linux')).toContain('AppImage')
   expect(updateSupport(true, 'darwin')).toContain('暂不支持')
+})
+it('displays existing update notices in the current language without changing release notes', () => {
+  const previous = getUiLanguage()
+  try {
+    const backend = new FakeUpdater()
+    const updater = new UpdateController(backend, '1.0.0', null, vi.fn(), vi.fn())
+    backend.emit('update-available', { version: '1.0.1', releaseNotes: '新功能与修复' })
+    const stored = updater.state
+    setUiLanguage('en')
+    expect(localizedUpdateMessage(stored.message)).toBe('A new version is available to download.')
+    expect(localizedUpdateMessage(updateSupport(false, 'win32')!)).toContain('release builds')
+    expect(stored.releaseNotes).toBe('新功能与修复')
+    setUiLanguage('zh-CN')
+    expect(localizedUpdateMessage(stored.message)).toBe('发现新版本，可以下载更新。')
+  } finally {
+    setUiLanguage(previous)
+  }
 })
 it('checks once, waits for explicit download, and installs only after exit preparation', async () => {
   const backend = new FakeUpdater(),

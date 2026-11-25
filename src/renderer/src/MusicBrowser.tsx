@@ -1,8 +1,8 @@
+import { ui } from '../../shared/ui-language'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import {
+  AudioLines,
   Disc3,
-  Trash2,
-  X,
   Heart,
   Headphones,
   Library,
@@ -14,13 +14,17 @@ import {
   RefreshCw,
   Search,
 } from 'lucide-react'
-import type { Artist, Playlist, SearchKind, Song } from '../../shared/types'
+import type { Album, Artist, Playlist, SearchKind, Song } from '../../shared/types'
 import { toSong } from '../../shared/protocol'
-import { artistFrom, playlistFrom, type ApiCall } from './music-data'
+import { artistFrom, playlistFrom, readSearchPage, type ApiCall } from './music-data'
 import { useSongCollection, type useLibrary } from './useLibrary'
 import { useScrollPagination } from './useScrollPagination'
 import './add-to-playlist.css'
+import { useSurfaceActive } from './windows/Surface'
+import { MusicianNames } from './MusicianNames'
+import { PlayingSongLocator } from './PlayingSongLocator'
 import { BrowserSearch, type BrowserNavigationState } from './BrowserNavigation'
+import { SearchHistory, useSearchHistory } from './SearchHistory'
 
 type LibraryState = ReturnType<typeof useLibrary>
 export type MusicSource = {
@@ -33,6 +37,21 @@ export type MusicSource = {
   artistId?: string
   ids?: string[]
 }
+function CollectionArtwork({ src, album = false }: { src?: string; album?: boolean }) {
+  const [broken, setBroken] = useState('')
+  const Icon = album ? Disc3 : Library
+  return (
+    <span className={'catalog-cover' + (album ? ' vinyl-cover' : '')}>
+      {src && src !== broken ? (
+        <img src={src} alt="" loading="lazy" onError={() => setBroken(src)} />
+      ) : (
+        <span className="playlist-art">
+          <Icon size={36} aria-hidden="true" />
+        </span>
+      )}
+    </span>
+  )
+}
 export function SongRows({
   songs,
   ids,
@@ -44,6 +63,10 @@ export function SongRows({
   onLike,
   onAudition,
   onAddToPlaylist,
+  onAlbum,
+  onArtist,
+  artistId,
+  openCurrent,
 }: {
   songs: Song[]
   ids?: string[]
@@ -55,34 +78,105 @@ export function SongRows({
   onLike(song: Song): void
   onAudition?(song: Song): void
   onAddToPlaylist?(song: Song): void
+  onAlbum?(song: Song): void
+  onArtist(id: string, name: string): void
+  artistId?: string
+  openCurrent?(): void
 }) {
   if (!songs.length) return null
+  const play = (song: Song) => onPlay(song, ids || songs.map((item) => item.id))
   return (
     <div
       className={`song-list ${room && onAudition ? 'has-audition' : ''} ${onAddToPlaylist ? 'has-playlist-action' : ''}`}
     >
       <div className="song-row list-label">
         <span>#</span>
-        <span>歌曲 / 歌手</span>
-        <span>专辑</span>
-        <span>时长</span>
+        <span>{ui('歌曲 / 歌手', 'Track / Artist')}</span>
+        <span>{ui('专辑', 'Album')}</span>
+        <span>{ui('时长', 'Duration')}</span>
         <span />
       </div>
       {songs.map((song, index) => (
         <div
           className={`song-row ${currentId === song.id ? 'is-playing' : ''}`}
           key={`${song.id}-${index}`}
-          onDoubleClick={() => onPlay(song, ids || songs.map((item) => item.id))}
+          aria-current={currentId === song.id ? 'true' : undefined}
+          onDoubleClick={openCurrent ? undefined : () => play(song)}
         >
-          <span className="song-index">{String(index + 1).padStart(2, '0')}</span>
+          <span className="song-index">
+            {currentId === song.id ? (
+              <AudioLines size={15} aria-label={ui('当前歌曲', 'Current track')} />
+            ) : (
+              String(index + 1).padStart(2, '0')
+            )}
+          </span>
           <div className="song-title">
-            {song.cover && <img src={song.cover} alt="" />}
+            {song.cover ? (
+              <img src={song.cover} alt="" loading="lazy" />
+            ) : (
+              <span className="song-art-fallback">
+                <Disc3 size={18} />
+              </span>
+            )}
             <div>
-              <strong>{song.name}</strong>
-              <small>{song.artist}</small>
+              <strong title={openCurrent ? undefined : song.name}>
+                {openCurrent ? (
+                  <button
+                    className="track-open"
+                    type="button"
+                    aria-label={
+                      (song.id === currentId
+                        ? ui('查看正在播放', 'View Now Playing')
+                        : room
+                          ? ui('推送', 'Recommend')
+                          : ui('播放', 'Play')) +
+                      ' ' +
+                      song.name
+                    }
+                    disabled={song.id !== currentId && busy}
+                    onClick={() => (song.id === currentId ? openCurrent() : play(song))}
+                  >
+                    {song.name}
+                  </button>
+                ) : (
+                  song.name
+                )}
+              </strong>
+              <small
+                title={
+                  openCurrent ? undefined : [song.artist, song.album].filter(Boolean).join(' · ')
+                }
+              >
+                <MusicianNames
+                  credits={song.artists}
+                  fallback={song.artist}
+                  onOpen={onArtist}
+                  artistId={artistId}
+                />
+                {!!song.composers?.length && (
+                  <>
+                    {' '}
+                    {ui('· 作曲：', '· Composer: ')}
+                    <MusicianNames credits={song.composers} onOpen={onArtist} artistId={artistId} />
+                  </>
+                )}
+                {song.album && <span className="compact-track-album"> · {song.album}</span>}
+              </small>
             </div>
           </div>
-          <span className="album">{song.album}</span>
+          {song.albumId && song.album && onAlbum ? (
+            <button
+              type="button"
+              className="album album-link"
+              title={ui('打开专辑《{0}》', 'Open album “{0}”', song.album)}
+              onClick={() => onAlbum(song)}
+              onDoubleClick={(event) => event.stopPropagation()}
+            >
+              {song.album}
+            </button>
+          ) : (
+            <span className="album">{song.album}</span>
+          )}
           <time className="song-duration" dateTime={`PT${Math.floor(song.duration / 1000)}S`}>
             {Math.floor(song.duration / 60000)}:
             {String(Math.floor(song.duration / 1000) % 60).padStart(2, '0')}
@@ -91,7 +185,8 @@ export function SongRows({
             {onAddToPlaylist && (
               <button
                 className="icon-btn"
-                aria-label={`添加到歌单 ${song.name}`}
+                title={ui('添加到歌单', 'Add to playlist')}
+                aria-label={ui('添加到歌单 {0}', 'Add {0} to a playlist', song.name)}
                 onClick={() => onAddToPlaylist(song)}
               >
                 <ListPlus size={16} />
@@ -100,7 +195,8 @@ export function SongRows({
             {room && onAudition && (
               <button
                 className="icon-btn"
-                aria-label={`试听 ${song.name}`}
+                title={ui('试听', 'Preview')}
+                aria-label={ui('试听 {0}', 'Preview {0}', song.name)}
                 disabled={busy}
                 onClick={() => onAudition(song)}
               >
@@ -109,20 +205,24 @@ export function SongRows({
             )}
             <button
               className={`icon-btn ${library.likes.has(song.id) ? 'liked' : ''}`}
-              aria-label={`${library.likes.has(song.id) ? '取消喜欢' : '喜欢'} ${song.name}`}
+              title={library.likes.has(song.id) ? ui('取消喜欢', 'Unlike') : ui('喜欢', 'Like')}
+              aria-label={`${library.likes.has(song.id) ? ui('取消喜欢', 'Unlike') : ui('喜欢', 'Like')} ${song.name}`}
               disabled={!library.likesReady || library.likeBusy.has(song.id)}
               onClick={() => onLike(song)}
             >
               <Heart size={15} fill={library.likes.has(song.id) ? 'currentColor' : 'none'} />
             </button>
-            <button
-              className="icon-btn"
-              aria-label={`${room ? '推送' : '播放'} ${song.name}`}
-              disabled={busy}
-              onClick={() => onPlay(song, ids || songs.map((item) => item.id))}
-            >
-              {room ? <Plus size={16} /> : <Play size={16} />}
-            </button>
+            {!openCurrent && (
+              <button
+                className="icon-btn"
+                title={room ? ui('推送到房间', 'Recommend to room') : ui('播放', 'Play')}
+                aria-label={`${room ? ui('推送', 'Recommend') : ui('播放', 'Play')} ${song.name}`}
+                disabled={busy}
+                onClick={() => play(song)}
+              >
+                {room ? <Plus size={16} /> : <Play size={16} />}
+              </button>
+            )}
           </div>
         </div>
       ))}
@@ -143,6 +243,9 @@ export function MusicBrowser({
   onAudition,
   initialSource,
   createdOnly = false,
+  recentIds,
+  compactHome = false,
+  openCurrent,
   onSource,
   onLogin,
   onSearch,
@@ -164,6 +267,9 @@ export function MusicBrowser({
   onSearch(): void
   onAdd(song: Song): void
   createdOnly?: boolean
+  recentIds?: string[]
+  compactHome?: boolean
+  openCurrent?(): void
   initialSource?: MusicSource
   onNavigation?(navigation: BrowserNavigationState): void
 }) {
@@ -174,14 +280,7 @@ export function MusicBrowser({
   const navigationRevision = useRef(0)
   const [inputRevision, setInputRevision] = useState(0)
   const [kind, setKind] = useState<SearchKind>('songs')
-  const [history, setHistory] = useState<string[]>(() => {
-    try {
-      const value = JSON.parse(localStorage.getItem('music-party-search-history') || '[]')
-      return Array.isArray(value) ? value.filter((x) => typeof x === 'string').slice(0, 10) : []
-    } catch {
-      return []
-    }
-  })
+  const history = useSearchHistory('music-party-search-history')
   const [songResults, setSongResults] = useState<Song[]>([])
   const [playlistResults, setPlaylistResults] = useState<Playlist[]>([])
   const [artistResults, setArtistResults] = useState<Artist[]>([])
@@ -211,14 +310,36 @@ export function MusicBrowser({
     },
     [],
   )
+  const active = useSurfaceActive()
   const likedIds = [...library.likes]
+  const overview =
+    !!uid && view === 'library' && !source && !createdOnly && filter === 'all' && !listQuery.trim()
+  const previewIds = [
+    ...new Set([...(recentIds?.slice(0, 5) || []), ...likedIds.slice(0, 5)]),
+  ].slice(0, 5)
+  const previewKey = overview ? previewIds.join(',') : ''
+  const [visiblePreview, setVisiblePreview] = useState('')
+  useEffect(() => {
+    // Opening a drawer leaves the existing library visible behind it.
+    if (active) setVisiblePreview(previewKey)
+  }, [active, previewKey])
+  const preview = useSongCollection(
+    api,
+    visiblePreview
+      ? {
+          key: 'preview:' + uid + ':' + visiblePreview,
+          ids: visiblePreview.split(','),
+          title: ui('近期播放和喜欢的歌曲', 'Recently played and liked tracks'),
+        }
+      : null,
+  )
   const effectiveSource =
     view === 'liked'
       ? !library.complete && !library.error
         ? null
         : {
             key: `liked:${uid}:${library.likedPlaylist?.id || ''}:${likedIds.join(',')}`,
-            title: '我喜欢的音乐',
+            title: ui('我喜欢的音乐', 'Liked Songs'),
             ...(library.likedPlaylist
               ? { playlistId: library.likedPlaylist.id }
               : { ids: likedIds }),
@@ -249,6 +370,13 @@ export function MusicBrowser({
         return terms.every((term) => text.includes(term))
       })
     : collection.songs
+  const canLoadCurrent =
+    !!currentId &&
+    !filtering &&
+    (collection.more || collection.loading) &&
+    collection.ids.indexOf(currentId, collection.loadedIdCount) !== -1
+  const showLocator =
+    active && currentId && (canLoadCurrent || visibleSongs.some((song) => song.id === currentId))
   const collectionSentinel = useScrollPagination({
     enabled: !!effectiveSource && !filtering,
     scope: collectionKey,
@@ -298,14 +426,7 @@ export function MusicBrowser({
       setSearchMore(false)
     }
     const selection = searchKey.current
-    if (reset)
-      setHistory((old) => {
-        const next = [selection.query, ...old.filter((q) => q !== selection.query)].slice(0, 10)
-        try {
-          localStorage.setItem('music-party-search-history', JSON.stringify(next))
-        } catch {}
-        return next
-      })
+    if (reset) history.remember(selection.query)
     setSearchBusy(true)
     setSearchError('')
     setSearched(true)
@@ -315,14 +436,6 @@ export function MusicBrowser({
         ? { result: { songs: (await api('song', { ids: selection.query })).songs, songCount: 1 } }
         : await api('search', { keywords: selection.query, kind: selection.kind, offset })
       if (epoch !== searchEpoch.current) return
-      const result = body.result || {}
-      const raw =
-        selection.kind === 'songs'
-          ? result.songs
-          : selection.kind === 'playlists'
-            ? result.playlists
-            : result.artists
-      const values = Array.isArray(raw) ? raw : []
       const previous = reset
         ? []
         : selection.kind === 'songs'
@@ -330,27 +443,13 @@ export function MusicBrowser({
           : selection.kind === 'playlists'
             ? playlistResults
             : artistResults
-      const seen = new Set(previous.map((item) => item.id))
-      const fresh = values.filter((item: any) => {
-        const id = String(item.id)
-        if (seen.has(id)) return false
-        seen.add(id)
-        return true
-      })
-      const total = Number(
-        result[
-          selection.kind === 'songs'
-            ? 'songCount'
-            : selection.kind === 'playlists'
-              ? 'playlistCount'
-              : 'artistCount'
-        ] || 0,
-      )
-      if (values.length && !fresh.length) throw new Error('搜索结果分页未继续前进，请重试')
-      searchOffset.current = offset + values.length
-      setSearchMore(
-        values.length > 0 && (total ? offset + values.length < total : values.length === 30),
-      )
+      const {
+        items: fresh,
+        nextOffset,
+        more,
+      } = readSearchPage(body.result, selection.kind, offset, previous)
+      searchOffset.current = nextOffset
+      setSearchMore(more)
       if (selection.kind === 'songs')
         setSongResults((old) => (reset ? fresh.map(toSong) : [...old, ...fresh.map(toSong)]))
       else if (selection.kind === 'playlists')
@@ -385,24 +484,29 @@ export function MusicBrowser({
     revision: inputRevision,
     title:
       effectiveSource?.title ||
-      { library: '我的歌单', albums: '收藏的专辑', liked: '我喜欢的音乐', search: '搜索' }[view],
+      {
+        library: ui('我的歌单', 'My playlists'),
+        albums: ui('收藏的专辑', 'Saved albums'),
+        liked: ui('我喜欢的音乐', 'Liked Songs'),
+        search: ui('搜索', 'Search'),
+      }[view],
     query: effectiveSource ? collectionQuery : view === 'search' ? query : listQuery,
     label: effectiveSource
       ? effectiveSource.artistId
-        ? '搜索当前歌手歌曲'
-        : '搜索当前歌单或专辑'
+        ? ui('搜索当前歌手歌曲', 'Search this artist’s tracks')
+        : ui('搜索当前歌单或专辑', 'Search this playlist or album')
       : view === 'search'
-        ? '搜索音乐库'
+        ? ui('搜索音乐库', 'Search library')
         : view === 'albums'
-          ? '搜索当前专辑列表'
-          : '搜索当前歌单列表',
+          ? ui('搜索当前专辑列表', 'Search saved albums')
+          : ui('搜索当前歌单列表', 'Search playlists'),
     placeholder: effectiveSource
-      ? '搜索歌曲、歌手、专辑'
+      ? ui('搜索歌曲、歌手、专辑', 'Search tracks, artists, or albums')
       : view === 'search'
-        ? '搜索歌曲、歌单、歌手'
+        ? ui('搜索歌曲、歌单、歌手', 'Search tracks, playlists, or artists')
         : view === 'albums'
-          ? '搜索专辑名称'
-          : '搜索歌单名称',
+          ? ui('搜索专辑名称', 'Search album names')
+          : ui('搜索歌单名称', 'Search playlist names'),
     busy: searchBusy,
     onQuery: (text) => {
       const revision = ++navigationRevision.current
@@ -423,11 +527,13 @@ export function MusicBrowser({
     view,
     effectiveSource?.key,
     effectiveSource?.title,
+    navigation.placeholder,
     collectionKey,
     collectionQuery,
     query,
     listQuery,
     kind,
+    history.queries,
     searchBusy,
     inputRevision,
   ])
@@ -445,37 +551,96 @@ export function MusicBrowser({
           (filter === 'created' ? item.creatorId === uid : item.creatorId !== uid)),
   )
   const visibleAlbums = library.albums.filter((album) => matchesList(album.name))
-  const cards = (items: Playlist[]) => (
-    <div className="playlist-grid">
-      {items.map((item) => (
-        <button key={item.id} className="playlist-card" onClick={() => openPlaylist(item)}>
-          {item.cover ? (
-            <img src={item.cover} alt="" loading="lazy" />
-          ) : (
-            <div className="playlist-art">
-              <Library size={36} />
-            </div>
-          )}
-          <strong>{item.name}</strong>
-          <small>
-            {item.count} 首 · {item.creator}
-          </small>
-        </button>
-      ))}
-    </div>
-  )
+  function openArtist(id: string, name: string) {
+    onSource({ key: `artist:${id}`, title: name, artistId: id })
+  }
+  function openSongAlbum(song: Song) {
+    if (song.albumId && source?.albumId !== song.albumId)
+      onSource({
+        key: `album:${song.albumId}`,
+        title: song.album,
+        albumId: song.albumId,
+        cover: song.cover,
+      })
+  }
+  const byline = source?.byline || collection.albumArtist
+  const cover =
+    source?.cover ||
+    (view === 'liked' ? library.likedPlaylist?.cover : '') ||
+    collection.songs[0]?.cover
+  function playlistCard(item: Playlist) {
+    return (
+      <button
+        key={'playlist:' + item.id}
+        className="playlist-card"
+        title={ui('打开歌单《{0}》', 'Open playlist “{0}”', item.name)}
+        onClick={() => openPlaylist(item)}
+      >
+        <CollectionArtwork
+          src={
+            item.cover ||
+            (library.likedPlaylist?.id === item.id
+              ? preview.songs.find((song) => library.likes.has(song.id) && song.cover)?.cover
+              : undefined)
+          }
+        />
+        <strong>{item.name}</strong>
+        <small>
+          {ui('{0} 首', item.count === 1 ? '{0} track' : '{0} tracks', item.count)}
+          {item.creator && ' · ' + item.creator}
+        </small>
+      </button>
+    )
+  }
+  function albumCard(album: Album) {
+    return (
+      <button
+        className="playlist-card"
+        key={'album:' + album.id}
+        title={ui('打开专辑《{0}》', 'Open album “{0}”', album.name)}
+        onClick={() =>
+          onSource({
+            key: 'album:' + album.id,
+            title: album.name,
+            cover: album.cover,
+            byline: album.artist,
+            albumId: album.id,
+          })
+        }
+      >
+        <CollectionArtwork
+          album
+          src={
+            album.cover ||
+            preview.songs.find((song) => song.albumId === album.id && song.cover)?.cover
+          }
+        />
+        <strong>{album.name}</strong>
+        <small>
+          {album.artist}
+          {album.count
+            ? ' · ' + ui('{0} 首', album.count === 1 ? '{0} track' : '{0} tracks', album.count)
+            : ''}
+        </small>
+      </button>
+    )
+  }
+  const leadLists = overview
+    ? visiblePlaylists.slice(0, (compactHome ? 2 : 3) - (library.albums.length ? 1 : 0))
+    : []
+  const remainingLists = visiblePlaylists.slice(leadLists.length)
   if (!uid && !source && view !== 'search')
     return (
       <div className="empty">
         <Library size={28} />
-        <strong>登录后查看你的音乐库</strong>
+        <strong>{ui('登录后查看你的音乐库', 'Sign in to see your library')}</strong>
         <div className="row-actions">
           <button className="primary" onClick={onLogin}>
-            扫码登录
+            {ui('扫码登录', 'Sign in with QR code')}
           </button>
           <button className="secondary" onClick={onSearch}>
             <Search size={15} />
-            全站搜索
+            {ui('全站搜索', 'Search all music')}
           </button>
         </div>
       </div>
@@ -485,10 +650,10 @@ export function MusicBrowser({
       <section className="music-browser">
         <div className="empty">
           <Heart size={25} />
-          <strong>{library.error || '正在读取喜欢的音乐…'}</strong>
+          <strong>{library.error || ui('正在读取喜欢的音乐…', 'Loading Liked Songs…')}</strong>
           {library.error && (
             <button className="secondary" onClick={library.refresh}>
-              重试
+              {ui('重试', 'Retry')}
             </button>
           )}
         </div>
@@ -500,12 +665,35 @@ export function MusicBrowser({
       {effectiveSource ? (
         <>
           <div className="section-title collection-summary">
-            {source?.cover && <img src={source.cover} alt="" />}
+            {cover ? (
+              <img alt="" src={cover} />
+            ) : (
+              <span className="collection-cover-fallback">
+                {view === 'liked' ? <Heart /> : <Disc3 />}
+              </span>
+            )}
             <div>
-              {source?.byline && <strong>{source.byline}</strong>}
+              <span className="catalog-type">
+                {source?.albumId
+                  ? ui('专辑', 'Album')
+                  : source?.artistId
+                    ? ui('歌手', 'Artist')
+                    : source?.key.startsWith('recent:')
+                      ? ui('播放记录', 'Listening history')
+                      : ui('歌单', 'Playlists')}
+              </span>
+              <h2>{effectiveSource.title}</h2>
+              {byline && <span className="collection-byline">{byline}</span>}
               <p>
-                已加载 {collection.songs.length} / {collection.total} 首
-                {collection.unavailable > 0 ? ` · ${collection.unavailable} 首暂不可用` : ''}
+                {ui(
+                  '已加载 {0} / {1} 首',
+                  'Tracks loaded: {0} / {1}',
+                  collection.songs.length,
+                  collection.total,
+                )}
+                {collection.unavailable > 0
+                  ? ui(' · {0} 首暂不可用', ' · Unavailable: {0}', collection.unavailable)
+                  : ''}
               </p>
             </div>
             {!room && (
@@ -524,21 +712,28 @@ export function MusicBrowser({
                 }
               >
                 <Play size={15} />
-                {filtering ? '播放搜索结果' : '播放全部'}
+                {filtering ? ui('播放搜索结果', 'Play search results') : ui('播放全部', 'Play all')}
               </button>
             )}
           </div>
           {filtering && (
             <span className="collection-search-status" role="status">
               {collection.loading || collection.more
-                ? `已找到 ${visibleSongs.length} 首 · ${collection.error ? '搜索未完成，请重试' : '正在搜索完整列表…'}`
-                : `找到 ${visibleSongs.length} 首`}
+                ? ui(
+                    '已找到 {0} 首 · {1}',
+                    'Matches: {0} · {1}',
+                    visibleSongs.length,
+                    collection.error
+                      ? ui('搜索未完成，请重试', 'Search incomplete. Try again.')
+                      : ui('正在搜索完整列表…', 'Searching the full list…'),
+                  )
+                : ui('找到 {0} 首', 'Matches: {0}', visibleSongs.length)}
             </span>
           )}
           {collection.error && (
             <div className="alert error" role="alert">
               {collection.error}
-              <button onClick={collection.retry}>重试</button>
+              <button onClick={collection.retry}>{ui('重试', 'Retry')}</button>
             </div>
           )}
           <SongRows
@@ -552,18 +747,40 @@ export function MusicBrowser({
             onLike={onLike}
             onAudition={onAudition}
             onAddToPlaylist={uid ? onAdd : undefined}
+            onArtist={openArtist}
+            artistId={source?.artistId}
+            onAlbum={source?.albumId ? undefined : openSongAlbum}
           />
           {collection.loading && (
             <div className="loading">
               <LoaderCircle size={16} className="spin" />
-              正在加载歌曲…
+              {ui('正在加载歌曲…', 'Loading tracks…')}
             </div>
           )}
           {!collection.loading && !collection.error && !collection.more && !visibleSongs.length && (
             <div className="empty">
               <Music2 size={25} />
-              <strong>{filtering ? '没有找到匹配歌曲' : '这里还没有歌曲'}</strong>
+              <strong>
+                {filtering
+                  ? ui('没有找到匹配歌曲', 'No matching tracks')
+                  : ui('这里还没有歌曲', 'No tracks here yet')}
+              </strong>
+              {filtering && (
+                <button className="secondary" onClick={() => navigation.onQuery('')}>
+                  {ui('清除筛选', 'Clear filter')}
+                </button>
+              )}
             </div>
+          )}
+          {showLocator && (
+            <PlayingSongLocator
+              key={JSON.stringify([collectionKey, currentId, collectionQuery])}
+              loadedIdCount={collection.loadedIdCount}
+              canLoadTarget={canLoadCurrent}
+              loading={collection.loading}
+              error={collection.error}
+              loadMore={collection.loadMore}
+            />
           )}
           <div ref={collectionSentinel} className="pagination-sentinel" aria-hidden="true" />
         </>
@@ -572,12 +789,15 @@ export function MusicBrowser({
           <div className="section-title">
             <div>
               <p>
-                {library.albumsComplete ? '全部专辑' : '已加载专辑'} · {library.albums.length} 张
+                {library.albumsComplete
+                  ? ui('全部专辑', 'All albums')
+                  : ui('已加载专辑', 'Loaded albums')}{' '}
+                · {library.albums.length} {ui('张', 'albums')}
               </p>
             </div>
             <button className="secondary" disabled={library.loading} onClick={library.refresh}>
               <RefreshCw size={15} />
-              刷新专辑
+              {ui('刷新专辑', 'Refresh albums')}
             </button>
           </div>
           {library.albumsError && (
@@ -585,70 +805,87 @@ export function MusicBrowser({
               {library.albumsError}
             </div>
           )}
-          <div className="playlist-grid album-grid">
-            {visibleAlbums.map((album) => (
-              <button
-                className="playlist-card"
-                key={album.id}
-                onClick={() =>
-                  onSource({
-                    key: `album:${album.id}`,
-                    title: album.name,
-                    cover: album.cover,
-                    byline: album.artist,
-                    albumId: album.id,
-                  })
-                }
-              >
-                {album.cover ? (
-                  <img src={album.cover} alt="" loading="lazy" />
-                ) : (
-                  <div className="playlist-art">
-                    <Disc3 size={36} />
-                  </div>
-                )}
-                <strong>{album.name}</strong>
-                <small>
-                  {album.artist}
-                  {album.count ? ` · ${album.count} 首` : ''}
-                </small>
-              </button>
-            ))}
-          </div>
+          <div className="playlist-grid album-grid">{visibleAlbums.map(albumCard)}</div>
           {listQuery.trim() && !library.loading && !visibleAlbums.length && (
             <div className="empty">
-              <strong>没有找到匹配专辑</strong>
+              <strong>{ui('没有找到匹配专辑', 'No matching albums')}</strong>
+              <button className="secondary" onClick={() => navigation.onQuery('')}>
+                {ui('清除筛选', 'Clear filter')}
+              </button>
             </div>
           )}
           {library.loading && !library.albumsComplete && (
             <div className="loading">
               <LoaderCircle size={16} className="spin" />
-              正在读取收藏专辑…
+              {ui('正在读取收藏专辑…', 'Loading saved albums…')}
             </div>
           )}
           {library.albumsComplete && !library.albums.length && (
             <div className="empty">
               <Disc3 size={28} />
-              <strong>还没有收藏专辑</strong>
-              <span>在网易云收藏的专辑会显示在这里</span>
+              <strong>{ui('还没有收藏专辑', 'No saved albums yet')}</strong>
+              <span>
+                {ui(
+                  '在网易云收藏的专辑会显示在这里',
+                  'Albums you save in NetEase Cloud Music appear here',
+                )}
+              </span>
             </div>
           )}
         </>
       ) : view === 'library' ? (
         <>
+          {overview && (leadLists.length > 0 || library.albums.length > 0) && (
+            <div className="library-overview" aria-label={ui('音乐库概览', 'Library overview')}>
+              <div className="playlist-grid overview-cards">
+                {leadLists[0] && playlistCard(leadLists[0])}
+                {library.albums[0] && albumCard(library.albums[0])}
+                {leadLists.slice(1).map(playlistCard)}
+              </div>
+              {preview.songs.length > 0 && (
+                <section
+                  className="overview-tracks"
+                  aria-label={ui('近期播放和喜欢的歌曲', 'Recently played and liked tracks')}
+                >
+                  <SongRows
+                    songs={preview.songs}
+                    room={room}
+                    currentId={currentId}
+                    busy={busy}
+                    library={library}
+                    onPlay={onPlay}
+                    onLike={onLike}
+                    openCurrent={openCurrent}
+                    onArtist={openArtist}
+                    onAlbum={openSongAlbum}
+                  />
+                </section>
+              )}
+              {preview.error && (
+                <button className="text-btn" onClick={preview.retry}>
+                  {ui('重试加载歌曲', 'Retry loading tracks')}
+                </button>
+              )}
+            </div>
+          )}
           <div className="section-title">
             <div>
               <p>
-                {createdOnly ? '已创建' : library.complete ? '全部歌单' : '已加载歌单'} ·{' '}
+                {createdOnly
+                  ? ui('已创建', 'Created')
+                  : library.complete
+                    ? ui('全部歌单', 'All playlists')
+                    : ui('已加载歌单', 'Loaded playlists')}{' '}
+                ·{' '}
                 {createdOnly
                   ? library.playlists.filter((p) => p.creatorId === uid).length
                   : library.playlists.length}{' '}
-                个
+                {ui('个', 'playlists')}
               </p>
             </div>
             <button className="secondary" disabled={library.loading} onClick={library.refresh}>
               <RefreshCw size={15} />
-              刷新音乐库
+              {ui('刷新音乐库', 'Refresh library')}
             </button>
           </div>
           {!createdOnly && (
@@ -660,7 +897,13 @@ export function MusicBrowser({
                   aria-pressed={filter === value}
                   onClick={() => setFilter(value)}
                 >
-                  {['全部', '我创建的', '我收藏的'][i]}
+                  {
+                    [
+                      ui('全部', 'All'),
+                      ui('我创建的', 'Created by me'),
+                      ui('我收藏的', 'Saved by me'),
+                    ][i]
+                  }
                 </button>
               ))}
             </div>
@@ -670,72 +913,39 @@ export function MusicBrowser({
               {library.error}
             </div>
           )}
-          {cards(visiblePlaylists)}
+          {remainingLists.length > 0 && (
+            <div className="playlist-grid">{remainingLists.map(playlistCard)}</div>
+          )}
           {listQuery.trim() && !library.loading && !visiblePlaylists.length && (
             <div className="empty">
-              <strong>没有找到匹配歌单</strong>
+              <strong>{ui('没有找到匹配歌单', 'No matching playlists')}</strong>
+              <button className="secondary" onClick={() => navigation.onQuery('')}>
+                {ui('清除筛选', 'Clear filter')}
+              </button>
             </div>
           )}
           {library.loading && (
             <div className="loading">
               <LoaderCircle size={16} className="spin" />
-              正在读取全部歌单…
+              {ui('正在读取全部歌单…', 'Loading playlists…')}
             </div>
           )}
           {library.complete && !library.playlists.length && (
             <div className="empty">
               <Library size={25} />
-              <strong>还没有歌单</strong>
+              <strong>{ui('还没有歌单', 'No playlists yet')}</strong>
             </div>
           )}
         </>
       ) : (
         <>
-          {history.length > 0 && (
-            <div className="search-history">
-              <span>最近搜索</span>
-              {history.map((q) => (
-                <div className="search-history-chip" key={q}>
-                  <button
-                    title={q}
-                    onClick={() => {
-                      setQuery(q)
-                      search(true, kind, q)
-                    }}
-                  >
-                    {q}
-                  </button>
-                  <button
-                    className="history-delete"
-                    aria-label={`删除搜索记录 ${q}`}
-                    title="删除这条记录"
-                    onClick={() => {
-                      const next = history.filter((item) => item !== q)
-                      setHistory(next)
-                      try {
-                        localStorage.setItem('music-party-search-history', JSON.stringify(next))
-                      } catch {}
-                    }}
-                  >
-                    <X size={13} />
-                  </button>
-                </div>
-              ))}
-              <button
-                className="text-btn history-clear"
-                aria-label="清空搜索记录"
-                onClick={() => {
-                  setHistory([])
-                  try {
-                    localStorage.removeItem('music-party-search-history')
-                  } catch {}
-                }}
-              >
-                <Trash2 size={14} />
-                清空
-              </button>
-            </div>
-          )}
+          <SearchHistory
+            history={history}
+            onSearch={(keyword) => {
+              setQuery(keyword)
+              void search(true, kind, keyword)
+            }}
+          />
           <div className="filter-tabs">
             {(['songs', 'playlists', 'artists'] as const).map((value, i) => (
               <button
@@ -747,14 +957,16 @@ export function MusicBrowser({
                   search(true, value)
                 }}
               >
-                {['歌曲', '歌单', '歌手'][i]}
+                {[ui('歌曲', 'Tracks'), ui('歌单', 'Playlists'), ui('歌手', 'Artists')][i]}
               </button>
             ))}
           </div>
           {searchError && (
             <div className="alert error" role="alert">
               {searchError}
-              <button onClick={() => search(searchOffset.current === 0)}>重试</button>
+              <button onClick={() => search(searchOffset.current === 0)}>
+                {ui('重试', 'Retry')}
+              </button>
             </div>
           )}
           {kind === 'songs' && (
@@ -768,15 +980,21 @@ export function MusicBrowser({
               onLike={onLike}
               onAudition={onAudition}
               onAddToPlaylist={uid ? onAdd : undefined}
+              onArtist={openArtist}
+              artistId={source?.artistId}
+              onAlbum={source?.albumId ? undefined : openSongAlbum}
             />
           )}
-          {kind === 'playlists' && cards(playlistResults)}
+          {kind === 'playlists' && (
+            <div className="playlist-grid">{playlistResults.map(playlistCard)}</div>
+          )}
           {kind === 'artists' && (
             <div className="playlist-grid">
               {artistResults.map((artist) => (
                 <button
                   className="playlist-card artist-card"
                   key={artist.id}
+                  title={ui('查看歌手 {0}', 'View artist {0}', artist.name)}
                   onClick={() =>
                     onSource({
                       key: `artist:${artist.id}`,
@@ -787,13 +1005,15 @@ export function MusicBrowser({
                     })
                   }
                 >
-                  {artist.cover ? (
-                    <img src={artist.cover} alt="" />
-                  ) : (
-                    <div className="playlist-art">
-                      <Music2 size={30} />
-                    </div>
-                  )}
+                  <span className="catalog-cover artist-cover">
+                    {artist.cover ? (
+                      <img src={artist.cover} alt="" />
+                    ) : (
+                      <span className="playlist-art">
+                        <Music2 size={30} />
+                      </span>
+                    )}
+                  </span>
                   <strong>{artist.name}</strong>
                   <small>{artist.aliases.join(' / ')}</small>
                 </button>
@@ -803,7 +1023,7 @@ export function MusicBrowser({
           {searchBusy && (
             <div className="loading">
               <LoaderCircle size={16} className="spin" />
-              正在搜索…
+              {ui('正在搜索…', 'Searching…')}
             </div>
           )}
           {!searchBusy &&
@@ -815,7 +1035,11 @@ export function MusicBrowser({
                 : !artistResults.length) && (
               <div className="empty">
                 <Search size={26} />
-                <strong>{searched ? '没有找到匹配内容' : '从一首好歌开始'}</strong>
+                <strong>
+                  {searched
+                    ? ui('没有找到匹配内容', 'No results')
+                    : ui('从一首好歌开始', 'Search for a track to get started')}
+                </strong>
               </div>
             )}
           <div ref={searchSentinel} className="pagination-sentinel" aria-hidden="true" />

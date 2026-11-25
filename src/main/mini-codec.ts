@@ -1,3 +1,4 @@
+import { ui } from '../shared/ui-language'
 // SPDX-License-Identifier: AGPL-3.0-only
 // Adapted from tabidachinokaze/folium-mod-music-party at b01525f.
 // Source: https://github.com/tabidachinokaze/folium-mod-music-party
@@ -8,7 +9,7 @@ import { inflateSync } from 'node:zlib'
 const MAX_FRAME = 1024 * 1024
 export function varint(value: number): Buffer {
   if (!Number.isSafeInteger(value) || value < 0 || value > MAX_FRAME)
-    throw new Error('通知数据长度无效')
+    throw new Error(ui('通知数据长度无效', 'Invalid notification data length.'))
   const bytes = []
   do {
     const byte = value % 128
@@ -23,10 +24,11 @@ function readVarint(bytes: Buffer, start = 0): [number, number] | null {
     if (start + i >= bytes.length) return null
     const byte = bytes[start + i]
     value += (byte & 127) * 2 ** (7 * i)
-    if (value > MAX_FRAME) throw new Error('通知数据过大')
+    if (value > MAX_FRAME)
+      throw new Error(ui('通知数据过大', 'The notification data is too large.'))
     if (!(byte & 128)) return [value, start + i + 1]
   }
-  throw new Error('通知数据长度无效')
+  throw new Error(ui('通知数据长度无效', 'Invalid notification data length.'))
 }
 export function properties(fields: Record<number, string | number | Buffer>): Buffer {
   const entries = Object.entries(fields).sort(([a], [b]) => Number(a) - Number(b))
@@ -42,21 +44,23 @@ export function readProperties(bytes: Buffer): Map<number, string> {
   let position = 0
   const number = () => {
     const result = readVarint(bytes, position)
-    if (!result) throw new Error('通知字段不完整')
+    if (!result) throw new Error(ui('通知字段不完整', 'Incomplete notification field.'))
     position = result[1]
     return result[0]
   }
   const count = number(),
     result = new Map<number, string>()
-  if (count > 256) throw new Error('通知字段过多')
+  if (count > 256) throw new Error(ui('通知字段过多', 'Too many notification fields.'))
   for (let i = 0; i < count; i++) {
     const key = number(),
       length = number()
-    if (position + length > bytes.length || result.has(key)) throw new Error('通知字段无效')
+    if (position + length > bytes.length || result.has(key))
+      throw new Error(ui('通知字段无效', 'Invalid notification field.'))
     result.set(key, bytes.subarray(position, position + length).toString('utf8'))
     position += length
   }
-  if (position !== bytes.length) throw new Error('通知字段长度不符')
+  if (position !== bytes.length)
+    throw new Error(ui('通知字段长度不符', 'The notification field length does not match.'))
   return result
 }
 export function frame(
@@ -73,7 +77,7 @@ export function frame(
 }
 // RC4 is required by this legacy service. Independent states are used for each stream direction.
 export function streamCipher(key: Buffer) {
-  if (!key.length) throw new Error('通知密钥无效')
+  if (!key.length) throw new Error(ui('通知密钥无效', 'Invalid notification key.'))
   const state = Uint8Array.from({ length: 256 }, (_, i) => i)
   let j = 0
   for (let i = 0; i < 256; i++) {
@@ -96,14 +100,15 @@ export function streamCipher(key: Buffer) {
 export class FrameReader {
   private pending: Buffer = Buffer.alloc(0)
   push(bytes: Buffer): Buffer[] {
-    if (this.pending.length + bytes.length > MAX_FRAME + 4) throw new Error('通知数据过大')
+    if (this.pending.length + bytes.length > MAX_FRAME + 4)
+      throw new Error(ui('通知数据过大', 'The notification data is too large.'))
     this.pending = Buffer.concat([this.pending, bytes])
     const frames: Buffer[] = []
     while (this.pending.length) {
       const length = readVarint(this.pending)
       if (!length) break
       const [size, start] = length
-      if (size < 5) throw new Error('通知帧无效')
+      if (size < 5) throw new Error(ui('通知帧无效', 'Invalid notification frame.'))
       if (this.pending.length < start + size) break
       frames.push(this.pending.subarray(start, start + size))
       this.pending = this.pending.subarray(start + size)
@@ -112,17 +117,20 @@ export class FrameReader {
   }
 }
 export function packet(bytes: Buffer) {
-  if (bytes.length < 5) throw new Error('通知帧不完整')
+  if (bytes.length < 5) throw new Error(ui('通知帧不完整', 'Incomplete notification frame.'))
   const flags = bytes[4],
     offset = flags & 2 ? 7 : 5
-  if (bytes.length < offset) throw new Error('通知帧不完整')
+  if (bytes.length < offset) throw new Error(ui('通知帧不完整', 'Incomplete notification frame.'))
   let body = bytes.subarray(offset)
   if (flags & 1) {
-    if (body.length < 4) throw new Error('通知压缩帧无效')
+    if (body.length < 4)
+      throw new Error(ui('通知压缩帧无效', 'Invalid compressed notification frame.'))
     const expected = body.readUInt32LE(0)
-    if (expected > MAX_FRAME) throw new Error('通知数据过大')
+    if (expected > MAX_FRAME)
+      throw new Error(ui('通知数据过大', 'The notification data is too large.'))
     body = inflateSync(body.subarray(4), { maxOutputLength: MAX_FRAME })
-    if (body.length !== expected) throw new Error('通知压缩长度不符')
+    if (body.length !== expected)
+      throw new Error(ui('通知压缩长度不符', 'The compressed notification length does not match.'))
   }
   return {
     service: bytes[0],
@@ -132,9 +140,9 @@ export function packet(bytes: Buffer) {
   }
 }
 export function embedded(bytes: Buffer, serial = 1) {
-  if (bytes.length < 9) throw new Error('通知包装不完整')
+  if (bytes.length < 9) throw new Error(ui('通知包装不完整', 'Incomplete notification envelope.'))
   const length = readVarint(bytes, 8)
-  if (!length) throw new Error('通知包装不完整')
+  if (!length) throw new Error(ui('通知包装不完整', 'Incomplete notification envelope.'))
   // The embedded length can be zero; the outer frame bounds the actual packet.
   const inner = bytes.subarray(length[1])
   const parsed = packet(inner)

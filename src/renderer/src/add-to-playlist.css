@@ -1,7 +1,11 @@
 .add-to-playlist {
   display: grid;
-  gap: 14px;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  flex: 1;
+  padding: 12px;
+  gap: 10px;
   min-width: 0;
+  min-height: 0;
 }
 .playlist-add-song {
   display: grid;
@@ -10,11 +14,9 @@
 }
 .playlist-add-song span,
 .playlist-target small,
-.playlist-add-hint,
 .playlist-add-empty {
   color: var(--muted);
 }
-.playlist-add-hint,
 .playlist-add-empty {
   font-size: calc(12px * var(--ui-font-scale, 1));
   margin: 0;
@@ -29,10 +31,20 @@
   width: 100%;
 }
 .playlist-target-list {
+  margin-inline-end: -10px;
+  padding-inline-end: 10px;
   display: grid;
   gap: 6px;
-  max-height: min(320px, 40vh);
+  align-content: start;
+  min-height: 0;
+  overscroll-behavior: contain;
   overflow-y: auto;
+}
+.playlist-target-list > .alert {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
 }
 .playlist-target {
   display: flex;
@@ -41,13 +53,14 @@
   text-align: left;
   min-width: 0;
   padding: 10px;
+  cursor: pointer;
   border-radius: 9px;
   background: var(--hf-surface-2);
 }
 .playlist-target:hover {
   background: var(--hf-surface-3);
 }
-.playlist-target[aria-pressed='true'] {
+.playlist-target:has(input:checked) {
   background: var(--accent-container, var(--hf-primary-soft));
   color: var(--pink);
 }
@@ -71,5 +84,30 @@
 .playlist-add-actions {
   display: flex;
   gap: 10px;
-  justify-content: space-between;
+  justify-content: flex-end;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.surface-dialog[data-panel='add'] > .panel-content {
+  flex: 0 1 auto;
+  display: flex;
+  overflow: hidden;
+}
+.surface-dialog[data-panel='add'] > .panel-titlebar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 6px;
+}
+.surface-dialog[data-panel='add'] {
+  container-type: inline-size;
+}
+@container (max-width: 300px) {
+  [data-panel='add'] > .panel-titlebar > .panel-header-slot {
+    grid-area: 2 / 1 / 3 / -1;
+  }
+  [data-panel='add'] > .panel-titlebar .surface-close {
+    grid-column: 3;
+  }
 }

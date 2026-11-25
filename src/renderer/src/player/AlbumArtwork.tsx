@@ -1,5 +1,7 @@
+import { ui } from '../../../shared/ui-language'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { animate } from 'animejs'
+import { Disc3 } from 'lucide-react'
 import type { Song } from '../../../shared/types'
 
 export function AlbumArtwork({ song, className }: { song: Song | null; className: string }) {
@@ -26,25 +28,35 @@ export function AlbumArtwork({ song, className }: { song: Song | null; className
       animation.revert()
     }
   }, [outgoing])
+  const placeholder = (
+    <div
+      className="record-placeholder"
+      role="img"
+      aria-label={ui('唱片封面占位图', 'Record cover placeholder')}
+    >
+      <Disc3 aria-hidden="true" />
+      {className === 'sleeve' && <small>{ui('暂无封面', 'No cover')}</small>}
+    </div>
+  )
   return (
     <div className={className}>
       {song && artwork ? (
         <img
           src={artwork}
           referrerPolicy="no-referrer"
-          alt={song.name + ' 专辑封面'}
+          alt={song.name + ui(' 专辑封面', ' album cover')}
           draggable={false}
           onError={() => setBroken(artwork)}
         />
       ) : (
-        <div className="sleeve-placeholder" role="img" aria-label="唱片封面占位图" />
+        placeholder
       )}
       {outgoing !== null && (
         <div className="previous-cover" aria-hidden="true" ref={previousLayer}>
           {outgoing ? (
             <img alt="" draggable={false} src={outgoing} referrerPolicy="no-referrer" />
           ) : (
-            <div className="sleeve-placeholder" />
+            placeholder
           )}
         </div>
       )}

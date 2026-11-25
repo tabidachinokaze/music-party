@@ -1,3 +1,4 @@
+import { ui } from './ui-language'
 import { PLAYER_BACKGROUND_LIMITS } from './desktop'
 import { imageFormat } from './image-format'
 
@@ -52,7 +53,12 @@ function inputSize(bytes: Uint8Array, mime: string) {
     )
       return { width: view.getUint16(26, true) & 16383, height: view.getUint16(28, true) & 16383 }
   }
-  throw new Error('无法读取背景图片尺寸，请选择有效的 PNG、JPEG、GIF 或 WebP 图片')
+  throw new Error(
+    ui(
+      '无法读取背景图片尺寸，请选择有效的 PNG、JPEG、GIF 或 WebP 图片',
+      'Could not read the image dimensions. Choose a valid PNG, JPEG, GIF, or WebP file.',
+    ),
+  )
 }
 export function assertBackgroundImageDimensions({
   width,
@@ -69,7 +75,12 @@ export function assertBackgroundImageDimensions({
     Math.max(width, height) > maximumInputDimension ||
     width * height > maximumInputPixels
   )
-    throw new Error('背景图片尺寸过大或无效，请选择不超过 3200 万像素的图片')
+    throw new Error(
+      ui(
+        '背景图片尺寸过大或无效，请选择不超过 3200 万像素的图片',
+        'Invalid image dimensions. Choose an image of up to 32 megapixels.',
+      ),
+    )
 }
 
 /** Check encoded dimensions before either browser or main-process image decoding. */
@@ -80,9 +91,17 @@ export function validateBackgroundImageBytes(value: unknown): BackgroundImageInf
     !value.byteLength ||
     value.byteLength > PLAYER_BACKGROUND_LIMITS.inputBytes
   )
-    throw new Error('背景图片为空或超过 20 MiB')
+    throw new Error(
+      ui('背景图片为空或超过 20 MiB', 'The background image is empty or exceeds 20 MiB'),
+    )
   const format = imageFormat(value)
-  if (!format) throw new Error('请选择 PNG、JPEG、GIF 或 WebP 背景图片')
+  if (!format)
+    throw new Error(
+      ui(
+        '请选择 PNG、JPEG、GIF 或 WebP 背景图片',
+        'Choose a PNG, JPEG, GIF, or WebP background image',
+      ),
+    )
   const size = inputSize(value, format.mime)
   assertBackgroundImageDimensions(size)
   return { mime: format.mime as BackgroundImageInfo['mime'], ...size }

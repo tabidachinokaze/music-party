@@ -2,6 +2,7 @@ import { expect, it, vi } from 'vitest'
 import { multiEndpoints, multiPayload } from '../src/main/multi-api'
 import { ApiService } from '../src/main/service'
 import type { RoomPlayback, RoomQueueEntry, Song } from '../src/shared/types'
+import { RoomQueuePages } from '../src/renderer/src/room-queue-pages'
 import {
   currentMemberRecommendation,
   currentRecommendationOwner,
@@ -156,4 +157,28 @@ it('stops a repeated cursor and discards a late response after a room or account
   resolve(page(['101'], 'next'))
   expect(await pending).toEqual([])
   expect(api).toHaveBeenCalledTimes(1)
+})
+
+it('shares the current page request and resumes a history cursor without re-reading previous pages', async () => {
+  let resolve!: (value: ReturnType<typeof page>) => void
+  const api = vi.fn(async (_method, args) =>
+    args?.cursor
+      ? page(['101', '100'])
+      : await new Promise<ReturnType<typeof page>>((done) => {
+          resolve = done
+        }),
+  )
+  const list = new RoomQueuePages()
+  const request = list.next(api, 'room', 'multiPlayed')
+  expect(list.next(api, 'room', 'multiPlayed')).toBe(request)
+  resolve(page(['101'], 'older'))
+  await request
+  expect(list.complete).toBe(false)
+  expect(api).toHaveBeenCalledTimes(1)
+  await list.next(api, 'room', 'multiPlayed')
+  await list.next(api, 'room', 'multiPlayed')
+  expect(api).toHaveBeenCalledTimes(2)
+  expect(api).toHaveBeenLastCalledWith('multiPlayed', { roomId: 'room', cursor: 'older' })
+  expect([...list.rows.keys()]).toEqual(['101', '100'])
+  expect(list.complete).toBe(true)
 })

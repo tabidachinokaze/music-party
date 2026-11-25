@@ -1,3 +1,4 @@
+import { ui } from '../../shared/ui-language'
 import type { MatchNotice } from '../../shared/match-notice'
 import type { Method } from '../../shared/types'
 
@@ -6,10 +7,11 @@ export interface MatchTransport {
   poll(id: string): Promise<Array<{ timestamp: number; notice: MatchNotice }>>
   close(id: string): Promise<void>
 }
+export type MatchPhase = 'connecting' | 'searching' | 'joining' | null
 type Call = (method: Method, args?: Record<string, unknown>) => Promise<any>
 function cancellable<T>(task: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
-    const abort = () => reject(new Error('匹配已取消'))
+    const abort = () => reject(new Error(ui('匹配已取消', 'Matching canceled')))
     if (signal.aborted) {
       task.catch(() => {})
       abort()
@@ -37,7 +39,7 @@ export class RoomMatcher {
   constructor(
     private call: Call,
     private transport: MatchTransport,
-    private update: (matching: boolean, phase: string) => void,
+    private update: (phase: MatchPhase) => void,
     private accept: (snapshot: any) => void,
     private fail: (error: Error) => void,
   ) {}
@@ -52,18 +54,23 @@ export class RoomMatcher {
       const started = this.started
       this.close()
       if (started) void this.call('multiMatchCancel').catch(() => {})
-      this.fail(new Error('匹配超时，请重试或换一首歌'))
+      this.fail(
+        new Error(
+          ui('匹配超时，请重试或换一首歌', 'Matching timed out. Try again or choose another song.'),
+        ),
+      )
     }, delay)
   }
   async start(songId: string) {
-    if (!/^[1-9]\d{0,23}$/.test(songId)) throw new Error('请先选择一首匹配用歌曲')
+    if (!/^[1-9]\d{0,23}$/.test(songId))
+      throw new Error(ui('请先选择一首匹配用歌曲', 'Choose a song for matching first'))
     await this.cancel()
     const generation = ++this.generation
     const id = crypto.randomUUID()
     const abort = new AbortController()
     this.abort = abort
     this.id = id
-    this.update(true, '正在连接匹配服务…')
+    this.update('connecting')
     this.deadline(20000, generation)
     try {
       await cancellable(this.transport.open(id), abort.signal)
@@ -71,7 +78,7 @@ export class RoomMatcher {
         void this.transport.close(id).catch(() => {})
         return
       }
-      this.update(true, '正在寻找房间…')
+      this.update('searching')
       this.started = true
       this.poll(generation)
       const body = await cancellable(this.call('multiMatch', { songId }), abort.signal)
@@ -91,7 +98,11 @@ export class RoomMatcher {
       const started = this.started
       this.close()
       if (started) void this.call('multiMatchCancel').catch(() => {})
-      this.fail(error instanceof Error ? error : new Error('匹配失败，请重试'))
+      this.fail(
+        error instanceof Error
+          ? error
+          : new Error(ui('匹配失败，请重试', "Couldn't find a room. Try again.")),
+      )
     }
   }
   private poll(generation: number) {
@@ -111,7 +122,16 @@ export class RoomMatcher {
         const started = this.started
         this.close()
         if (started) void this.call('multiMatchCancel').catch(() => {})
-        this.fail(error instanceof Error ? error : new Error('匹配通知连接已断开，请重试'))
+        this.fail(
+          error instanceof Error
+            ? error
+            : new Error(
+                ui(
+                  '匹配通知连接已断开，请重试',
+                  'Disconnected from the matching service. Try again.',
+                ),
+              ),
+        )
         return
       }
       if (this.live(generation)) this.poll(generation)
@@ -128,23 +148,38 @@ export class RoomMatcher {
     if (!this.live(generation) || this.acknowledging) return
     if (notice.kind === 'failed') {
       this.close()
-      this.fail(new Error(`官方匹配未成功（${notice.reason}），请重试或换一首歌`))
+      this.fail(
+        new Error(
+          ui(
+            '官方匹配未成功（{0}），请重试或换一首歌',
+            'Matching failed ({0}). Try again or choose another song.',
+            notice.reason,
+          ),
+        ),
+      )
       return
     }
     this.acknowledging = true
     this.deadline(20000, generation)
-    this.update(true, '已找到房间，正在加入…')
+    this.update('joining')
     try {
       const body = await this.call('multiJoin', { roomId: notice.roomId, inviterUid: '0' })
       if (!this.live(generation)) return
       const snapshot = body.data?.multiLtRoomSnapshot
-      if (snapshot?.roomId !== notice.roomId) throw new Error('匹配确认未返回对应房间')
+      if (snapshot?.roomId !== notice.roomId)
+        throw new Error(
+          ui('匹配确认未返回对应房间', "The matching service didn't confirm this room"),
+        )
       this.close()
       this.accept(snapshot)
     } catch (error: any) {
       if (!this.live(generation)) return
       this.close()
-      this.fail(error instanceof Error ? error : new Error('匹配确认失败，请重试'))
+      this.fail(
+        error instanceof Error
+          ? error
+          : new Error(ui('匹配确认失败，请重试', "Couldn't confirm the match. Try again.")),
+      )
     }
   }
   private pollStatus(generation: number) {
@@ -185,6 +220,6 @@ export class RoomMatcher {
     this.minimumTime = 0
     this.pending = []
     if (id) void this.transport.close(id).catch(() => {})
-    this.update(false, '')
+    this.update(null)
   }
 }

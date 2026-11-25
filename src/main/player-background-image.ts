@@ -1,3 +1,4 @@
+import { ui } from '../shared/ui-language'
 import {
   PLAYER_BACKGROUND_LIMITS,
   validatePlayerBackgroundImage,
@@ -24,7 +25,15 @@ export function preparePlayerBackground(value: unknown, decode: Decoder): Prepar
     source = decode(bytes)
     if (source.isEmpty()) throw new Error('empty')
   } catch {
-    throw new Error('无法解码背景图片，请选择有效的 PNG、JPEG、GIF 或 WebP 图片')
+    throw new Error(
+      ui(
+        ui(
+          '无法解码背景图片，请选择有效的 PNG、JPEG、GIF 或 WebP 图片',
+          'Could not decode the background image. Choose a valid PNG, JPEG, GIF, or WebP file.',
+        ),
+        'Could not decode the image. Choose a valid PNG, JPEG, GIF or WebP file.',
+      ),
+    )
   }
   const size = source.getSize()
   assertBackgroundImageDimensions(size)
@@ -50,7 +59,15 @@ export function preparePlayerBackground(value: unknown, decode: Decoder): Prepar
     width = Math.max(1, Math.floor(width * 0.75))
     height = Math.max(1, Math.floor(height * 0.75))
   }
-  throw new Error('背景图片处理后仍超过 2 MiB，请选择较小的图片')
+  throw new Error(
+    ui(
+      ui(
+        '背景图片处理后仍超过 2 MiB，请选择较小的图片',
+        'The processed background exceeds 2 MiB. Choose a smaller image.',
+      ),
+      'The processed image exceeds 2 MiB. Choose a smaller image.',
+    ),
+  )
 }
 
 export function normalizeStoredPlayerBackground(image: unknown, decode: Decoder) {

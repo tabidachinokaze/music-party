@@ -21,6 +21,7 @@ export type PanelId =
   | 'feedback'
   | 'members'
   | 'match'
+  | 'match-song'
   | DetailId
 export type PrivateMode = 'reply' | 'full'
 export interface PanelStatus {

@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Cloud, LoaderCircle, RefreshCw, Smile } from 'lucide-react'
+import { ui } from '../../shared/ui-language'
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Check, Cloud, Ellipsis, LoaderCircle, RefreshCw, Smile } from 'lucide-react'
 import type { ApiCall } from './music-data'
 import { useCloudStickers } from './useCloudStickers'
 import { useScrollPagination } from './useScrollPagination'
@@ -7,72 +8,18 @@ import { MediaComposer } from './MediaComposer'
 import { stickersChanged } from './sticker-cache'
 import { stickerKey } from '../../shared/stickers'
 import type { ChatEmoji } from '../../shared/types'
-import { Overlay } from './player/Overlay'
-const emojis = [
-  '😀',
-  '😄',
-  '😁',
-  '😂',
-  '🥹',
-  '😊',
-  '😍',
-  '🥰',
-  '😘',
-  '😎',
-  '🥳',
-  '🤩',
-  '🤔',
-  '🫡',
-  '🥲',
-  '😭',
-  '😮',
-  '😴',
-  '🙃',
-  '🤗',
-  '👍',
-  '👏',
-  '🙌',
-  '🤝',
-  '🫶',
-  '❤️',
-  '💖',
-  '💔',
-  '🔥',
-  '✨',
-  '🎵',
-  '🎶',
-  '🎧',
-  '🎤',
-  '🎸',
-  '🎹',
-  '🥁',
-  '🌙',
-  '☀️',
-  '🌈',
-  '🌸',
-  '🍀',
-  '☕',
-  '🍻',
-  '🎉',
-  '💯',
-  '✅',
-  '👀',
-]
+import { ComposerPanel } from './ComposerPanel'
+import { recentStickers } from './recent-stickers'
 export function EmojiPicker({
-  onInsert,
-  stickers = [],
   onSticker,
   disabled,
   api,
   accountKey,
   scope,
   recipient,
-  triggerLabel = '选择表情',
+  triggerLabel = ui('选择表情', 'Choose a sticker'),
   triggerIcon,
-  defaultTab = 'cloud',
 }: {
-  onInsert(value: string): void
-  stickers?: ChatEmoji[]
   onSticker?(value: ChatEmoji): void
   disabled?: boolean
   api: ApiCall
@@ -81,16 +28,28 @@ export function EmojiPicker({
   recipient: string
   triggerLabel?: string
   triggerIcon?: ReactNode
-  defaultTab?: 'cloud' | 'basic' | 'recent'
 }) {
   const [open, setOpen] = useState(false)
-  const [tab, setTab] = useState<'cloud' | 'basic' | 'recent'>(defaultTab)
+  const [tab, setTab] = useState<'cloud' | 'recent'>('cloud')
   const [notice, setNotice] = useState('')
   const [editing, setEditing] = useState(false),
     [selectedIds, setSelectedIds] = useState(new Set<string>()),
     [removing, setRemoving] = useState(false)
   const grid = useRef<HTMLDivElement>(null)
   const trigger = useRef<HTMLButtonElement>(null)
+  const toolbar = useRef<HTMLDivElement>(null)
+  const more = useRef<HTMLDivElement>(null)
+  const moreId = useId()
+  const [narrowTools, setNarrowTools] = useState(false)
+  useLayoutEffect(() => {
+    const el = toolbar.current
+    if (!el) return
+    const measure = () => setNarrowTools(el.clientWidth < 300)
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    measure()
+    return () => observer.disconnect()
+  }, [open, tab])
   const cloud = useCloudStickers(api, accountKey, scope, open && tab === 'cloud')
   const stickerPages = useScrollPagination({
     enabled: open && tab === 'cloud' && !!accountKey && !editing && !removing,
@@ -139,16 +98,49 @@ export function EmojiPicker({
       stickersChanged(accountKey, ids)
       setSelectedIds(new Set())
       setEditing(false)
-      setNotice(`已删除 ${ids.length} 个表情`)
+      setNotice(ui('已删除 {0} 个表情', 'Deleted stickers: {0}', ids.length))
     } catch (error: any) {
-      setNotice(error.message || '删除失败，请重试')
+      setNotice(error.message || ui('删除失败，请重试', 'Couldn’t delete. Try again.'))
     } finally {
       setRemoving(false)
     }
   }
-  const recent = [...new Map(stickers.map((item) => [item.emojiImgUrl, item])).values()]
-    .slice(-32)
-    .reverse()
+  const recent = open && tab === 'recent' ? recentStickers(accountKey) : []
+  function closePicker() {
+    setOpen(false)
+    setEditing(false)
+    setSelectedIds(new Set())
+  }
+  const management = (
+    <>
+      <button
+        type="button"
+        className="icon-btn"
+        title={ui('刷新自定义表情', 'Refresh custom stickers')}
+        aria-label={ui('刷新自定义表情', 'Refresh custom stickers')}
+        disabled={cloud.loading || removing || editing}
+        onClick={() => {
+          more.current?.hidePopover()
+          setNotice('')
+          cloud.refresh()
+        }}
+      >
+        <RefreshCw size={16} />
+      </button>
+      <button
+        type="button"
+        className="text-btn"
+        disabled={removing || !cloud.items.length}
+        onClick={() => {
+          more.current?.hidePopover()
+          setEditing(!editing)
+          setSelectedIds(new Set())
+        }}
+      >
+        {editing ? ui('取消整理', 'Done') : ui('整理表情', 'Manage stickers')}
+      </button>
+    </>
+  )
   return (
     <>
       <button
@@ -158,223 +150,278 @@ export function EmojiPicker({
         aria-label={triggerLabel}
         title={triggerLabel}
         disabled={disabled}
-        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => (open ? closePicker() : setOpen(true))}
       >
         {triggerIcon ?? <Smile size={19} />}
       </button>
       {open && (
-        <Overlay title="表情" sideAnchor={trigger.current} onClose={() => setOpen(false)}>
-          <div className="filter-tabs sticker-tabs">
-            <button className={tab === 'cloud' ? 'selected' : ''} onClick={() => setTab('cloud')}>
-              <Cloud size={14} />
-              自定义表情
-            </button>
-            <button className={tab === 'basic' ? 'selected' : ''} onClick={() => setTab('basic')}>
-              常用表情
-            </button>
-            {scope === 'room' && (
-              <button
-                className={tab === 'recent' ? 'selected' : ''}
-                onClick={() => setTab('recent')}
-              >
-                最近使用
-              </button>
-            )}
-          </div>
-          {tab === 'cloud' && (
+        <ComposerPanel
+          title={ui('表情', 'Stickers')}
+          anchor={trigger.current}
+          onClose={closePicker}
+          picker
+          tools={
             <>
-              <div className="cloud-sticker-toolbar">
-                <span>
-                  {`${cloud.items.length} 个表情${cloud.complete ? '' : ' · 可继续加载'}`}
-                </span>
-                <MediaComposer
-                  target={{ kind: 'sticker' }}
-                  accountKey={accountKey}
-                  label="网易云自定义表情"
-                  disabled={!accountKey || disabled}
-                  onMediaPlay={() => {}}
-                  onSent={(receipt) => {
-                    if (receipt.senderUid === accountKey) {
-                      setNotice('已添加到网易云自定义表情')
-                    }
-                  }}
-                />
-                <button
-                  className="icon-btn"
-                  title="刷新自定义表情"
-                  aria-label="刷新自定义表情"
-                  disabled={cloud.loading || removing || editing}
-                  onClick={() => {
-                    setNotice('')
-                    cloud.refresh()
-                  }}
-                >
-                  <RefreshCw size={16} />
-                </button>
-              </div>
-              <div className="cloud-sticker-toolbar">
-                <button
-                  type="button"
-                  className="text-btn"
-                  disabled={removing || !cloud.items.length}
-                  onClick={() => {
-                    setEditing(!editing)
-                    setSelectedIds(new Set())
-                  }}
-                >
-                  {editing ? '取消整理' : '整理表情'}
-                </button>
-                {editing && (
+              {scope === 'room' && (
+                <div className="filter-tabs sticker-tabs">
                   <button
-                    type="button"
-                    className="text-btn"
-                    disabled={removing || !selectedIds.size}
-                    onClick={removeSelected}
+                    className={tab === 'cloud' ? 'selected' : ''}
+                    onClick={() => setTab('cloud')}
                   >
-                    {removing ? '正在删除…' : `删除所选 (${selectedIds.size})`}
+                    <Cloud size={14} />
+                    {ui('自定义表情', 'Custom stickers')}
                   </button>
-                )}
-              </div>
-              {cloud.groups.length > 1 && (
-                <select
-                  className="sticker-group-select"
-                  aria-label="表情分组"
-                  value={cloud.groupId}
-                  disabled={cloud.loading || removing || editing}
-                  onChange={(event) => cloud.select(event.target.value)}
-                >
-                  {cloud.groups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <p className="overlay-intro">
-                {accountKey ? `点击表情，发送至${recipient}` : '登录后同步网易云的自定义表情'}
-              </p>
-              {notice && (
-                <p className="sticker-notice" role="status">
-                  {notice}
-                </p>
-              )}
-              {cloud.error && (
-                <p className="private-error" role="alert">
-                  {cloud.error}
-                  <button className="text-btn" onClick={cloud.retry}>
-                    重试
-                  </button>
-                </p>
-              )}
-              <div
-                className="sticker-grid cloud-sticker-grid"
-                ref={grid}
-                onScroll={(event) => {
-                  const node = event.currentTarget
-                  captureScroll(node)
-                }}
-              >
-                {cloud.items.map((item) => (
                   <button
-                    type="button"
-                    key={stickerKey(item)}
-                    data-sticker-key={stickerKey(item)}
-                    title={item.restricted ? item.restriction : item.emojiName}
-                    aria-label={`${editing ? '选择删除' : '发送自定义表情'} ${item.emojiName}`}
-                    aria-pressed={editing ? selectedIds.has(item.emojiId) : undefined}
-                    disabled={
-                      removing ||
-                      (editing ? item.emojiId === '0' : disabled || item.restricted || !onSticker)
-                    }
-                    onClick={() => {
-                      if (editing) {
-                        const next = new Set(selectedIds)
-                        next.has(item.emojiId) ? next.delete(item.emojiId) : next.add(item.emojiId)
-                        setSelectedIds(next)
-                        return
-                      }
-                      onSticker?.(item)
-                      setOpen(false)
-                    }}
+                    className={tab === 'recent' ? 'selected' : ''}
+                    onClick={() => setTab('recent')}
                   >
-                    <img
-                      src={item.emojiImgUrl}
-                      alt={item.emojiName}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                    {item.restricted && <small>暂不可用</small>}
+                    {ui('最近使用', 'Recent')}
                   </button>
-                ))}
-                <div ref={stickerPages} className="pagination-sentinel" aria-hidden="true" />
-              </div>
-              {cloud.loading && (
-                <div className="cloud-sticker-loading" role="status">
-                  <LoaderCircle size={15} className="spin" />
-                  {cloud.items.length ? '正在读取更多表情…' : '正在读取表情…'}
                 </div>
               )}
-              {!cloud.loading && !cloud.error && !cloud.items.length && (
+              {tab === 'cloud' && (
+                <>
+                  <div
+                    className="cloud-sticker-toolbar"
+                    data-compact={narrowTools || undefined}
+                    ref={toolbar}
+                  >
+                    <span
+                      className="cloud-sticker-count"
+                      title={ui('发送至{0}', 'Send to {0}', recipient)}
+                    >
+                      <span>{ui('{0} 个表情', 'Stickers: {0}', cloud.items.length)}</span>
+                      <span className="cloud-sticker-progress">
+                        {!!cloud.items.length && cloud.loading && (
+                          <span
+                            role="status"
+                            aria-label={ui('正在读取更多表情…', 'Loading more stickers…')}
+                            title={ui('正在读取更多表情…', 'Loading more stickers…')}
+                          >
+                            <LoaderCircle size={14} className="spin" />
+                          </span>
+                        )}
+                        {!!cloud.items.length && cloud.error && (
+                          <button
+                            className="icon-btn"
+                            type="button"
+                            onClick={cloud.retry}
+                            title={ui('{0} · 重试', '{0} · Retry', cloud.error)}
+                            aria-label={ui('重试', 'Retry')}
+                          >
+                            <RefreshCw size={14} />
+                            <span role="alert">{cloud.error}</span>
+                          </button>
+                        )}
+                      </span>
+                    </span>
+                    <MediaComposer
+                      target={{ kind: 'sticker' }}
+                      accountKey={accountKey}
+                      label={ui('网易云自定义表情', 'NetEase custom stickers')}
+                      disabled={!accountKey || disabled}
+                      onMediaPlay={() => {}}
+                      onSent={(receipt) => {
+                        if (receipt.senderUid === accountKey) {
+                          setNotice(
+                            ui('已添加到网易云自定义表情', 'Added to your NetEase custom stickers'),
+                          )
+                        }
+                      }}
+                    />
+                    {narrowTools ? (
+                      <>
+                        <button
+                          type="button"
+                          className="icon-btn sticker-more-trigger"
+                          aria-label={ui('更多表情操作', 'More sticker actions')}
+                          popoverTarget={moreId}
+                        >
+                          <Ellipsis size={16} />
+                        </button>
+                        <div
+                          ref={more}
+                          id={moreId}
+                          popover="auto"
+                          className="sticker-management-menu"
+                        >
+                          {management}
+                        </div>
+                      </>
+                    ) : (
+                      management
+                    )}
+                  </div>
+                  {cloud.groups.length > 1 && (
+                    <select
+                      className="sticker-group-select"
+                      aria-label={ui('表情分组', 'Sticker groups')}
+                      value={cloud.groupId}
+                      disabled={cloud.loading || removing || editing}
+                      onChange={(event) => cloud.select(event.target.value)}
+                    >
+                      <div
+                        className="sticker-group-options"
+                        data-list-viewport=""
+                        onMouseDownCapture={(event) => {
+                          // Dragging the scrollbar should leave keyboard navigation on the option.
+                          if ((event.target as Element).closest('.os-scrollbar'))
+                            event.preventDefault()
+                        }}
+                      >
+                        {cloud.groups.map((group) => (
+                          <option key={group.id} value={group.id}>
+                            {group.name}
+                          </option>
+                        ))}
+                      </div>
+                    </select>
+                  )}
+                </>
+              )}
+            </>
+          }
+          contentProps={{
+            className: tab === 'cloud' ? 'sticker-grid cloud-sticker-grid' : 'sticker-grid',
+            ref: tab === 'cloud' ? grid : undefined,
+            onScroll: tab === 'cloud' ? (event) => captureScroll(event.currentTarget) : undefined,
+          }}
+          status={
+            tab === 'cloud' &&
+            notice && (
+              <p className="sticker-notice" role="status">
+                {notice}
+              </p>
+            )
+          }
+          actions={
+            tab === 'cloud' &&
+            editing && (
+              <button
+                type="button"
+                className="primary"
+                disabled={removing || !selectedIds.size}
+                onClick={removeSelected}
+              >
+                {removing
+                  ? ui('正在删除…', 'Deleting…')
+                  : ui('删除所选 ({0})', 'Delete selected ({0})', selectedIds.size)}
+              </button>
+            )
+          }
+        >
+          {tab === 'cloud' && (
+            <>
+              {!cloud.items.length && cloud.loading && (
+                <div className="cloud-sticker-loading" role="status">
+                  <LoaderCircle size={15} className="spin" />{' '}
+                  {ui('正在读取表情…', 'Loading stickers…')}
+                </div>
+              )}
+              {!cloud.items.length && cloud.error && (
+                <p className="private-error" role="alert">
+                  {cloud.error}
+                  <button type="button" className="text-btn" onClick={cloud.retry}>
+                    {ui('重试', 'Retry')}
+                  </button>
+                </p>
+              )}
+              {cloud.items.map((item) => (
+                <button
+                  type="button"
+                  key={stickerKey(item)}
+                  data-sticker-key={stickerKey(item)}
+                  title={!editing && item.restricted ? item.restriction : undefined}
+                  aria-label={`${editing ? ui('选择删除', 'Select for deletion') : ui('发送自定义表情', 'Send custom sticker')} ${item.emojiName}`}
+                  aria-pressed={editing ? selectedIds.has(item.emojiId) : undefined}
+                  disabled={
+                    removing ||
+                    (editing ? item.emojiId === '0' : disabled || item.restricted || !onSticker)
+                  }
+                  onClick={() => {
+                    if (editing) {
+                      const next = new Set(selectedIds)
+                      next.has(item.emojiId) ? next.delete(item.emojiId) : next.add(item.emojiId)
+                      setSelectedIds(next)
+                      return
+                    }
+                    onSticker?.(item)
+                    setOpen(false)
+                  }}
+                >
+                  <img
+                    src={item.emojiImgUrl}
+                    alt={item.emojiName}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                  {editing && (
+                    <span className="sticker-selection" aria-hidden="true">
+                      {selectedIds.has(item.emojiId) && <Check size={12} />}
+                    </span>
+                  )}
+                  {item.restricted && <small>{ui('暂不可用', 'Unavailable')}</small>}
+                </button>
+              ))}
+              <div ref={stickerPages} className="pagination-sentinel" aria-hidden="true" />
+              {accountKey && !cloud.loading && !cloud.error && !cloud.items.length && (
                 <p className="chat-empty">
                   {cloud.groups.length
-                    ? '还没有自定义表情，上传一张喜欢的图片吧'
-                    : '暂未读取到自定义表情分组，可以刷新或上传图片。'}
+                    ? ui(
+                        '还没有自定义表情，上传一张喜欢的图片吧',
+                        'No custom stickers yet. Upload an image to get started.',
+                      )
+                    : ui(
+                        '暂未读取到自定义表情分组，可以刷新或上传图片。',
+                        'No sticker groups found. Refresh or upload an image.',
+                      )}
                 </p>
               )}
               {!!cloud.unavailable && (
-                <p className="muted">有 {cloud.unavailable} 个表情暂无法读取</p>
+                <p className="muted">
+                  {ui('有 {0} 个表情暂无法读取', 'Unavailable stickers: {0}', cloud.unavailable)}
+                </p>
+              )}
+              {!accountKey && (
+                <p className="chat-empty">
+                  {ui('登录后同步自定义表情', 'Sign in to sync custom stickers')}
+                </p>
               )}
             </>
           )}
-          {tab === 'basic' && (
+          {tab === 'recent' && onSticker && (
             <>
-              <p className="overlay-intro">选择表情添加到输入框</p>
-              <div className="emoji-grid">
-                {emojis.map((emoji) => (
-                  <button
-                    type="button"
-                    key={emoji}
-                    aria-label={`插入表情 ${emoji}`}
-                    onClick={() => {
-                      onInsert(emoji)
-                      setOpen(false)
-                    }}
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
+              {recent.map((item) => (
+                <button
+                  type="button"
+                  key={item.emojiId === '0' ? item.emojiImgUrl : item.emojiId}
+                  aria-label={ui('发送表情 {0}', 'Send sticker {0}', item.emojiName)}
+                  onClick={() => {
+                    onSticker(item)
+                    setOpen(false)
+                  }}
+                >
+                  <img
+                    src={item.emojiImgUrl}
+                    alt={item.emojiName}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                  />
+                </button>
+              ))}
+              {!recent.length && (
+                <p className="chat-empty">
+                  {ui(
+                    '最近使用和收到的图片表情会显示在这里',
+                    'Stickers you use or receive will appear here',
+                  )}
+                </p>
+              )}
             </>
           )}
-          {tab === 'recent' && !!recent.length && onSticker && (
-            <>
-              <p className="overlay-intro">房间里使用过的图片与表情 · 点击发送</p>
-              <div className="sticker-grid">
-                {recent.map((item) => (
-                  <button
-                    type="button"
-                    key={item.emojiImgUrl}
-                    aria-label={`发送表情 ${item.emojiName}`}
-                    onClick={() => {
-                      onSticker(item)
-                      setOpen(false)
-                    }}
-                  >
-                    <img
-                      src={item.emojiImgUrl}
-                      alt={item.emojiName}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
-          {tab === 'recent' && !recent.length && (
-            <p className="chat-empty">最近收到的图片和表情会显示在这里</p>
-          )}
-        </Overlay>
+        </ComposerPanel>
       )}
     </>
   )

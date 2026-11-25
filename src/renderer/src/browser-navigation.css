@@ -1,4 +1,13 @@
-.header-search > svg {
+.header-search-field {
+  display: flex;
+  align-self: stretch;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  gap: inherit;
+  cursor: text;
+}
+.header-search-field > svg {
   flex-shrink: 0;
 }
 .header-search {
@@ -12,18 +21,18 @@
   flex: 1;
   padding: 4px 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
+  user-select: text;
   font-size: calc(12px * var(--ui-font-scale, 1));
 }
 .header-search input::-webkit-search-cancel-button {
   display: none;
 }
-.header-search:focus-within {
-  border-color: var(--pink);
-  outline: 2px solid var(--pink);
-  outline-offset: 2px;
+:is(.header-search, .playlist-target-search, .contact-filter) input {
+  caret-color: var(--mp-text-primary);
 }
-.header-search input:focus-visible {
+:is(.header-search, .playlist-target-search, .contact-filter) input:focus {
   outline: none;
 }
 .header-search .icon-btn {

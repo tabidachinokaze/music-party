@@ -24,7 +24,7 @@
 }
 .contact-filter {
   margin: 0 16px 14px;
-  background: var(--hf-surface);
+  background: --skin-fill(var(--hf-surface));
 }
 .contact-filter input {
   flex: 1;
@@ -48,7 +48,7 @@
   gap: 10px;
 }
 .conversation-list > button:not(.selected):hover {
-  background: var(--hf-surface-2);
+  background: --skin-fill(var(--hf-surface-2));
 }
 .conversation-list img,
 .conversation-list .avatar {
@@ -62,18 +62,6 @@
 .conversation-copy small {
   font-size: calc(11px * var(--ui-font-scale, 1));
   line-height: 1.6;
-}
-.conversation-meta {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 9px;
-  min-width: 32px;
-}
-.conversation-meta time {
-  font-size: calc(9px * var(--ui-font-scale, 1));
-  color: var(--muted);
 }
 .private-thread-heading {
   min-height: 78px;
@@ -115,7 +103,7 @@
   flex-wrap: wrap;
   padding: 7px 16px;
   color: var(--hf-danger);
-  background: var(--hf-danger-soft);
+  background: --skin-tint(var(--hf-danger-soft));
   font-size: calc(11px * var(--ui-font-scale, 1));
 }
 .private-read-error > span {
@@ -182,7 +170,7 @@
   color: var(--muted);
 }
 .history-delete:hover {
-  background: var(--accent-container, var(--hf-primary-soft));
+  background: --skin-tint(var(--accent-container, var(--hf-primary-soft)));
   color: var(--pink);
 }
 .history-clear {
@@ -492,7 +480,7 @@
   color: var(--muted);
   font-size: calc(11px * var(--ui-font-scale, 1));
 }
-.cloud-sticker-toolbar [aria-label='上传自定义表情'] {
+.cloud-sticker-toolbar .sticker-upload {
   width: auto;
   padding: 6px 10px;
   height: 32px;
@@ -535,9 +523,19 @@
   margin-top: 12px;
   padding: 8px 10px;
   color: inherit;
-  background: var(--hf-surface-2);
+  background: --skin-fill(var(--hf-surface-2));
   border: 1px solid var(--line);
   border-radius: 8px;
+}
+.sticker-group-select:open::picker(select) {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+.sticker-group-options {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .sticker-notice {
   color: var(--hf-ink-2);
@@ -551,7 +549,7 @@
   border: 1px solid var(--line);
   border-radius: 14px;
   color: var(--hf-ink);
-  background: var(--hf-surface-2);
+  background: --skin-fill(var(--hf-surface-2));
   box-shadow: 0 8px 30px rgb(0 0 0 / 25%);
 }
 .sticker-context-menu button {
@@ -562,10 +560,10 @@
   white-space: nowrap;
 }
 .sticker-context-menu button:hover {
-  background: var(--accent-container, var(--hf-primary-soft));
+  background: --skin-tint(var(--accent-container, var(--hf-primary-soft)));
 }
 .cloud-sticker-grid button[aria-pressed='true'] {
-  background: var(--accent-container, var(--hf-primary-soft));
+  background: --skin-tint(var(--accent-container, var(--hf-primary-soft)));
   outline: 2px solid var(--pink);
   outline-offset: -2px;
 }
@@ -663,4 +661,42 @@
 .collection-search-status {
   font-size: calc(12px * var(--ui-font-scale, 1));
   color: var(--hf-ink-3);
+}
+
+@media (max-width: 519px) {
+  .modal-backdrop {
+    place-items: end center;
+  }
+  .modal-backdrop > .player-modal {
+    position: relative;
+    width: min(100%, 560px);
+    max-width: 100%;
+    max-height: calc(100dvh - 32px);
+    margin: 0;
+    border-radius: 16px 16px 0 0;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .modal-backdrop[data-sheet-motion='true'] > .player-modal {
+    animation: sheet-in 190ms ease-out;
+  }
+  .modal-backdrop[data-sheet-motion='true'][data-closing='true'] > .player-modal {
+    animation: sheet-out 160ms ease-in forwards;
+  }
+}
+@keyframes sheet-in {
+  from {
+    clip-path: inset(100% 0 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+@keyframes sheet-out {
+  from {
+    clip-path: inset(0);
+  }
+  to {
+    clip-path: inset(100% 0 0 0);
+  }
 }

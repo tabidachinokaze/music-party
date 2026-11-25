@@ -89,13 +89,10 @@
 .message-content {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 6px;
   min-width: 0;
   max-width: 100%;
-}
-.mine .message-content {
-  align-items: flex-end;
 }
 .chat-bubble {
   width: fit-content;
@@ -108,8 +105,11 @@
   font-size: calc(13px * var(--ui-font-scale, 1));
   line-height: 1.7;
   text-align: left;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.message-caption {
+  white-space: pre-wrap;
+  max-width: 100%;
 }
 .mine .chat-bubble {
   border-radius: 14px 4px 14px 14px;
@@ -185,25 +185,11 @@
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
-.message-share-card {
+.chat-bubble:has(.message-resource-wrap, .message-media, .private-invite-card) {
   width: 300px;
-  max-width: 100%;
-  padding: 10px;
-  border-radius: 4px 14px 14px;
-  background: var(--chat-surface-container);
-}
-.mine .message-share-card {
-  border-radius: 14px 4px 14px 14px;
-  background: var(--chat-primary-container);
-  color: var(--chat-on-primary-container);
-}
-.message-share-card .chat-bubble {
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
 }
 .message-resource-wrap {
-  width: min(300px, 100%);
+  width: 100%;
   min-width: 0;
   text-align: left;
 }
@@ -220,23 +206,21 @@
   color: var(--chat-on-surface);
 }
 .message-resource:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--pink) 8%, var(--chat-surface-container));
+  background: --skin-fill(color-mix(in srgb, var(--pink) 8%, var(--chat-surface-container)));
 }
 .message-resource:disabled {
   opacity: 1;
   cursor: default;
 }
-.message-share-card .message-resource {
+.chat-bubble .message-resource {
   padding: 0;
   background: transparent;
   color: inherit;
 }
-.message-share-card .message-resource:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--pink) 8%, transparent);
-}
-.message-share-card .message-resource-wrap + .message-resource-wrap {
+.message-content > .message-resource-wrap + .message-resource-wrap,
+.message-content > :not(:first-child).private-invite-card {
   padding-top: 8px;
-  border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  border-top: 1px solid var(--wp-divider);
 }
 .message-resource > img,
 .message-resource-icon {
@@ -249,7 +233,7 @@
 .message-resource-icon {
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--pink) 10%, transparent);
+  background: --skin-tint(color-mix(in srgb, var(--pink) 10%, transparent));
   color: var(--pink);
 }
 .message-resource-copy {
@@ -263,7 +247,7 @@
 .message-resource-kind {
   padding: 1px 5px;
   border-radius: 4px;
-  background: color-mix(in srgb, var(--pink) 10%, transparent);
+  background: --skin-tint(color-mix(in srgb, var(--pink) 10%, transparent));
   color: var(--pink);
   font-size: calc(9px * var(--ui-font-scale, 1));
   line-height: 1.5;
@@ -327,7 +311,7 @@
   overflow-wrap: anywhere;
 }
 .message-media {
-  width: min(300px, 100%);
+  width: 100%;
   min-width: 0;
 }
 .message-media > small {
@@ -342,21 +326,9 @@
   max-height: 240px;
 }
 .private-invite-card {
-  max-width: 100%;
-  width: 290px;
-  margin: 0;
-  padding: 12px;
-  border: 0;
-  border-radius: 4px 14px 14px;
-  background: var(--chat-surface-container);
-  color: var(--chat-on-surface);
-  text-align: left;
+  min-width: 0;
+  text-align: start;
   overflow-wrap: anywhere;
-}
-.mine .private-invite-card {
-  border-radius: 14px 4px 14px 14px;
-  background: var(--chat-primary-container);
-  color: var(--chat-on-primary-container);
 }
 .private-invite-card > div > svg {
   color: var(--pink);

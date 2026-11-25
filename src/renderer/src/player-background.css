@@ -16,11 +16,29 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--hf-bg) 24%, transparent) 0 42%,
-    color-mix(in srgb, var(--hf-bg) 86%, transparent) 65% 100%
-  );
+  background: var(--mp-bg);
+  opacity: var(--skin-layout-alpha);
+}
+/* A single layout fill covers the image and its chrome bands in both views. */
+.adaptive-shell > .player-background-layer::after,
+.background-preview > .player-background-layer::after {
+  --header-end: var(--skin-header-end, var(--chrome-height, 0px));
+  --footer-height: var(--player-bar-height, 0px);
+  background:
+    linear-gradient(var(--wp-sidebar-base) 0 0) left 0 top var(--header-end) /
+      var(--skin-sidebar-width, 0px) calc(100% - var(--header-end) - var(--footer-height)) no-repeat,
+    linear-gradient(
+      to bottom,
+      var(--mp-surface-0) 0 var(--header-end),
+      var(--mp-bg) var(--header-end) calc(100% - var(--footer-height)),
+      var(--skin-footer-base, var(--wp-bar-base)) calc(100% - var(--footer-height)) 100%
+    );
+}
+.adaptive-shell:has(> .sidebar-slot) {
+  --skin-sidebar-width: var(--sidebar-width);
+}
+.adaptive-shell[data-layout='compact']:has(.surface-page .panel-header-slot:not(:empty)) {
+  --skin-header-end: calc(var(--chrome-height) + 34px);
 }
 .player-background-editor {
   display: grid;
@@ -29,6 +47,7 @@
 }
 .background-preview {
   --window-ratio: calc(100dvw / 100dvh);
+  container-type: inline-size;
   width: min(100%, calc(min(40dvh, 300px) * var(--window-ratio)));
   aspect-ratio: var(--window-ratio);
   display: grid;
@@ -43,6 +62,9 @@
   background: var(--hf-bg);
   user-select: none;
   touch-action: none;
+}
+.background-preview .player-background-layer > img {
+  --skin-blur-scale: calc(100cqw / var(--skin-preview-width, 100dvw));
 }
 .background-preview.has-image {
   cursor: grab;
@@ -117,4 +139,102 @@
     grid-column: 1 / -1;
     grid-row: 2;
   }
+}
+
+.background-crops {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.background-crops button {
+  min-height: 28px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  color: var(--mp-text-secondary);
+}
+.background-crops button[aria-pressed='true'] {
+  background: --skin-tint(var(--mp-primary-container));
+  color: var(--mp-text-link);
+}
+.modal-backdrop:has(.player-background-editor) {
+  background: rgb(0 0 0 / calc(0.18 * var(--skin-layout-alpha, 1)));
+  backdrop-filter: none;
+}
+.player-modal:has(.player-background-editor) {
+  background: --skin-fill(var(--mp-surface-1));
+}
+.adaptive-shell[data-has-background='true']
+  :is(
+    .mp-window-chrome,
+    .main-sidebar,
+    .surface-page,
+    .surface-page .panel-titlebar,
+    .adaptive-player-bar,
+    .surface-immersive,
+    .immersive-player
+  ),
+.adaptive-shell[data-has-background='true']:has(.surface-page)
+  :is(.mp-chrome-brand, .mp-chrome-actions, .window-buttons) {
+  background: transparent;
+}
+.adaptive-shell[data-has-background='true']
+  :is(.mp-window-chrome, .main-sidebar, .surface-page > .panel-titlebar, .adaptive-player-bar) {
+  border-color: var(--wp-layout-border);
+}
+
+/* The floating surface supplies the fill for its header and structural bands. */
+.adaptive-shell[data-has-background='true'] :is(.surface-dialog, .surface-drawer) > .panel-titlebar,
+.adaptive-shell[data-has-background='true'] .surface-drawer :is(.queue-toolbar, .chat-status),
+.adaptive-shell[data-has-background='true']
+  :is(.surface-drawer, .surface-page[data-panel='private'])
+  :is(.queue-drawer, .chat-drawer, .private-layout) {
+  background: transparent;
+}
+
+.adaptive-shell[data-has-background='true'] .adaptive-player-bar .icon-btn[aria-expanded='true'] {
+  color: var(--mp-text-link);
+}
+.playing-lyric-status {
+  color: var(--mp-text-secondary);
+  font-size: calc(12px * var(--mp-font-scale));
+  margin-top: 4px;
+}
+
+/* Only the fill is translucent. The actual page remains visible through it. */
+:root
+  :is(
+    .adaptive-shell .shell-surface.surface-drawer,
+    .adaptive-shell .shell-surface.surface-dialog,
+    .modal-backdrop .player-modal,
+    .party-composer > .composer-mentions,
+    .sticker-context-menu
+  ) {
+  background: var(--mp-popup-fill);
+}
+
+@media (max-width: 519px) {
+  /* The adjacent drawer and transport share the page tint and scrim underneath. */
+  .adaptive-shell:has(> .surface-drawer):not(:has(> .surface-dialog)) {
+    --skin-footer-base: var(--mp-bg);
+  }
+  .adaptive-shell:has(> .surface-drawer):not(:has(> .surface-dialog)) > .drawer-scrim {
+    grid-row-end: -1;
+  }
+  .adaptive-shell:has(> .surface-drawer):not(:has(> .surface-dialog)) .adaptive-player-bar {
+    background: var(--mp-popup-fill);
+  }
+  .adaptive-shell > .surface-drawer {
+    box-shadow: none;
+  }
+}
+
+:root .adaptive-shell :is(.surface-dialog, .surface-drawer) > .panel-titlebar,
+:root
+  .adaptive-shell
+  .surface-drawer
+  :is(.queue-toolbar, .chat-status, .queue-drawer, .chat-drawer, .private-layout) {
+  background: transparent;
+}
+.modal-backdrop:has(.player-modal) {
+  backdrop-filter: none;
 }

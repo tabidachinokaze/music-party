@@ -3,6 +3,7 @@
 // text pickers and mention composer. Copyright (C) tabidachinokaze.
 // See THIRD_PARTY_NOTICES.md.
 
+import { ui } from '../../shared/ui-language'
 import {
   useEffect,
   useId,
@@ -14,8 +15,9 @@ import {
   type Ref,
 } from 'react'
 import { useSurfaceActive } from './windows/Surface'
-import { followChatAnchor } from './chat-popup'
-import { Smile } from 'lucide-react'
+import { ComposerPanel } from './ComposerPanel'
+import { CornerDownLeft, LoaderCircle, Send, Smile } from 'lucide-react'
+import { UserAvatar } from './design/UserAvatar'
 import type { Member } from '../../shared/types'
 import { mountComposerSubmit } from './composer-submit'
 import {
@@ -38,10 +40,9 @@ export function ChatComposer({
   disabled = false,
   className = '',
   members,
-  leadingTool,
   renderTools,
   notice,
-  submitLabel = '发送',
+  submitLabel = ui('发送', 'Send'),
   composerRef,
 }: {
   value: string
@@ -54,8 +55,7 @@ export function ChatComposer({
   disabled?: boolean
   className?: string
   members?: Member[]
-  leadingTool?: ReactNode
-  renderTools(insertText: (text: string) => void): ReactNode
+  renderTools(): ReactNode
   notice?: ReactNode
   submitLabel?: string
   composerRef?: Ref<{ insertText(text: string): void }>
@@ -64,13 +64,12 @@ export function ChatComposer({
   const form = useRef<HTMLFormElement>(null),
     draft = useRef<HTMLTextAreaElement>(null),
     send = useRef<HTMLButtonElement>(null),
-    popup = useRef<HTMLDivElement>(null),
     emojiButton = useRef<HTMLButtonElement>(null),
     kaomojiButton = useRef<HTMLButtonElement>(null),
     selection = useRef<ComposerSelection>({ start: value.length, end: value.length }),
     pendingCaret = useRef<{ value: string; caret: number } | null>(null),
     composing = useRef(false)
-  const [menu, setMenu] = useState<'Emoji' | '颜文字' | null>(null),
+  const [menu, setMenu] = useState<'Emoji' | 'kaomoji' | null>(null),
     [mention, setMention] = useState<MentionQuery | null>(null),
     [active, setActive] = useState(0),
     [error, setError] = useState('')
@@ -105,15 +104,7 @@ export function ChatComposer({
     pendingCaret.current = null
   }, [value])
   useLayoutEffect(() => {
-    const node = popup.current,
-      trigger = menu === 'Emoji' ? emojiButton.current : kaomojiButton.current
-    if (!menu || !node || !trigger) return
-    if (!node.matches(':popover-open')) node.showPopover()
-    return followChatAnchor(node, trigger, 320, 340)
-  }, [menu])
-  useLayoutEffect(() => {
     if (surfaceActive) return
-    popup.current?.hidePopover()
     setMenu(null)
     setMention(null)
   }, [surfaceActive])
@@ -148,14 +139,20 @@ export function ChatComposer({
     if (disabled || composing.current) return
     const next = insertComposerText(value, range, text, maxLength)
     if (!next) {
-      if (isMention) setError(`最多输入 ${maxLength} 字，剩余空间不足以提及这位成员`)
+      if (isMention)
+        setError(
+          ui(
+            '最多输入 {0} 字，剩余空间不足以提及这位成员',
+            'The {0}-character limit leaves too little room for this mention',
+            maxLength,
+          ),
+        )
       draft.current?.focus({ preventScroll: true })
       return
     }
     pendingCaret.current = next
     setMention(null)
     setError('')
-    popup.current?.hidePopover()
     setMenu(null)
     onChange(next.value)
     // Inserting the same text still restores its caret and editor focus.
@@ -172,37 +169,21 @@ export function ChatComposer({
     insertText: (text) =>
       insert(text, selection.current, text.startsWith('@') && text.endsWith(' ')),
   }))
-  function toggleMenu(next: 'Emoji' | '颜文字') {
+  function toggleMenu(next: 'Emoji' | 'kaomoji') {
     setMention(null)
-    setMenu((previous) => {
-      if (previous !== next) return next
-      popup.current?.hidePopover()
-      return null
-    })
+    setMenu((previous) => (previous === next ? null : next))
   }
 
   return (
     <form
       ref={form}
       className={`party-composer ${className}`}
-      onKeyDownCapture={(event) => {
-        if (
-          event.key === 'Escape' &&
-          !event.nativeEvent.isComposing &&
-          popup.current?.matches(':popover-open')
-        ) {
-          event.preventDefault()
-          event.stopPropagation()
-          popup.current.hidePopover()
-          setMenu(null)
-          draft.current?.focus({ preventScroll: true })
-        }
-      }}
+      data-ready={Boolean(value.trim())}
+      data-error={Boolean(error)}
       onSubmit={(event) => {
         event.preventDefault()
         if (disabled || busy || !value.trim()) return
         setMention(null)
-        popup.current?.hidePopover()
         setMenu(null)
         void onSubmit()
       }}
@@ -219,7 +200,7 @@ export function ChatComposer({
         placeholder={placeholder}
         value={value}
         maxLength={maxLength}
-        rows={2}
+        rows={1}
         disabled={disabled}
         onChange={(event) => {
           onChange(event.target.value)
@@ -268,7 +249,6 @@ export function ChatComposer({
         }}
       />
       <div className="composer-tools">
-        {leadingTool}
         <button
           ref={emojiButton}
           className="icon-btn composer-tool"
@@ -287,24 +267,31 @@ export function ChatComposer({
           ref={kaomojiButton}
           className="icon-btn composer-tool"
           type="button"
-          aria-label="颜文字"
-          title="颜文字"
+          aria-label={ui('颜文字', 'Kaomoji')}
+          title={ui('颜文字', 'Kaomoji')}
           aria-haspopup="dialog"
-          aria-expanded={menu === '颜文字'}
-          aria-controls={menu === '颜文字' ? pickerId : undefined}
+          aria-expanded={menu === 'kaomoji'}
+          aria-controls={menu === 'kaomoji' ? pickerId : undefined}
           disabled={disabled || busy}
-          onClick={() => toggleMenu('颜文字')}
+          onClick={() => toggleMenu('kaomoji')}
         >
           <span aria-hidden="true">(ω)</span>
         </button>
-        {renderTools((text) => insert(text))}
+        {renderTools()}
         <button
           ref={send}
           className="primary composer-send"
           type="submit"
           disabled={disabled || busy || !value.trim()}
         >
-          {busy ? '发送中…' : submitLabel}
+          {busy ? (
+            <LoaderCircle size={14} className="spin" />
+          ) : value.trim() ? (
+            <Send size={14} />
+          ) : (
+            <CornerDownLeft size={14} />
+          )}
+          <span>{busy ? ui('发送中…', 'Sending…') : submitLabel}</span>
         </button>
       </div>
       {error && (
@@ -312,33 +299,42 @@ export function ChatComposer({
           {error}
         </p>
       )}
-      <div
-        ref={popup}
-        popover="auto"
-        id={pickerId}
-        className={`composer-text-picker ${menu === '颜文字' ? 'composer-kaomoji' : ''}`}
-        role="dialog"
-        aria-label={menu || 'Emoji'}
-        onToggle={(event) => {
-          if (event.newState === 'closed') setMenu(null)
-        }}
-      >
-        <h3>{menu}</h3>
-        <div className="composer-text-grid">
-          {(menu === '颜文字' ? composerKaomojis : composerEmojis).map((text) => (
+      {menu && (
+        <ComposerPanel
+          id={pickerId}
+          title={menu === 'kaomoji' ? ui('颜文字', 'Kaomoji') : menu}
+          anchor={menu === 'Emoji' ? emojiButton.current : kaomojiButton.current}
+          onClose={() => setMenu(null)}
+          picker
+          contentProps={{
+            className:
+              menu === 'kaomoji' ? 'composer-text-grid composer-kaomoji' : 'composer-text-grid',
+          }}
+        >
+          {(menu === 'kaomoji' ? composerKaomojis : composerEmojis).map((text) => (
             <button
               key={text}
+              title={ui(
+                menu === 'kaomoji' ? '插入颜文字 {0}' : '插入表情 {0}',
+                menu === 'kaomoji' ? 'Insert kaomoji {0}' : 'Insert emoji {0}',
+                text,
+              )}
               type="button"
-              onPointerDown={(event) => event.preventDefault()}
               onClick={() => insert(text)}
             >
               {text}
             </button>
           ))}
-        </div>
-      </div>
+        </ComposerPanel>
+      )}
       {mention && (
-        <div className="composer-mentions" id={mentionId} role="listbox" aria-label="提及成员">
+        <div
+          data-list-viewport=""
+          className="composer-mentions"
+          id={mentionId}
+          role="listbox"
+          aria-label={ui('提及成员', 'Mention a member')}
+        >
           {candidates.map((member, index) => (
             <button
               key={member.uid}
@@ -346,27 +342,25 @@ export function ChatComposer({
               type="button"
               role="option"
               tabIndex={-1}
+              title={ui('提及 {0}', 'Mention {0}', member.nickname)}
               aria-label={member.nickname}
               aria-selected={index === activeIndex}
               onPointerDown={(event) => event.preventDefault()}
               onClick={() => choose(member)}
             >
-              <span className="composer-mention-avatar" aria-hidden="true">
-                <span>{[...member.nickname][0] || '@'}</span>
-                {member.avatar && (
-                  <img
-                    src={member.avatar}
-                    alt=""
-                    onError={(event) => {
-                      event.currentTarget.hidden = true
-                    }}
-                  />
-                )}
-              </span>
+              <UserAvatar
+                name={member.nickname}
+                src={member.avatar}
+                className="composer-mention-avatar"
+              />
               <span className="composer-mention-name">{member.nickname}</span>
             </button>
           ))}
-          {!candidates.length && <p className="composer-mention-empty">没有匹配的房间成员</p>}
+          {!candidates.length && (
+            <p className="composer-mention-empty">
+              {ui('没有匹配的房间成员', 'No matching room members')}
+            </p>
+          )}
         </div>
       )}
     </form>

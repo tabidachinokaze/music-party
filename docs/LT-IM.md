@@ -39,12 +39,10 @@
    - `autoconnect: false`，即 `appLogin=1`，与官方非独立聊天室模式一致。
    - 聊天室地址从 `https://lbs.netease.im/lbs/webconf.jsp?appkey=…` 的
      `chatwl*` 地址获取。
-   - 每条聊天室消息的 `custom` 都会尝试解析 30005；命中后把完整成员列表
-     回调给 worker。
+   - 从聊天室消息的 `custom` 解析 30005，将本次返回的成员资料、在线人数和版本交给 worker。
 3. worker → 主进程 → preload → `useParty.ts`
-   - `room-members` 事件直接替换成员列表/在线人数，状态栏显示
-     `成员更新于 …（IM）`。
-   - 原来的 `multiStatus` 10 秒轮询保留为兜底。
+   - `room-members` 事件按房间和版本过滤。人数取有效的 `onlineNums`，缺失时取本次有效成员数。名单使用 `onlineUserInfos` 中有有效 UID 的成员；已有成员保持顺序，新成员追加到末尾。
+   - 可出现人数已增加、资料尚未到齐的快照。成员页按人数差额显示「等待成员资料」，收到资料后更新头像和昵称。房间内仍每 10 秒查询 `multiStatus`。[同步实现](../src/renderer/src/useParty.ts) · [成员页](../src/renderer/src/player/MembersDrawer.tsx)
    - 离开房间时关闭聊天室连接。
 
 ## 实测结果
@@ -52,17 +50,15 @@
 在真实账号、真实多人房间验证通过：
 
 ```text
-[lt-chatroom] connected {"chatroomId":"16802255519"}
+[lt-chatroom] connected {"chatroomId":"<chatroomId>"}
 [lt-chatroom] custom {"serverExt":{"type":30005,"content":{"onlineNums":5,...}}}
 [lt-chatroom] members {"count":5,"version":160}
 ```
 
 `30005.content` 里同时有 `serverSeq`、`version`、`currentSongBizId`、
-`nextSongBizId` 和 `onlineUserInfos`，成员列表会立即刷新。
+`nextSongBizId` 和 `onlineUserInfos`。该样本的在线人数和有效成员数都是 5。调试输出里的 `members.count` 指成功解析的成员数，可和同条消息中的 `onlineNums` 对照。
 
-实测 `30005` 是**周期性快照**：大约每 30 秒和 `30000` 一起推送一次，成员
-加入/退出时也会额外触发。因此渲染层只在成员集合真的变化时替换列表，避免
-每 30 秒按服务端返回顺序重排头像。
+在该房间的观测中，`30005` 大约每 30 秒随 `30000` 出现一次，成员进出时也观察到额外推送。该间隔是样本观测值。
 
 主 NIM 凭据是通过 Frida hook `com.netease.nimlib.c.d()` 和
 `com.netease.nimlib.sdk.auth.LoginInfo` 确认的：account 为数字 UID，

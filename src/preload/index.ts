@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { UpdateState } from '../shared/updates'
-import type { DesktopInfo, PlayerCommand } from '../shared/desktop'
+import type { DesktopInfo, PlayerCommand, NavigationDirection } from '../shared/desktop'
 import type { Bridge, Trace, AccountNotifications } from '../shared/types'
 import type { LtMemberUpdate } from '../shared/lt-members'
 import type { MediaProgress } from '../shared/media'
@@ -50,6 +50,13 @@ const bridge: Bridge = {
     const listener = (_event: Electron.IpcRendererEvent, state: UpdateState) => callback(state)
     ipcRenderer.on('update-state-changed', listener)
     return () => ipcRenderer.removeListener('update-state-changed', listener)
+  },
+  windowAction: (action) => ipcRenderer.invoke('window-action', action),
+  onNavigate(callback) {
+    const listener = (_event: Electron.IpcRendererEvent, direction: NavigationDirection) =>
+      callback(direction)
+    ipcRenderer.on('navigate', listener)
+    return () => ipcRenderer.removeListener('navigate', listener)
   },
   desktopInfo: () => ipcRenderer.invoke('desktop-info'),
   setFullScreen: (value) => ipcRenderer.invoke('desktop-fullscreen', value),

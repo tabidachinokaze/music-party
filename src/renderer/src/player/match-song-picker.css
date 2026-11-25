@@ -1,0 +1,109 @@
+.surface-dialog[data-panel='match-song'] {
+  width: min(clamp(390px, 34vw, 600px), calc(100% - 20px));
+}
+.surface-dialog[data-panel='match-song'] > .panel-content {
+  display: flex;
+  overflow: hidden;
+}
+.match-song-dialog {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 12px;
+  gap: 8px;
+}
+.match-song-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 8px;
+}
+.match-song-search .collection-search {
+  width: 100%;
+  border: 1px solid var(--mp-border);
+  background: --skin-fill(var(--mp-surface-1));
+  padding: 0 10px;
+  border-radius: 8px;
+}
+.match-song-search .collection-search:focus-within {
+  border-color: var(--mp-primary);
+}
+.match-song-search .collection-search input {
+  width: 100%;
+  outline: 0;
+  caret-color: var(--mp-text-primary);
+  padding: 7px 0;
+}
+.match-song-list {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  min-height: 0;
+  max-height: min(54dvh, 540px);
+}
+.match-song-dialog .search-history {
+  gap: 6px;
+  padding: 0;
+}
+.match-song-dialog .search-history-chip {
+  max-width: min(210px, 100%);
+}
+.match-song-option {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 36px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  text-align: left;
+  border-radius: 8px;
+}
+.match-song-option:hover,
+.match-song-option:focus-visible {
+  background: --skin-fill(var(--mp-surface-2));
+}
+.match-song-option:focus-visible {
+  outline-offset: -2px;
+}
+.match-song-option[aria-current='true'] {
+  background: --skin-tint(var(--mp-primary-container));
+  color: var(--mp-on-primary-container);
+}
+.match-song-option img {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+}
+.match-song-option > svg:first-child {
+  justify-self: center;
+  color: var(--mp-text-muted);
+}
+.match-song-marks {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.match-song-marks [data-liked='false'] {
+  color: var(--mp-text-muted);
+}
+.match-song-marks [data-liked='true'] {
+  color: var(--mp-like);
+  fill: currentColor;
+}
+.match-song-option :is(strong, small) {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.match-song-status {
+  font-size: calc(12px * var(--ui-font-scale, 1));
+  padding: 8px;
+  color: var(--mp-text-muted);
+  overflow-wrap: anywhere;
+}
+.match-song-status button {
+  margin-inline-start: 8px;
+}

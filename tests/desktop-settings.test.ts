@@ -15,6 +15,7 @@ it('rejects unbounded settings, unknown preferences, and invalid media destinati
   expect(() => validatePreferences({ volume: Infinity })).toThrow()
   expect(() => validatePreferences({ volume: 1.1 })).toThrow()
   expect(() => validatePreferences({ theme: 'javascript' })).toThrow()
+  expect(() => validatePreferences({ language: 'unsupported' })).toThrow()
   expect(() => validatePreferences({ cookie: 'secret' })).toThrow()
   expect(() =>
     validateMediaState({
@@ -43,16 +44,39 @@ it('persists a self-contained player background, restores older defaults and sup
     writeFileSync(source, png)
     const image = `data:image/png;base64,${readFileSync(source).toString('base64')}`,
       background = { image, zoom: 180.5, opacity: 55, blur: 4.5, x: 40, y: 72 }
-    store.update({ playerBackground: background })
+    writeFileSync(
+      file,
+      JSON.stringify({ preferences: { volume: 0.45, playerBackground: background } }),
+    )
+    const migrated = new SettingsStore(file)
+    const expected = { ...DEFAULT_PLAYER_BACKGROUND, ...background }
+    expect(migrated.error).toBe('')
+    expect(migrated.preferences.playerBackground).toEqual(expected)
+    migrated.update({
+      playerBackground: {
+        ...expected,
+        layoutTransparency: 0,
+        componentTransparency: 100,
+        popupTransparency: 55,
+      },
+    })
     rmSync(source)
-    expect(new SettingsStore(file).preferences.playerBackground).toEqual(background)
-    expect(new SettingsStore(file).preferences.volume).toBe(0.45)
-    store.update({ playerBackground: { ...background, image: null } })
     expect(new SettingsStore(file).preferences.playerBackground).toEqual({
-      ...background,
+      ...expected,
+      layoutTransparency: 0,
+      componentTransparency: 100,
+      popupTransparency: 55,
+    })
+    expect(new SettingsStore(file).preferences.volume).toBe(0.45)
+    migrated.update({ playerBackground: { ...background, image: null } })
+    expect(new SettingsStore(file).preferences.playerBackground).toEqual({
+      ...expected,
+      layoutTransparency: 0,
+      componentTransparency: 100,
+      popupTransparency: 55,
       image: null,
     })
-    store.update({ playerBackground: DEFAULT_PLAYER_BACKGROUND })
+    migrated.update({ playerBackground: DEFAULT_PLAYER_BACKGROUND })
     expect(new SettingsStore(file).preferences.playerBackground).toEqual(DEFAULT_PLAYER_BACKGROUND)
   } finally {
     rmSync(directory, { recursive: true, force: true })
@@ -76,6 +100,12 @@ it('rejects unsafe background URIs, missing fields and values outside editor bou
     ['zoom', 301],
     ['opacity', -1],
     ['opacity', 101],
+    ['layoutTransparency', -1],
+    ['componentTransparency', 101],
+    ['popupTransparency', -1],
+    ['popupTransparency', 101],
+    ['layoutTransparency', null],
+    ['componentTransparency', NaN],
     ['blur', -1],
     ['blur', 31],
     ['x', -1],
@@ -83,7 +113,7 @@ it('rejects unsafe background URIs, missing fields and values outside editor bou
     ['y', Infinity],
     ['y', NaN],
     ['y', '50'],
-  ])
+  ] as const)
     expect(() =>
       validatePreferences({ playerBackground: { ...DEFAULT_PLAYER_BACKGROUND, [key]: value } }),
     ).toThrow()
@@ -205,10 +235,16 @@ it('persists custom appearance while accepting older settings without appearance
   try {
     writeFileSync(file, JSON.stringify({ preferences: { volume: 0.3, theme: 'light' } }))
     const store = new SettingsStore(file)
-    expect(store.preferences).toMatchObject({ fontScale: 100, accentColor: null, volume: 0.3 })
-    store.update({ fontScale: 145, accentColor: '#448AFF' })
+    expect(store.preferences).toMatchObject({
+      language: 'zh-CN',
+      fontScale: 100,
+      accentColor: null,
+      volume: 0.3,
+    })
+    store.update({ language: 'en', fontScale: 145, accentColor: '#448AFF' })
     expect(new SettingsStore(file).preferences).toMatchObject({
       fontScale: 145,
+      language: 'en',
       accentColor: '#448aff',
     })
     for (const fontScale of [79, 151, 100.5, NaN, Infinity, '125'])

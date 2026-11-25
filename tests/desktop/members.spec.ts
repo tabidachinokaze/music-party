@@ -1,4 +1,4 @@
-import { openTool, panelPage } from './windows'
+import { expectRoomHeaderSingleLine, openTool, panelPage } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -49,6 +49,9 @@ test('members show complete recommendation counts, distinct played occurrences a
         calls: [] as any[],
         version: 1,
         failPlayed: false,
+        extraPlayed: false,
+        holdPlayed: false,
+        releasePlayed: null as (() => void) | null,
         pending: [
           { bizId: '102', uid: '9', songId: '111' },
           { bizId: '103', uid: '9', songId: '112' },
@@ -117,12 +120,18 @@ test('members show complete recommendation counts, distinct played occurrences a
         if (method === 'privateConversations') body = { msgs: [], more: false }
         if (method === 'multiStatus') body = { data: { multiLtRoomSnapshot: snapshot() } }
         if (method === 'multiHeartbeat')
-          body = { data: { heartBeatDuration: 30, roomPlaySongInfo: playback() } }
+          body = { data: { heartBeatDuration: 1, roomPlaySongInfo: playback() } }
         if (method === 'multiSongInfo') body = { data: { liked: false, songInfo: {} } }
         if (method === 'multiChatHistory') body = { data: { records: [], page: { more: false } } }
         if (method === 'multiQueue')
           body = { data: { songLists: state.pending.map(row), page: { more: false } } }
         if (method === 'multiPlayed') {
+          if (state.holdPlayed) {
+            state.holdPlayed = false
+            await new Promise<void>((resolve) => {
+              state.releasePlayed = resolve
+            })
+          }
           if (state.failPlayed) {
             state.failPlayed = false
             return { ok: false, error: '推荐记录暂时不可用' }
@@ -133,6 +142,7 @@ test('members show complete recommendation counts, distinct played occurrences a
                 ? [
                     { bizId: '101', uid: '9', songId: '111' },
                     { bizId: '99', uid: '456', songId: '114' },
+                    ...(state.extraPlayed ? [{ bizId: '98', uid: '456', songId: '115' }] : []),
                   ]
                 : [
                     { bizId: '101', uid: '9', songId: '111' },
@@ -154,7 +164,9 @@ test('members show complete recommendation counts, distinct played occurrences a
     await player.reload()
     page = await openTool(app, player, 'room')
     await page.getByRole('button', { name: '恢复当前房间' }).click()
-    await expect(page.getByText('3 人一起听', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '查看房间成员', exact: true })).toContainText(
+      '3 人',
+    )
     await page.getByRole('button', { name: '查看房间成员' }).click()
     const members = await panelPage(app, 'members')
     await expect(
@@ -166,6 +178,27 @@ test('members show complete recommendation counts, distinct played occurrences a
     await expect(
       members.getByRole('button', { name: '查看 测试用户 的推荐', exact: true }),
     ).toContainText('推荐 1 首')
+    const firstMember = members.locator('.member-directory-row').first()
+    const firstY = (await firstMember.boundingBox())!.y
+    await firstMember.focus()
+    await app.evaluate(() => {
+      const state = (globalThis as any).__memberTest
+      state.holdPlayed = true
+      state.extraPlayed = true
+      state.version++
+    })
+    await expect
+      .poll(() => app.evaluate(() => Boolean((globalThis as any).__memberTest.releasePlayed)))
+      .toBe(true)
+    await expectRoomHeaderSingleLine(members)
+    await expect(firstMember).toBeFocused()
+    expect((await firstMember.boundingBox())!.y).toBe(firstY)
+    const bob = members.getByRole('button', { name: '查看 Bob 的推荐', exact: true })
+    await expect(bob).toContainText('推荐 1 首')
+    await app.evaluate(() => (globalThis as any).__memberTest.releasePlayed())
+    await expect(bob).toContainText('推荐 2 首')
+    await expect(firstMember).toBeFocused()
+    expect((await firstMember.boundingBox())!.y).toBe(firstY)
     await members.getByRole('button', { name: '查看 Alice 的推荐', exact: true }).click()
     await expect(members.getByText('共推荐 4 首', { exact: true })).toBeVisible()
     const waiting = members.getByRole('region', { name: '待播歌曲', exact: true }),
@@ -190,12 +223,14 @@ test('members show complete recommendation counts, distinct played occurrences a
     await members.getByRole('button', { name: '确认删除推荐', exact: true }).click()
     await expect(members.getByText('共推荐 0 首', { exact: true })).toBeVisible()
     await app.evaluate(() => {
-      ;(globalThis as any).__memberTest.failPlayed = true
+      const state = (globalThis as any).__memberTest
+      state.failPlayed = true
+      state.version++
     })
-    await members.getByRole('button', { name: '刷新成员', exact: true }).click()
     await expect(members.getByRole('alert')).toContainText('推荐记录暂时不可用')
     await expect(members.getByText('共推荐 0 首', { exact: true })).toBeVisible()
-    await members.getByRole('button', { name: '重试加载', exact: true }).click()
+    await expectRoomHeaderSingleLine(members)
+    await members.getByRole('alert').getByRole('button', { name: '重试', exact: true }).click()
     await expect(members.getByRole('alert')).toHaveCount(0)
     await expect(members.getByText('共推荐 0 首', { exact: true })).toBeVisible()
     const cursors = await app.evaluate(() =>

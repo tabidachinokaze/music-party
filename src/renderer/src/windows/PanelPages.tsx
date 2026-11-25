@@ -1,3 +1,5 @@
+import { ui } from '../../../shared/ui-language'
+import { RoomMatchSong } from '../player/RoomSetup'
 import { useState } from 'react'
 import {
   AlignLeft,
@@ -15,7 +17,6 @@ import {
   Search,
   Settings2,
   SlidersHorizontal,
-  Users,
 } from 'lucide-react'
 import type { PanelId } from '../../../shared/panels'
 import { roomTypeLabel } from '../../../shared/multiplayer'
@@ -24,68 +25,65 @@ import { MusicBrowser } from '../MusicBrowser'
 import { BrowserSearch, type BrowserNavigationState } from '../BrowserNavigation'
 import { PanelHeader } from './Surface'
 
-const tools = [
-  ['lyrics', '歌词', AlignLeft],
-  ['controls', '播放调节', SlidersHorizontal],
-  ['queue', '播放队列', ListMusic],
-  ['search', '搜索', Search],
-  ['library', '音乐库', Library],
-  ['room', '一起听', Headphones],
-  ['chat', '房间聊天', MessageCircle],
-  ['private', '私信', Mail],
-  ['settings', '设置', Settings2],
-] as const
+const directoryItems = () =>
+  [
+    ['lyrics', ui('歌词', 'Lyrics'), AlignLeft],
+    ['controls', ui('播放调节', 'Playback controls'), SlidersHorizontal],
+    ['queue', ui('播放队列', 'Play queue'), ListMusic],
+    ['search', ui('搜索', 'Search'), Search],
+    ['library', ui('音乐库', 'Library'), Library],
+    ['room', ui('一起听', 'Listen Together'), Headphones],
+    ['chat', ui('房间聊天', 'Room chat'), MessageCircle],
+    ['private', ui('私信', 'Messages'), Mail],
+    ['settings', ui('设置', 'Settings'), Settings2],
+  ] as const
 export const panelTitle = (id: PanelId) =>
-  tools.find(([key]) => id === key)?.[1] ??
+  directoryItems().find(([key]) => id === key)?.[1] ??
   (
     {
-      windows: '全部功能',
-      recent: '最近播放',
-      created: '创建的歌单',
-      liked: '我喜欢的音乐',
-      albums: '收藏的专辑',
-      login: '扫码登录',
-      members: '房间成员',
-      match: '匹配房间',
-      add: '添加到歌单',
-      diagnostics: '观测记录',
-      confirm: '确认操作',
-      feedback: '播放提示',
+      windows: ui('全部功能', 'All features'),
+      recent: ui('最近播放', 'Recently played'),
+      created: ui('创建的歌单', 'My playlists'),
+      liked: ui('我喜欢的音乐', 'Liked Songs'),
+      albums: ui('收藏的专辑', 'Saved albums'),
+      login: ui('扫码登录', 'Sign in with QR code'),
+      members: ui('房间成员', 'Room members'),
+      match: ui('匹配房间', 'Match a room'),
+      'match-song': ui('切换歌曲', 'Change song'),
+      add: ui('添加到歌单', 'Add to playlist'),
+      diagnostics: ui('观测记录', 'Activity log'),
+      confirm: ui('确认操作', 'Confirm action'),
+      feedback: ui('播放提示', 'Playback notification'),
     } as Record<string, string>
   )[id] ??
-  '曲目详情'
+  ui('曲目详情', 'Track details')
 
 export function WindowDirectory({
   open,
   current,
-  resume,
   unread,
   chatUnread,
   account,
 }: {
   open(id: PanelId): void
   current: PanelId | null
-  resume?: { title: string; run(): void }
   unread: number
   chatUnread: number
   account: ReturnType<typeof useParty>['account']
 }) {
   return (
-    <nav className="window-directory" aria-label="全部功能">
-      {resume && (
-        <button className="directory-resume" onClick={resume.run}>
-          <ChevronRight size={18} />
-          <span>继续{resume.title}</span>
-        </button>
-      )}
-      {tools.map(([id, title, Icon]) => {
+    <nav className="window-directory" aria-label={ui('全部功能', 'All features')}>
+      {directoryItems().map(([id, title, Icon]) => {
         const count = id === 'private' ? unread : id === 'chat' ? chatUnread : 0
         return (
           <button
             key={id}
             aria-label={title}
             aria-description={
-              [id === current && '已打开', count > 0 && count + ' 条未读']
+              [
+                id === current && ui('已打开', 'Open'),
+                count > 0 && count + ui(' 条未读', ' unread'),
+              ]
                 .filter(Boolean)
                 .join('，') || undefined
             }
@@ -93,14 +91,22 @@ export function WindowDirectory({
           >
             <Icon size={18} />
             <span>{title}</span>
-            {count > 0 && <small>{Math.min(count, 99)}</small>}
-            {id === current ? <Check size={14} aria-label="已打开" /> : <ChevronRight size={14} />}
+            {count > 0 && <small>{count > 99 ? '99+' : count}</small>}
+            {id === current ? (
+              <Check size={14} aria-label={ui('已打开', 'Open')} />
+            ) : (
+              <ChevronRight size={14} />
+            )}
           </button>
         )
       })}
-      <button className="directory-account" onClick={() => open(account ? 'settings' : 'login')}>
+      <button
+        className="directory-account"
+        title={account ? ui('打开设置', 'Open settings') : ui('扫码登录', 'Sign in with QR code')}
+        onClick={() => open(account ? 'settings' : 'login')}
+      >
         {account?.avatarUrl ? <img alt="" src={account.avatarUrl} /> : <LogIn size={18} />}
-        <span>{account?.nickname || '扫码登录'}</span>
+        <span>{account?.nickname || ui('扫码登录', 'Sign in with QR code')}</span>
         <ChevronRight size={14} />
       </button>
     </nav>
@@ -127,13 +133,13 @@ export function LibraryPanel({
         </PanelHeader>
       )}
       {browse && (
-        <div className="catalog-tabs" aria-label="音乐库分类">
+        <div className="catalog-tabs" aria-label={ui('音乐库分类', 'Library categories')}>
           {(
             [
-              ['library', '歌单', Library],
-              ['liked', '我喜欢', Heart],
-              ['recent', '最近播放', Clock3],
-              ['albums', '收藏的专辑', Music2],
+              ['library', ui('歌单', 'Playlists'), Library],
+              ['liked', ui('我喜欢', 'Liked'), Heart],
+              ['recent', ui('最近播放', 'Recently played'), Clock3],
+              ['albums', ui('收藏的专辑', 'Saved albums'), Music2],
             ] as const
           ).map(([key, name, Icon]) => (
             <button key={key} aria-pressed={view === key} onClick={() => onSection?.(key)}>
@@ -143,35 +149,11 @@ export function LibraryPanel({
           ))}
         </div>
       )}
-      {browse && view === 'library' && props.uid && onSection && !nav?.query && (
-        <div className="library-shelves" aria-label="音乐收藏">
-          {(
-            [
-              ['liked', '我喜欢的音乐', Heart, props.library.likedPlaylist?.cover],
-              ['recent', '最近播放', Clock3, undefined],
-              [
-                'created',
-                '创建的歌单',
-                ListMusic,
-                props.library.playlists.find(
-                  (p) => p.creatorId === props.uid && p.id !== props.library.likedPlaylist?.id,
-                )?.cover,
-              ],
-              ['albums', '收藏的专辑', Music2, props.library.albums[0]?.cover],
-            ] as const
-          ).map(([id, label, Icon, art]) => (
-            <button key={id} className={'library-shelf shelf-' + id} onClick={() => onSection(id)}>
-              {art && <img alt="" src={art} />}
-              <Icon aria-hidden="true" size={26} />
-              <strong>{label}</strong>
-            </button>
-          ))}
-        </div>
-      )}
       <MusicBrowser
         {...props}
         key={search ? 'search' : view}
         view={search ? 'search' : view}
+        openCurrent={onSection && (() => onSection('lyrics'))}
         onNavigation={setNav}
       />
     </div>
@@ -181,75 +163,94 @@ export function RoomPanel({
   party: p,
   open,
   leave,
+  onChooseSong,
 }: {
   party: ReturnType<typeof useParty>
   open(id: PanelId): void
   leave(): void
+  onChooseSong(): void
 }) {
+  const tags = p.room?.tags
+  const creator =
+    p.room?.creatorName ||
+    (p.room?.creatorUid
+      ? ui('用户 {0}', 'User {0}', p.room.creatorUid)
+      : ui('暂未提供', 'Unavailable'))
   return (
-    <div className="room-tools">
-      <div className="room-count">
-        <Headphones size={22} />
-        <div>
-          <strong>{p.onlineCount === null ? '正在获取成员' : p.onlineCount + ' 人一起听'}</strong>
-          <small>{roomTypeLabel(p.room?.roomBizType)}</small>
+    <div className="room-lobby room-tools">
+      <section className="room-card room-count">
+        <h3>{ui('房间信息', 'Room information')}</h3>
+        <dl className="room-facts">
+          <div>
+            <dt>{ui('在线成员', 'Online members')}</dt>
+            <dd>
+              <button
+                className="room-members-link"
+                aria-label={ui('查看房间成员', 'View room members')}
+                title={ui('查看房间成员', 'View room members')}
+                onClick={() => open('members')}
+              >
+                {p.onlineCount === null
+                  ? ui('查看成员', 'View members')
+                  : ui('{0} 人', '{0} online', p.onlineCount)}
+              </button>
+            </dd>
+          </div>
+          <div>
+            <dt>{ui('房间类型', 'Room type')}</dt>
+            <dd>{roomTypeLabel(p.room?.roomBizType)}</dd>
+          </div>
+          <div>
+            <dt>{ui('创建者', 'Created by')}</dt>
+            <dd>{creator}</dd>
+          </div>
+          <div>
+            <dt>{ui('音乐标签', 'Music tags')}</dt>
+            <dd>{tags?.length ? tags.join(' · ') : ui('暂无标签', 'No tags yet')}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section className="room-card">
+        <h3>{ui('遇见新的听友', 'Meet new listeners')}</h3>
+        <p>
+          {ui(
+            '换一个房间，和新的朋友分享音乐。',
+            'Find another room to share music with new listeners.',
+          )}
+        </p>
+        <RoomMatchSong party={p} onChooseSong={onChooseSong} />
+        <div className="room-actions">
+          <button
+            className="secondary"
+            disabled={!!p.busy || p.matching || !p.matchSong}
+            onClick={() => p.act(ui('重新匹配', 'Find another room'), p.rematchRoom)}
+          >
+            {ui('重新匹配', 'Find another room')}
+          </button>
         </div>
-      </div>
-      <div className="room-shortcuts">
-        <button className="secondary" onClick={() => open('chat')}>
-          <MessageCircle size={15} />
-          房间聊天
-        </button>
-        <button className="secondary" onClick={() => open('queue')}>
-          <ListMusic size={15} />
-          房间待播
-        </button>
-      </div>
-      <button className="member-summary" onClick={() => open('members')}>
-        <span className="avatar-stack">
-          {p.members
-            .slice(0, 4)
-            .map((m) =>
-              m.avatar ? (
-                <img key={m.uid} src={m.avatar} alt={m.nickname} />
-              ) : (
-                <i key={m.uid}>{m.nickname.slice(0, 1)}</i>
-              ),
-            )}
-        </span>
-        <Users size={16} />
-        查看房间成员
-        <ChevronRight size={15} />
-      </button>
-      <div className="room-shortcuts">
+        <p>
+          {ui(
+            '重新匹配会退出当前房间，寻找新的听友。',
+            'Matching again leaves this room to find new listeners.',
+          )}
+        </p>
+      </section>
+
+      <div className="room-actions room-actions-footer">
         <button
           className="secondary"
-          onClick={() =>
-            p.act('复制邀请', async () => {
-              await p.copyInvite()
-              p.setNotice('已复制房间邀请')
-            })
-          }
+          onClick={() => p.act(ui('复制邀请链接', 'Copy invitation link'), p.copyInvite)}
         >
-          复制邀请
+          {ui('复制邀请链接', 'Copy invitation link')}
         </button>
         <button className="secondary" onClick={() => open('private')}>
-          私信邀请
+          {ui('私信邀请', 'Invite via message')}
         </button>
-        <button className="secondary" onClick={() => open('match')}>
-          重新匹配
-        </button>
-        <button
-          className="secondary"
-          disabled={!!p.busy}
-          onClick={() => p.act('同步房间', p.observe)}
-        >
-          立即同步
+        <button className="secondary room-danger room-leave" onClick={leave}>
+          {ui('退出房间', 'Leave room')}
         </button>
       </div>
-      <button className="text-btn" onClick={leave}>
-        离开房间
-      </button>
     </div>
   )
 }

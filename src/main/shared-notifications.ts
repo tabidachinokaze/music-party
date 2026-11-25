@@ -1,3 +1,4 @@
+import { ui } from '../shared/ui-language'
 // SPDX-License-Identifier: AGPL-3.0-only
 // Adapted from tabidachinokaze/folium-mod-music-party at b01525f.
 // Source: https://github.com/tabidachinokaze/folium-mod-music-party
@@ -82,7 +83,8 @@ export class SharedNotifications {
 
   async matchOpen(id: string): Promise<void> {
     this.matchClose()
-    if (this.ended) throw new Error('匹配通知连接已关闭')
+    if (this.ended)
+      throw new Error(ui('匹配通知连接已关闭', 'The matching notification connection has closed.'))
     // Discard notices received before this attempt without affecting the inbox feed.
     if (this.connected) this.transport?.poll()
     const active: Matching = { id, created: Date.now(), touched: Date.now() }
@@ -92,7 +94,12 @@ export class SharedNotifications {
       const now = Date.now()
       if (now - active.created > 150000 || now - active.touched > 20000) {
         active.error =
-          now - active.created > 150000 ? '匹配通知连接已到期，请重试' : '匹配页面已关闭'
+          now - active.created > 150000
+            ? ui(
+                '匹配通知连接已到期，请重试',
+                'The matching notification connection has expired. Try again.',
+              )
+            : ui('匹配页面已关闭', 'The matching screen has closed.')
         this.clearMatchTimer()
         if (!this.selfUid) this.stopConnection()
       }
@@ -100,7 +107,8 @@ export class SharedNotifications {
     this.matchTimer.unref()
     try {
       await this.ensureConnection()
-      if (this.matching !== active || this.ended) throw new Error('匹配已取消')
+      if (this.matching !== active || this.ended)
+        throw new Error(ui('匹配已取消', 'Matching canceled'))
       if (active.error) throw new Error(active.error)
     } catch (error) {
       if (this.matching === active) this.matchClose(id)
@@ -109,9 +117,13 @@ export class SharedNotifications {
   }
 
   matchPoll(id: string) {
-    if (!this.matching || this.matching.id !== id) throw new Error('匹配通知连接已关闭')
+    if (!this.matching || this.matching.id !== id)
+      throw new Error(ui('匹配通知连接已关闭', 'The matching notification connection has closed.'))
     if (this.matching.error) throw new Error(this.matching.error)
-    if (!this.connected || !this.transport) throw new Error('匹配通知连接已断开，请重试')
+    if (!this.connected || !this.transport)
+      throw new Error(
+        ui('匹配通知连接已断开，请重试', 'Disconnected from the matching service. Try again.'),
+      )
     this.matching.touched = Date.now()
     return this.transport.poll()
   }
@@ -129,7 +141,7 @@ export class SharedNotifications {
       cursor < 0 ||
       (session !== undefined && (typeof session !== 'string' || session.length > 64))
     )
-      throw new Error('通知游标无效')
+      throw new Error(ui('通知游标无效', 'Invalid notification cursor.'))
     const oldest = this.events[0]?.sequence ?? this.sequence + 1
     const reset =
       (!!session && session !== this.session) || cursor > this.sequence || cursor < oldest - 1
@@ -223,7 +235,7 @@ export class SharedNotifications {
 
   private ensureConnection(): Promise<void> {
     if (this.ended || (!this.selfUid && !this.matching))
-      return Promise.reject(new Error('匹配已取消'))
+      return Promise.reject(new Error(ui('匹配已取消', 'Matching canceled')))
     if (this.connected) return Promise.resolve()
     if (this.opening) return this.opening
     if (this.reconnect) clearTimeout(this.reconnect)
@@ -261,19 +273,26 @@ export class SharedNotifications {
     task = (async () => {
       try {
         const value = await credentials
-        if (this.transport !== transport || this.ended) throw new Error('匹配已取消')
+        if (this.transport !== transport || this.ended)
+          throw new Error(ui('匹配已取消', 'Matching canceled'))
         this.debug('credentials ready', {
           accId: `${value.accId.slice(0, 4)}…`,
           tokenLength: value.token.length,
         })
         await transport.open(value)
-        if (this.transport !== transport || this.ended) throw new Error('匹配已取消')
+        if (this.transport !== transport || this.ended)
+          throw new Error(ui('匹配已取消', 'Matching canceled'))
         this.debug('connected')
         this.connected = true
         this.backoff = 1000
         if (this.selfUid) this.sync()
       } catch (error) {
-        this.lost(transport, error instanceof Error ? error.message : '网易云通知连接失败')
+        this.lost(
+          transport,
+          error instanceof Error
+            ? error.message
+            : ui('网易云通知连接失败', 'Could not connect to NetEase notifications.'),
+        )
         throw error
       } finally {
         if (this.opening === task) this.opening = null

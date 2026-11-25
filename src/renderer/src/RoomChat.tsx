@@ -1,6 +1,6 @@
-import { PanelHeader } from './windows/Surface'
+import { ui } from '../../shared/ui-language'
 import { useState, useEffect, useLayoutEffect, useRef } from 'react'
-import { CircleArrowDown, ThumbsUp, RefreshCw, Sticker } from 'lucide-react'
+import { ArrowDown, Sticker } from 'lucide-react'
 import type { Member, Room, Song } from '../../shared/types'
 import { MessageContent } from './MessageContent'
 import { ChatMessageCard, RoomActivityCard } from './ChatMessageCard'
@@ -16,25 +16,19 @@ export function RoomChat({
   chat,
   room,
   uid,
-  onlineCount,
   members,
   onSong,
   onAlbum,
   onAudition,
-  onLike,
-  likeDisabled,
   onMediaPlay,
 }: {
   chat: ReturnType<typeof useRoomChat>
   room: Room | null
   uid: string
-  onlineCount: number | null
   members: Member[]
   onSong(song: Song): void
   onAlbum(id: string, title: string): void
   onAudition(song: Song): void
-  onLike(): void
-  likeDisabled: boolean
   onMediaPlay(): void
 }) {
   const list = useRef<HTMLDivElement>(null)
@@ -89,174 +83,173 @@ export function RoomChat({
     <aside
       hidden={!chat.visible}
       className="chat-drawer"
-      aria-label="官方房间聊天"
+      aria-label={ui('官方房间聊天', 'Room chat')}
       data-closing={!chat.visible}
       aria-hidden={!chat.visible}
       inert={!chat.visible}
     >
-      <PanelHeader>
-        <div className="panel-inline-actions">
-          <small>{onlineCount === null ? '一起听' : onlineCount + ' 人一起听'}</small>
-          <button
-            className="icon-btn"
-            aria-label="刷新聊天"
-            disabled={!room || chat.loading}
-            onClick={chat.refresh}
-          >
-            <RefreshCw size={15} />
-          </button>
-        </div>
-      </PanelHeader>
       {!room ? (
-        <div className="chat-empty">加入官方多人房间后，与听友聊天</div>
+        <div className="chat-empty">
+          {ui(
+            '加入官方多人房间后，与听友聊天',
+            'Join a listening room to chat with other listeners',
+          )}
+        </div>
       ) : (
         <>
-          <div className="chat-status" role="status">
+          <div className="chat-status" role="status" data-error={Boolean(chat.error)}>
             {chat.error ||
               (chat.loading
-                ? '正在读取聊天记录…'
+                ? ui('正在读取聊天记录…', 'Loading chat history…')
                 : chat.lastUpdate
-                  ? `更新于 ${chat.lastUpdate}`
-                  : '正在连接聊天')}
+                  ? ui('更新于 {0}', 'Updated at {0}', chat.lastUpdate)
+                  : ui('正在连接聊天', 'Connecting to chat'))}
           </div>
-          <div
-            className="chat-messages"
-            role="log"
-            aria-label="聊天消息"
-            aria-live="polite"
-            ref={list}
-            onScroll={() => {
-              const box = list.current
-              if (box?.clientHeight) {
-                nearBottom.current = box.scrollHeight - box.scrollTop - box.clientHeight < 30
-                setShowLatest(!nearBottom.current)
-              }
-            }}
-          >
-            <div ref={historyPages} className="pagination-sentinel" aria-hidden="true" />
-            {!chat.loading && !chat.messages.length && (
-              <div className="chat-empty">还没有聊天消息</div>
-            )}
-            {chat.messages.map((message) => {
-              const activity = !message.emoji && message.kind !== 'text' && message.kind !== 'image'
-              const delivery = message.delivery && (
-                <small
-                  className={
-                    message.delivery === 'failed' || message.delivery === 'uncertain'
-                      ? 'chat-failed'
-                      : ''
-                  }
-                >
-                  {message.error ||
-                    {
-                      sending: '发送中…',
-                      submitted: '已提交，等待房间回显',
-                      failed: '发送失败',
-                      uncertain: '结果未确认',
-                    }[message.delivery]}
-                </small>
-              )
-              return activity ? (
-                <RoomActivityCard
-                  key={message.id}
-                  id={message.id}
-                  message={message}
-                  onAuthor={
-                    message.uid !== '0'
-                      ? () => composer.current?.insertText(`@${message.nickname} `)
-                      : undefined
-                  }
-                >
-                  {delivery}
-                </RoomActivityCard>
-              ) : (
-                <ChatMessageCard
-                  key={message.id}
-                  id={message.id}
-                  mine={message.uid === uid}
-                  author={message.nickname}
-                  avatar={message.avatar || members.find((m) => m.uid === message.uid)?.avatar}
-                  time={message.time}
-                  onAuthor={() => composer.current?.insertText(`@${message.nickname} `)}
-                  mentioned={
-                    Boolean(viewerNickname) && message.text.includes(`@${viewerNickname} `)
-                  }
-                >
-                  <MessageContent
-                    api={chat.api}
-                    accountKey={uid}
-                    text={message.text}
-                    attachments={message.attachments}
-                    richText={message.richText}
-                    room
-                    roomKey={room.roomId}
-                    onSong={onSong}
-                    onAlbum={onAlbum}
-                    onAudition={onAudition}
-                    onMediaPlay={onMediaPlay}
-                  />
-                  {delivery}
-                </ChatMessageCard>
-              )
-            })}
-          </div>
-          {showLatest && (
-            <button
-              className="back-to-latest"
-              aria-label="回到最新消息"
-              title="回到最新消息"
-              onClick={() => {
-                if (list.current) list.current.scrollTop = list.current.scrollHeight
-                nearBottom.current = true
-                setShowLatest(false)
+          <div className="chat-history-frame">
+            <div
+              data-list-viewport=""
+              className="chat-messages"
+              role="log"
+              aria-label={ui('聊天消息', 'Chat messages')}
+              aria-live="polite"
+              ref={list}
+              onScroll={() => {
+                const box = list.current
+                if (box?.clientHeight) {
+                  nearBottom.current = box.scrollHeight - box.scrollTop - box.clientHeight < 30
+                  setShowLatest(!nearBottom.current)
+                }
               }}
             >
-              <CircleArrowDown size={18} />
-            </button>
-          )}
-          <ChatComposer
-            leadingTool={
+              <div ref={historyPages} className="pagination-sentinel" aria-hidden="true" />
+              {!chat.loading && !chat.messages.length && (
+                <div className="chat-empty">{ui('还没有聊天消息', 'No messages yet')}</div>
+              )}
+              {chat.messages.map((message) => {
+                const activity =
+                  !message.emoji && message.kind !== 'text' && message.kind !== 'image'
+                const delivery = message.delivery && (
+                  <small
+                    className={
+                      message.delivery === 'failed' || message.delivery === 'uncertain'
+                        ? 'chat-failed'
+                        : ''
+                    }
+                  >
+                    {message.error ||
+                      {
+                        sending: ui('发送中…', 'Sending…'),
+                        submitted: ui(
+                          '已提交，等待房间回显',
+                          'Sent. Waiting for the room to confirm.',
+                        ),
+                        failed: ui('发送失败', 'Send failed'),
+                        uncertain: ui('结果未确认', 'Delivery unconfirmed'),
+                      }[message.delivery]}
+                  </small>
+                )
+                return activity ? (
+                  <RoomActivityCard
+                    key={message.id}
+                    id={message.id}
+                    message={message}
+                    onAuthor={
+                      message.uid !== '0'
+                        ? () => composer.current?.insertText(`@${message.nickname} `)
+                        : undefined
+                    }
+                  >
+                    {delivery}
+                  </RoomActivityCard>
+                ) : (
+                  <ChatMessageCard
+                    key={message.id}
+                    id={message.id}
+                    mine={message.uid === uid}
+                    author={message.nickname}
+                    avatar={message.avatar || members.find((m) => m.uid === message.uid)?.avatar}
+                    time={message.time}
+                    onAuthor={() => composer.current?.insertText(`@${message.nickname} `)}
+                    mentioned={
+                      Boolean(viewerNickname) && message.text.includes(`@${viewerNickname} `)
+                    }
+                  >
+                    <MessageContent
+                      api={chat.api}
+                      accountKey={uid}
+                      text={
+                        message.previewOnlyText
+                          ? ''
+                          : message.fallbackTextEn
+                            ? ui(message.text, message.fallbackTextEn)
+                            : message.text
+                      }
+                      attachments={message.attachments}
+                      richText={message.richText}
+                      room
+                      roomKey={room.roomId}
+                      onSong={onSong}
+                      onAlbum={onAlbum}
+                      onAudition={onAudition}
+                      onMediaPlay={onMediaPlay}
+                    />
+                    {delivery}
+                  </ChatMessageCard>
+                )
+              })}
+            </div>
+            {showLatest && (
               <button
-                type="button"
-                className="icon-btn"
-                aria-label="一起听点赞"
-                title="为房间当前歌曲点赞"
-                disabled={likeDisabled}
-                onClick={onLike}
+                className="back-to-latest"
+                aria-label={ui('回到最新消息', 'Jump to latest')}
+                title={ui('回到最新消息', 'Jump to latest')}
+                onClick={() => {
+                  if (list.current) list.current.scrollTop = list.current.scrollHeight
+                  nearBottom.current = true
+                  setShowLatest(false)
+                }}
               >
-                <ThumbsUp size={16} />
+                <ArrowDown size={18} />
               </button>
-            }
+            )}
+          </div>
+          <ChatComposer
             composerRef={composer}
             key={`${uid}:${room.roomId}`}
             className="chat-compose"
             value={chat.draft}
             onChange={chat.setDraft}
-            label="聊天内容"
-            placeholder="聊聊这首歌，输入 @ 提及成员…"
+            label={ui('聊天内容', 'Chat message')}
+            placeholder={ui(
+              '聊聊这首歌，输入 @ 提及成员…',
+              'Talk about this song, or type @ to mention someone…',
+            )}
             maxLength={CHAT_MAX_LENGTH}
             busy={chat.sending}
             disabled={!room.chatRoomId}
             members={members}
-            notice={!room.chatRoomId ? '正在等待官方聊天室信息，可刷新房间成员后重试。' : undefined}
+            notice={
+              !room.chatRoomId
+                ? ui(
+                    '正在等待官方聊天室信息，连接后将自动更新。',
+                    'Waiting for the chat room to connect.',
+                  )
+                : undefined
+            }
             onSubmit={() => {
               nearBottom.current = true
               return chat.send()
             }}
-            renderTools={(insertText) => (
+            renderTools={() => (
               <>
                 <EmojiPicker
                   api={chat.api}
                   accountKey={uid}
                   scope="room"
-                  recipient="当前一起听房间"
-                  triggerLabel="表情包"
+                  recipient={ui('当前一起听房间', 'Current listening room')}
+                  triggerLabel={ui('表情包', 'Stickers')}
                   triggerIcon={<Sticker size={16} />}
                   disabled={chat.sending || !room.chatRoomId}
-                  onInsert={insertText}
-                  stickers={chat.messages.flatMap((message) =>
-                    message.emoji ? [message.emoji] : [],
-                  )}
                   onSticker={(emoji) => {
                     nearBottom.current = true
                     chat.send(emoji)
@@ -265,7 +258,7 @@ export function RoomChat({
                 <MediaComposer
                   accountKey={uid}
                   target={{ kind: 'room', roomId: room.roomId }}
-                  label="当前一起听房间"
+                  label={ui('当前一起听房间', 'Current listening room')}
                   disabled={chat.sending || !room.chatRoomId}
                   onSent={chat.acceptMedia}
                   onMediaPlay={onMediaPlay}

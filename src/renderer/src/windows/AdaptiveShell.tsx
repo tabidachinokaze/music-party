@@ -1,120 +1,232 @@
+import { ui } from '../../../shared/ui-language'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { animate } from 'animejs'
 import {
   ArrowLeft,
   ChevronDown,
+  ChevronRight,
+  Compass,
+  Mail,
   Clock3,
   Disc3,
   Grid2X2,
-  Headphones,
+  Minus,
+  Square,
+  Copy,
   Heart,
-  Library,
-  ListMusic,
-  LogIn,
-  Mail,
-  MessageCircle,
+  UserRound,
   Search,
   Settings2,
   X,
 } from 'lucide-react'
+import { UserAvatar } from '../design/UserAvatar'
+import { IconButton, UnreadBadge } from '../design/Primitives'
+import type { NavigationDirection } from '../../../shared/desktop'
 import type { PanelId } from '../../../shared/panels'
 import { InlineDialog, PanelHeaderTarget, SurfaceActive } from './Surface'
-import type { useAdaptiveNavigation } from './useAdaptiveNavigation'
+import { isCompactWindow, type Layout, type useAdaptiveNavigation } from './useAdaptiveNavigation'
 
 type Navigation = ReturnType<typeof useAdaptiveNavigation>
 type OpenProps = { open(id: PanelId): void }
-const links = [
-  ['search', '搜索', Search],
-  ['library', '音乐库', Library],
-  ['liked', '我喜欢的音乐', Heart],
-  ['recent', '最近播放', Clock3],
-  ['created', '创建的歌单', ListMusic],
-  ['albums', '收藏的专辑', Disc3],
-] as const
-export function Sidebar({
-  open,
-  active,
-  nickname,
-  avatar,
-  unread,
-}: OpenProps & { active: PanelId | null; nickname?: string; avatar?: string; unread: number }) {
+export function WindowButtons({
+  maximized,
+  fullScreen,
+}: {
+  maximized: boolean
+  fullScreen: boolean
+}) {
+  if (fullScreen) return null
   return (
-    <aside className="main-sidebar" aria-label="主导航">
-      <div className="brand-lockup">
-        <span>
-          <Headphones size={22} />
-        </span>
-        <strong>music party</strong>
-      </div>
-      <nav>
-        {links.map(([id, name, Icon]) => (
-          <button
-            key={id}
-            aria-current={active === id ? 'page' : undefined}
-            onClick={() => open(id)}
-          >
-            <Icon size={18} />
-            {name}
-          </button>
-        ))}
-      </nav>
-      <nav className="sidebar-secondary">
-        <button onClick={() => open('room')}>
-          <Headphones size={18} />
-          一起听
-        </button>
-        <button onClick={() => open('private')}>
-          <Mail size={18} />
-          私信{unread > 0 && <small>{Math.min(99, unread)}</small>}
-        </button>
-        <button
-          aria-current={active === 'settings' ? 'page' : undefined}
-          onClick={() => open('settings')}
-        >
-          <Settings2 size={18} />
-          设置
-        </button>
-        <button onClick={() => open('windows')}>
-          <Grid2X2 size={18} />
-          全部功能
-        </button>
-      </nav>
-      <button className="sidebar-account" onClick={() => open(nickname ? 'settings' : 'login')}>
-        {avatar ? <img src={avatar} alt="" /> : <LogIn size={17} />}
-        <span>{nickname || '扫码登录'}</span>
-      </button>
-    </aside>
-  )
-}
-export function CompanionTabs({ open, active }: OpenProps & { active: PanelId | null }) {
-  return (
-    <nav className="companion-tabs" aria-label="播放内容">
-      {(
-        [
-          ['queue', '队列', ListMusic],
-          ['lyrics', '歌词', Disc3],
-          ['chat', '聊天', MessageCircle],
-          ['library', '音乐库', Library],
-        ] as const
-      ).map(([id, name, Icon]) => (
-        <button key={id} aria-current={active === id ? 'page' : undefined} onClick={() => open(id)}>
-          <Icon size={15} />
-          <span>{name}</span>
-        </button>
-      ))}
-      <button aria-label="全部功能" title="全部功能" onClick={() => open('windows')}>
-        <Grid2X2 size={16} />
-      </button>
-    </nav>
+    <div className="window-buttons" role="group" aria-label={ui('窗口控制', 'Window controls')}>
+      <IconButton
+        label={ui('最小化', 'Minimize')}
+        onClick={() => void window.together.windowAction('minimize')}
+      >
+        <Minus size={14} />
+      </IconButton>
+      <IconButton
+        label={maximized ? ui('还原窗口', 'Restore') : ui('最大化', 'Maximize')}
+        onClick={() => void window.together.windowAction('toggle-maximize')}
+      >
+        {maximized ? <Copy size={12} /> : <Square size={12} />}
+      </IconButton>
+      <IconButton
+        label={ui('关闭窗口', 'Close window')}
+        onClick={() => void window.together.windowAction('close')}
+      >
+        <X size={15} />
+      </IconButton>
+    </div>
   )
 }
 
+export function WindowChrome({
+  open,
+  nickname,
+  avatar,
+  unread,
+  blocked,
+  onBack,
+  layout,
+  searchShortcut,
+}: OpenProps & {
+  nickname?: string
+  avatar?: string
+  unread: number
+  blocked: boolean
+  onBack?: () => void
+  layout: Layout
+  searchShortcut: boolean
+}) {
+  if (onBack)
+    return (
+      <div className="immersive-window-tools" inert={blocked}>
+        <IconButton
+          className="chrome-back"
+          label={ui('返回浏览', 'Back to browsing')}
+          onClick={onBack}
+        >
+          <ChevronDown size={17} />
+        </IconButton>
+      </div>
+    )
+  return (
+    <header className="mp-window-chrome">
+      <div className="mp-chrome-brand">
+        <span className="mp-mark">
+          <Disc3 size={13} strokeWidth={2.2} />
+        </span>
+        <strong>Music Party</strong>
+      </div>
+      <div className="mp-chrome-actions" inert={blocked}>
+        {searchShortcut && (
+          <IconButton
+            className="chrome-search"
+            label={ui('全站搜索', 'Search all music')}
+            onClick={() => open('search')}
+          >
+            <Search size={16} />
+          </IconButton>
+        )}
+        {layout !== 'wide' && (
+          <IconButton
+            className="chrome-menu"
+            label={ui('全部功能', 'All features')}
+            aria-description={
+              layout === 'compact' && unread
+                ? ui('{0} 条未读私信', 'Unread messages: {0}', unread)
+                : undefined
+            }
+            onClick={() => open('windows')}
+          >
+            <Grid2X2 size={16} />
+            {layout === 'compact' && unread > 0 && (
+              <span className="unread-dot" aria-hidden="true" />
+            )}
+          </IconButton>
+        )}
+        <IconButton
+          className="chrome-account"
+          label={
+            unread
+              ? ui('查看未读私信', 'View unread messages')
+              : nickname
+                ? nickname + ui(' · 打开设置', ' · Open settings')
+                : ui('登录账号', 'Sign in')
+          }
+          onClick={() => open(unread ? 'private' : nickname ? 'settings' : 'login')}
+        >
+          {nickname ? <UserAvatar name={nickname} src={avatar} /> : <UserRound size={16} />}
+          <UnreadBadge count={unread} />
+        </IconButton>
+      </div>
+    </header>
+  )
+}
+
+export function Sidebar({
+  open,
+  trail,
+  unread,
+  likedCount,
+}: OpenProps & {
+  trail: PanelId[]
+  unread: number
+  likedCount?: number
+}) {
+  const mainLinks = [
+    ['library', ui('音乐库', 'Library'), Compass],
+    ['search', ui('搜索', 'Search'), Search],
+    ['liked', ui('我喜欢的音乐', 'Liked Songs'), Heart],
+    ['recent', ui('最近播放', 'Recently played'), Clock3],
+  ] as const
+  const accountLinks = [
+    ['private', ui('私信', 'Messages'), Mail],
+    ['settings', ui('设置', 'Settings'), Settings2],
+  ] as const
+  const sidebarIds = new Set<PanelId>([...mainLinks, ...accountLinks].map(([id]) => id))
+  const active = trail.filter((id) => sidebarIds.has(id)).at(-1)
+  return (
+    <aside
+      data-list-viewport=""
+      className="main-sidebar"
+      aria-label={ui('主导航', 'Main navigation')}
+    >
+      {[mainLinks, accountLinks].map((links, group) => (
+        <nav
+          key={group}
+          aria-label={
+            group ? ui('账号与设置', 'Account and settings') : ui('音乐导航', 'Music navigation')
+          }
+        >
+          {links.map(([id, name, Icon]) => (
+            <button
+              key={id}
+              title={name}
+              aria-label={name}
+              aria-description={
+                id === 'liked' && likedCount !== undefined
+                  ? ui('{0} 首', likedCount === 1 ? '{0} track' : '{0} tracks', likedCount)
+                  : undefined
+              }
+              aria-current={active === id ? 'page' : undefined}
+              onClick={() => open(id)}
+            >
+              <Icon size={16} />
+              <span>{name}</span>
+              {id === 'private' && <UnreadBadge count={unread} />}
+              {id === 'liked' && likedCount !== undefined && (
+                <small className="mp-nav-count">{likedCount}</small>
+              )}
+            </button>
+          ))}
+        </nav>
+      ))}
+    </aside>
+  )
+}
 export function useShellKeyboard(nav: Navigation) {
+  const navigate = useEffectEvent((direction: NavigationDirection) => {
+    const popover = document.querySelector<HTMLElement>(':popover-open')
+    if (popover) {
+      if (direction === 'back') popover.hidePopover()
+      return
+    }
+    if (document.querySelector('.modal-backdrop')) {
+      if (direction === 'back')
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+        )
+      return
+    }
+    if (direction === 'back') nav.back()
+    else nav.forward()
+  })
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     if (
       e.defaultPrevented ||
       e.isComposing ||
-      document.querySelector('.modal-backdrop, :popover-open')
+      document.querySelector('.modal-backdrop, :popover-open, select:open')
     )
       return
     if (e.key === 'Tab' && nav.dialog) {
@@ -140,7 +252,7 @@ export function useShellKeyboard(nav: Navigation) {
     if (e.key === 'Escape' && nav.backAvailable) {
       e.preventDefault()
       nav.back()
-    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+    } else if ((e.ctrlKey || e.metaKey) && ['f', 'k'].includes(e.key.toLowerCase())) {
       e.preventDefault()
       if (nav.dialog) return
       const focusSearch = () => {
@@ -160,44 +272,159 @@ export function useShellKeyboard(nav: Navigation) {
     }
   })
   useEffect(() => {
+    // Some drivers report each side button twice, through Electron and through Chromium.
+    // Pair opposite sources in either order, without throttling consecutive physical presses.
+    type Source = 'native' | 'renderer'
+    let unmatched: { source: Source; direction: NavigationDirection; time: number }[] = []
+    const onGesture = (direction: NavigationDirection, source: Source) => {
+      const time = performance.now()
+      unmatched = unmatched.filter((gesture) => time - gesture.time < 250)
+      const pair = unmatched.findIndex(
+        (gesture) => gesture.direction === direction && gesture.source !== source,
+      )
+      if (pair >= 0) {
+        unmatched.splice(pair, 1)
+        return
+      }
+      unmatched.push({ source, direction, time })
+      navigate(direction)
+    }
+    const unsubscribe = window.together.onNavigate((direction) => onGesture(direction, 'native'))
+    const onMouse = (e: MouseEvent) => {
+      if (e.button !== 3 && e.button !== 4) return
+      e.preventDefault()
+      if (e.type === 'mousedown') onGesture(e.button === 3 ? 'back' : 'forward', 'renderer')
+    }
+    const onNavigationKey = (e: KeyboardEvent) => {
+      if (e.isComposing || e.ctrlKey || e.metaKey || e.shiftKey) return
+      const back = e.key === 'BrowserBack' || (e.altKey && e.key === 'ArrowLeft')
+      const forward = e.key === 'BrowserForward' || (e.altKey && e.key === 'ArrowRight')
+      if (!back && !forward) return
+      e.preventDefault()
+      e.stopPropagation()
+      const direction = back ? 'back' : 'forward'
+      if (e.altKey) navigate(direction)
+      else onGesture(direction, 'renderer')
+    }
+    window.addEventListener('mousedown', onMouse, true)
+    window.addEventListener('mouseup', onMouse, true)
+    window.addEventListener('auxclick', onMouse, true)
+    window.addEventListener('keydown', onNavigationKey, true)
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      unsubscribe()
+      window.removeEventListener('mousedown', onMouse, true)
+      window.removeEventListener('mouseup', onMouse, true)
+      window.removeEventListener('auxclick', onMouse, true)
+      window.removeEventListener('keydown', onNavigationKey, true)
+      document.removeEventListener('keydown', onKey)
+    }
   }, [])
+}
+
+type Crumb = { key: string; label: string; level: number }
+
+export function usePanelEntrance(drawer: PanelId | null, dialog: PanelId | undefined) {
+  const shell = useRef<HTMLDivElement>(null)
+  const previousDrawer = useRef<PanelId | null>(null)
+  useLayoutEffect(() => {
+    const opening = dialog || (drawer && !previousDrawer.current)
+    previousDrawer.current = drawer
+    if (!opening || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const panel = shell.current?.querySelector<HTMLElement>(
+      dialog ? '.surface-dialog' : '.surface-drawer',
+    )
+    if (!panel) return
+    const motion = animate(panel, {
+      clipPath: [
+        isCompactWindow()
+          ? 'inset(100% 0% 0% 0%)'
+          : dialog
+            ? 'inset(4% 0% 0% 0%)'
+            : 'inset(0% 0% 0% 100%)',
+        'inset(0% 0% 0% 0%)',
+      ],
+      duration: isCompactWindow() ? 210 : 180,
+      ease: 'outCubic',
+      onComplete: () => panel.style.removeProperty('clip-path'),
+    })
+    return () => {
+      motion.revert()
+    }
+  }, [drawer, dialog])
+  return shell
+}
+
+function PageNavigation({
+  trail,
+  onLevel,
+  onBack,
+  backLabel,
+}: {
+  trail: Crumb[]
+  onLevel(level: number): void
+  onBack?: () => void
+  backLabel: string
+}) {
+  return (
+    <nav className="page-navigation" aria-label={ui('页面导航', 'Page navigation')}>
+      {onBack && (
+        <IconButton className="icon-btn surface-back" label={backLabel} onClick={onBack}>
+          <ArrowLeft size={16} />
+        </IconButton>
+      )}
+      <ol className="page-crumbs">
+        {trail.map((crumb, index) => (
+          <li key={crumb.key}>
+            {index > 0 && (
+              <span className="crumb-separator" aria-hidden="true">
+                /
+              </span>
+            )}
+            {index === trail.length - 1 ? (
+              <h1 aria-current="page" title={crumb.label}>
+                {crumb.label}
+              </h1>
+            ) : (
+              <button type="button" title={crumb.label} onClick={() => onLevel(crumb.level)}>
+                {crumb.label}
+              </button>
+            )}
+          </li>
+        ))}
+      </ol>
+    </nav>
+  )
 }
 
 export function Surface({
   id,
   title,
   placement,
+  modal,
   blocked,
   close,
-  onMenu,
+  trail,
+  onLevel,
+  onBack,
+  backLabel,
   children,
 }: {
   id: PanelId
   title: string
-  placement: 'page' | 'companion' | 'drawer' | 'dialog' | 'immersive' | 'hidden'
+  placement: 'page' | 'drawer' | 'dialog' | 'immersive' | 'hidden'
+  modal: boolean
   blocked: boolean
   close?: () => void
-  onMenu?: () => void
+  trail: Crumb[]
+  onLevel(level: number): void
+  onBack?: () => void
+  backLabel: string
   children: ReactNode
 }) {
   const [header, setHeader] = useState<HTMLElement | null>(null)
   const root = useRef<HTMLElement>(null)
   const floating = placement === 'dialog' || placement === 'drawer' || placement === 'immersive'
-  useLayoutEffect(() => {
-    const el = root.current
-    if (!el || !floating || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    const motion = animate(
-      el,
-      placement === 'drawer'
-        ? { translateX: [32, 0], opacity: [0.6, 1], duration: 190, ease: 'outCubic' }
-        : { translateY: [8, 0], opacity: [0.8, 1], duration: 170, ease: 'outQuad' },
-    )
-    return () => {
-      motion.revert()
-    }
-  }, [placement, floating])
   useLayoutEffect(() => {
     if (!floating || blocked || document.querySelector('.modal-backdrop, :popover-open')) return
     const before = document.activeElement as HTMLElement | null
@@ -217,41 +444,38 @@ export function Surface({
       hidden={placement === 'hidden'}
       inert={blocked || placement === 'hidden'}
       aria-label={title}
-      role={placement === 'dialog' ? 'dialog' : undefined}
-      aria-modal={placement === 'dialog' ? true : undefined}
+      role={modal ? 'dialog' : undefined}
+      aria-modal={modal || undefined}
     >
       {placement !== 'immersive' && (
         <header className="panel-titlebar">
-          {close && (placement === 'page' || placement === 'companion') && (
-            <button
-              className="icon-btn surface-back"
-              aria-label={'关闭' + title}
-              title="返回"
+          {placement === 'drawer' && !onBack && close && (
+            <IconButton
+              className="icon-btn drawer-collapse"
+              label={ui('关闭{0}', 'Close {0}', title)}
               onClick={close}
             >
-              {placement === 'page' ? <ArrowLeft size={17} /> : <ChevronDown size={17} />}
-            </button>
+              <ChevronRight size={17} />
+            </IconButton>
           )}
-          <h1>{title}</h1>
+          {trail.length ? (
+            <PageNavigation trail={trail} onLevel={onLevel} onBack={onBack} backLabel={backLabel} />
+          ) : (
+            <h1>{title}</h1>
+          )}
           <div className="panel-header-slot" ref={setHeader} />
-          {onMenu && (
+          {close && (placement === 'dialog' || (placement === 'drawer' && onBack)) && (
             <button
-              className="icon-btn surface-menu"
-              aria-label="全部功能"
-              title="全部功能"
-              onClick={onMenu}
+              className="icon-btn surface-close"
+              aria-label={ui('关闭{0}', 'Close {0}', title)}
+              onClick={close}
             >
-              <Grid2X2 size={16} />
-            </button>
-          )}
-          {close && (placement === 'dialog' || placement === 'drawer') && (
-            <button className="icon-btn surface-close" aria-label={'关闭' + title} onClick={close}>
               <X size={18} />
             </button>
           )}
         </header>
       )}
-      <div className="panel-content">
+      <div data-list-viewport="" className="panel-content">
         <SurfaceActive.Provider value={!blocked && placement !== 'hidden'}>
           <PanelHeaderTarget.Provider value={header}>
             <InlineDialog.Provider value={['room', 'match', 'members', 'add'].includes(id)}>

@@ -1,0 +1,252 @@
+@font-face {
+  font-family: Inter;
+  src: url('@fontsource-variable/inter/files/inter-latin-wght-normal.woff2') format('woff2');
+  font-weight: 100 900;
+  font-display: swap;
+}
+/* Semantic colors from the Music Party component library. */
+:root[data-theme='dark'] {
+  /* MD3 Tonal Surfaces — Warm Ink-Black (略带色温的墨黑表面) */
+  --mp-bg: #121116;
+  --mp-surface-0: #17151c;
+  --mp-surface-1: #1e1c25;
+  --mp-surface-2: #26232f;
+  --mp-surface-3: #302c3b;
+  --mp-surface-solid-overlay: rgba(24, 22, 31, 0.94);
+  --mp-surface-drawer: rgba(25, 23, 32, 0.96);
+  --mp-surface-chat-bubble: rgba(34, 31, 44, 0.93);
+  --mp-surface-input: rgba(22, 20, 29, 0.94);
+
+  /* Primary Accent — Misty Violet (雾紫，支持自定义切换) */
+  --mp-primary: #a99bf2;
+  --mp-on-primary: #1c143b;
+  --mp-primary-container: rgba(169, 155, 242, 0.18);
+  --mp-on-primary-container: #e7e1ff;
+  --mp-primary-hover: rgba(169, 155, 242, 0.26);
+  --mp-primary-border: rgba(169, 155, 242, 0.42);
+
+  /* Semantic Text Hierarchy (>= 4.5:1 body contrast on surfaces) */
+  --mp-text-primary: #f4f1f8;
+  --mp-text-secondary: #bbb4c9;
+  --mp-text-muted: #8e879e;
+  --mp-text-author: #cfc7e8;
+  --mp-text-link: #b9adff;
+
+  /* Borders & Dividers */
+  --mp-border: rgba(244, 241, 248, 0.08);
+  --mp-border-strong: rgba(244, 241, 248, 0.16);
+  --mp-hover-row: rgba(244, 241, 248, 0.055);
+  --mp-active-row: rgba(169, 155, 242, 0.14);
+
+  /* Shared Semantic Status Colors */
+  --mp-like: #f26d85;
+  --mp-like-bg: rgba(242, 109, 133, 0.16);
+  --mp-success: #56c991;
+  --mp-success-bg: rgba(86, 201, 145, 0.16);
+  --mp-warning: #f0b45b;
+  --mp-warning-bg: rgba(240, 180, 91, 0.16);
+  --mp-danger: #f27474;
+  --mp-danger-bg: rgba(242, 116, 116, 0.16);
+  --mp-info: #7ab8f5;
+  --mp-info-bg: rgba(122, 184, 245, 0.16);
+
+  --mp-shadow-elevated: 0 18px 44px -10px rgba(0, 0, 0, 0.62), 0 0 0 1px rgba(255, 255, 255, 0.07);
+}
+
+:root,
+:root[data-theme='light'] {
+  /* Neutral light surfaces */
+  --mp-bg: #f6f6f6;
+  --mp-surface-0: #fcfcfc;
+  --mp-surface-1: #eeeeee;
+  --mp-surface-2: #e5e5e5;
+  --mp-surface-3: #dadada;
+  --mp-surface-solid-overlay: rgba(255, 255, 255, 0.96);
+  --mp-surface-drawer: rgba(255, 255, 255, 0.97);
+  --mp-surface-chat-bubble: rgba(255, 255, 255, 0.95);
+  --mp-surface-input: rgba(255, 255, 255, 0.96);
+
+  /* Primary Accent — Deep Misty Violet for 4.5:1+ contrast on light surfaces */
+  --mp-primary: #6351b8;
+  --mp-on-primary: #ffffff;
+  --mp-primary-container: rgba(99, 81, 184, 0.13);
+  --mp-on-primary-container: #2e206e;
+  --mp-primary-hover: rgba(99, 81, 184, 0.2);
+  --mp-primary-border: rgba(99, 81, 184, 0.36);
+
+  /* Semantic Text Hierarchy */
+  --mp-text-primary: #1f1c24;
+  --mp-text-secondary: #585264;
+  --mp-text-muted: #766f84;
+  --mp-text-author: #42386e;
+  --mp-text-link: #5542ad;
+
+  /* Borders & Dividers */
+  --mp-border: rgba(31, 28, 36, 0.085);
+  --mp-border-strong: rgba(31, 28, 36, 0.16);
+  --mp-hover-row: rgba(31, 28, 36, 0.045);
+  --mp-active-row: rgba(99, 81, 184, 0.11);
+
+  /* Shared Semantic Status Colors */
+  --mp-like: #d43b59;
+  --mp-like-bg: rgba(212, 59, 89, 0.12);
+  --mp-success: #1f8a58;
+  --mp-success-bg: rgba(31, 138, 88, 0.12);
+  --mp-warning: #b57214;
+  --mp-warning-bg: rgba(181, 114, 20, 0.13);
+  --mp-danger: #c93838;
+  --mp-danger-bg: rgba(201, 56, 56, 0.12);
+  --mp-info: #2568b3;
+  --mp-info-bg: rgba(37, 104, 179, 0.12);
+
+  --mp-shadow-elevated: 0 16px 38px -10px rgba(20, 20, 20, 0.16), 0 0 0 1px rgba(31, 28, 36, 0.08);
+}
+
+/* Custom Accent Presets */
+[data-mp-accent='jade'][data-theme='dark'] {
+  --mp-primary: #6fd4b5;
+  --mp-on-primary: #0d2b22;
+  --mp-primary-container: rgba(111, 212, 181, 0.17);
+  --mp-on-primary-container: #d8fcee;
+  --mp-primary-border: rgba(111, 212, 181, 0.4);
+  --mp-text-link: #87e2c6;
+  --mp-active-row: rgba(111, 212, 181, 0.13);
+}
+[data-mp-accent='jade'][data-theme='light'] {
+  --mp-primary: #1f7a61;
+  --mp-on-primary: #ffffff;
+  --mp-primary-container: rgba(31, 122, 97, 0.13);
+  --mp-on-primary-container: #104738;
+  --mp-primary-border: rgba(31, 122, 97, 0.35);
+  --mp-text-link: #196b54;
+  --mp-active-row: rgba(31, 122, 97, 0.11);
+}
+
+[data-mp-accent='amber'][data-theme='dark'] {
+  --mp-primary: #f0b27a;
+  --mp-on-primary: #331c08;
+  --mp-primary-container: rgba(240, 178, 122, 0.18);
+  --mp-on-primary-container: #ffe7d1;
+  --mp-primary-border: rgba(240, 178, 122, 0.4);
+  --mp-text-link: #f5c396;
+  --mp-active-row: rgba(240, 178, 122, 0.13);
+}
+[data-mp-accent='amber'][data-theme='light'] {
+  --mp-primary: #a35719;
+  --mp-on-primary: #ffffff;
+  --mp-primary-container: rgba(163, 87, 25, 0.13);
+  --mp-on-primary-container: #4f2606;
+  --mp-primary-border: rgba(163, 87, 25, 0.35);
+  --mp-text-link: #914b12;
+  --mp-active-row: rgba(163, 87, 25, 0.11);
+}
+
+[data-mp-accent='sky'][data-theme='dark'] {
+  --mp-primary: #8abdf7;
+  --mp-on-primary: #0f243d;
+  --mp-primary-container: rgba(138, 189, 247, 0.18);
+  --mp-on-primary-container: #dcecff;
+  --mp-primary-border: rgba(138, 189, 247, 0.4);
+  --mp-text-link: #a1cbfa;
+  --mp-active-row: rgba(138, 189, 247, 0.13);
+}
+[data-mp-accent='sky'][data-theme='light'] {
+  --mp-primary: #295fa6;
+  --mp-on-primary: #ffffff;
+  --mp-primary-container: rgba(41, 95, 166, 0.13);
+  --mp-on-primary-container: #143563;
+  --mp-primary-border: rgba(41, 95, 166, 0.35);
+  --mp-text-link: #235496;
+  --mp-active-row: rgba(41, 95, 166, 0.11);
+}
+:root[data-mp-accent] {
+  --mp-primary-hover: color-mix(in srgb, var(--mp-primary) 25%, transparent);
+}
+:root[data-custom-accent]:not([data-mp-accent]) {
+  --mp-primary: var(--accent-fill);
+  --mp-on-primary: var(--accent-onFill);
+  --mp-primary-container: var(--accent-container);
+  --mp-on-primary-container: var(--accent-text);
+  --mp-primary-hover: var(--accent-containerHover);
+  --mp-primary-border: var(--accent-border);
+  --mp-text-link: var(--accent-text);
+  --mp-active-row: var(--accent-container);
+}
+
+/* Shared roles used by existing playback, library and messaging controls. */
+:root,
+:root[data-theme] {
+  --hf-primary: var(--mp-primary);
+  --hf-on-primary: var(--mp-on-primary);
+  --hf-primary-soft: var(--mp-primary-container);
+  --hf-on-primary-soft: var(--mp-on-primary-container);
+  --hf-bg: var(--mp-bg);
+  --hf-surface: var(--mp-surface-0);
+  --hf-surface-2: var(--mp-surface-1);
+  --hf-surface-3: var(--mp-surface-2);
+  --hf-ink: var(--mp-text-primary);
+  --hf-ink-2: var(--mp-text-secondary);
+  --hf-ink-3: var(--mp-text-muted);
+  --hf-line: var(--mp-border-strong);
+  --hf-line-2: var(--mp-border);
+  --hf-inverse: var(--mp-text-primary);
+  --hf-on-inverse: var(--mp-bg);
+  --hf-success: var(--mp-success);
+  --hf-success-soft: var(--mp-success-bg);
+  --hf-warning: var(--mp-warning);
+  --hf-warning-soft: var(--mp-warning-bg);
+  --hf-danger: var(--mp-danger);
+  --hf-danger-soft: var(--mp-danger-bg);
+  --mp-font-scale: var(--ui-font-scale, 1);
+  font-family:
+    'Inter', 'Noto Sans SC', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+  -webkit-font-smoothing: antialiased;
+}
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+:root[data-theme='dark'] {
+  color-scheme: dark;
+}
+
+/* Skin alpha applies only to fills. With no wallpaper the native color is used verbatim. */
+@function --skin-fill(--color <color>) returns <color> {
+  --paint: rgb(from var(--color) r g b / var(--skin-component-alpha));
+  result: var(--paint, var(--color));
+}
+/* Hover and selected tints retain the relative strength of the original theme color. */
+@function --skin-tint(--color <color>) returns <color> {
+  --paint: rgb(from var(--color) r g b / calc(alpha * var(--skin-component-alpha)));
+  result: var(--paint, var(--color));
+}
+
+/* Adaptive wallpaper surfaces from the second component library. */
+:root {
+  --mp-popup-fill: rgb(from var(--mp-surface-drawer) r g b / var(--skin-popup-alpha, 0.88));
+  --wp-component-base: #ffffff;
+  --wp-self-base: #e3dcfc;
+  --wp-sidebar-base: #eeeeee;
+  --wp-bar-base: #fcfcfc;
+  --wp-component-border-alpha: 0.12;
+  --wp-component: --skin-fill(var(--wp-component-base));
+  --wp-self: --skin-fill(var(--wp-self-base));
+  --wp-component-border: rgb(
+    from var(--mp-text-primary) r g b /
+      calc(var(--wp-component-border-alpha) * var(--skin-component-alpha, 1))
+  );
+  --wp-divider: rgb(
+    from var(--mp-text-primary) r g b / max(0.07, calc(0.11 * var(--skin-component-alpha, 1)))
+  );
+  --wp-layout-border: rgb(
+    from var(--mp-text-primary) r g b / calc(0.09 * var(--skin-layout-alpha, 1))
+  );
+}
+:root[data-theme='dark'] {
+  --wp-component-base: #201d2a;
+  --wp-self-base: #463a80;
+  --wp-sidebar-base: #191720;
+  --wp-bar-base: #18161f;
+  --wp-component-border-alpha: 0.13;
+}

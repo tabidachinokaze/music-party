@@ -71,6 +71,11 @@ test('official custom stickers load every page, upload to the library and send d
           emojiGroups: [
             { id: -2, name: '自定义表情', edit: true },
             { id: 22, name: '官方表情包', edit: false },
+            ...Array.from({ length: 30 }, (_, index) => ({
+              id: 100 + index,
+              name: `我的分组 ${index + 1}`,
+              edit: true,
+            })),
           ],
         },
       }
@@ -186,24 +191,10 @@ test('official custom stickers load every page, upload to the library and send d
     await page.getByRole('button', { name: '表情包', exact: true }).click()
     await expect(page.getByRole('alert')).toContainText('请重试表情列表')
     await page.getByRole('button', { name: '重试', exact: true }).click()
-    const loading = page.locator('.cloud-sticker-loading')
-    const expectCompactLoading = async (text: string) => {
-      await expect(loading).toHaveText(text)
-      const layout = await loading.evaluate((node) => {
-        const bounds = node.getBoundingClientRect(),
-          modal = node.closest('[role="dialog"]')!,
-          popup = modal.getBoundingClientRect()
-        return {
-          loadingHeight: bounds.height,
-          bottomSpace: popup.bottom - bounds.bottom,
-          overflows: modal.scrollWidth > modal.clientWidth,
-        }
-      })
-      expect(layout.loadingHeight).toBeLessThanOrEqual(36)
-      expect(layout.bottomSpace).toBeLessThanOrEqual(32)
-      expect(layout.overflows).toBe(false)
-    }
-    await expectCompactLoading('正在读取表情…')
+    const firstLoad = page.locator('.cloud-sticker-grid').getByRole('status')
+    await expect(firstLoad).toHaveText('正在读取表情…')
+    await expect(page.getByRole('button', { name: '常用表情', exact: true })).toHaveCount(0)
+    await expect(page.locator('.sticker-tabs')).toHaveCount(0)
     releaseInitialPage()
     // The first page is shorter than the viewport, so another page fills it automatically.
     await expect(page.locator('.cloud-sticker-grid button')).toHaveCount(20)
@@ -214,6 +205,23 @@ test('official custom stickers load every page, upload to the library and send d
       ),
     ).toHaveLength(0)
     const stickerGrid = page.locator('.cloud-sticker-grid')
+    const picker = page.getByRole('dialog', { name: '表情', exact: true })
+    const geometry = () =>
+      stickerGrid.evaluate((grid) => {
+        const modal = grid.closest('[role="dialog"]')!.getBoundingClientRect()
+        const bounds = grid.getBoundingClientRect()
+        const firstVisible = [
+          ...grid.querySelectorAll<HTMLButtonElement>('button[data-sticker-key]'),
+        ].find((button) => button.getBoundingClientRect().bottom > bounds.top + 1)
+        return {
+          top: modal.top,
+          bottom: modal.bottom,
+          gridTop: bounds.top,
+          gridHeight: bounds.height,
+          anchor: firstVisible?.dataset.stickerKey,
+          anchorTop: firstVisible?.getBoundingClientRect().top,
+        }
+      })
     await stickerGrid.evaluate((node) => {
       node.scrollTop = node.scrollHeight
       node.dispatchEvent(new Event('scroll'))
@@ -226,12 +234,60 @@ test('official custom stickers load every page, upload to the library and send d
     await stickerGrid.evaluate((node) => {
       for (let i = 0; i < 5; i++) node.dispatchEvent(new Event('scroll'))
     })
+    const beforeTail = await geometry()
     await page.getByRole('button', { name: '重试', exact: true }).click()
-    await expectCompactLoading('正在读取更多表情…')
+    await expect(
+      picker.locator('.cloud-sticker-toolbar').getByRole('status', { name: '正在读取更多表情…' }),
+    ).toBeVisible()
+    expect(await geometry()).toEqual(beforeTail)
     await expect(stickerGrid.locator('button')).toHaveCount(20)
     releaseTailPage()
     await expect(page.getByText('23 个表情', { exact: true })).toBeVisible()
     await expect(page.locator('.cloud-sticker-grid button')).toHaveCount(23)
+    expect(await geometry()).toEqual(beforeTail)
+    const groupPicker = page.getByRole('combobox', { name: '表情分组' })
+    await groupPicker.click()
+    await expect(page.locator('select:open')).toBeVisible()
+    const firstOption = groupPicker.locator('option').first()
+    const originalWidth = (await firstOption.boundingBox())!.width
+    await player.keyboard.press('Escape')
+    const classic = await player.addStyleTag({
+      content: `
+        :is(.scrollbar-probe, [data-list-viewport])::-webkit-scrollbar,
+        select::picker(select)::-webkit-scrollbar { width: 15px }
+      `,
+    })
+    await groupPicker.click()
+    const groupList = groupPicker.locator('.sticker-group-options')
+    await expect(groupList).toHaveAttribute('data-overlayscrollbars', '')
+    const row = (await firstOption.boundingBox())!
+    const trigger = (await groupPicker.boundingBox())!
+    expect(row.width).toBeCloseTo(originalWidth, 0)
+    expect(row.x - trigger.x).toBeCloseTo(trigger.x + trigger.width - row.x - row.width, 0)
+    const thumb = groupList.locator(
+      '.os-scrollbar-vertical.os-scrollbar-visible .os-scrollbar-handle',
+    )
+    await expect(thumb).toBeVisible()
+    const bounds = (await thumb.boundingBox())!
+    const x = bounds.x + bounds.width / 2
+    const y = bounds.y + bounds.height / 2
+    await player.mouse.move(x, y)
+    await player.mouse.down()
+    await player.mouse.move(x, y + 48, { steps: 6 })
+    await player.mouse.up()
+    await expect.poll(() => groupList.evaluate((node) => node.scrollTop)).toBeGreaterThan(20)
+    await player.keyboard.press('End')
+    await expect(groupPicker.locator('option').last()).toBeInViewport({ ratio: 1 })
+    await expect(groupPicker.locator('option').first()).not.toBeInViewport()
+    await player.keyboard.press('Escape')
+    await expect(page.locator('select:open')).toHaveCount(0)
+    await expect(groupPicker).toBeFocused()
+    await expect(groupPicker).toHaveValue('-2')
+    await classic.evaluate((el) => el.parentNode!.removeChild(el))
+    await groupPicker.click()
+    await page.getByRole('dialog', { name: '表情', exact: true }).getByRole('heading').click()
+    await expect(page.locator('select:open')).toHaveCount(0)
+    await expect(groupPicker).toBeVisible()
     expect(
       calls.filter((call) => call.route.endsWith('/groups/detail/page') && !call.args.data.cursor),
     ).toHaveLength(firstPageCalls)
@@ -274,6 +330,13 @@ test('official custom stickers load every page, upload to the library and send d
     expect(calls.filter((call) => call.route.endsWith('/groups/detail/page'))).toHaveLength(
       pagesBeforeReopen,
     )
+    const uploadButton = page.getByRole('button', { name: '上传自定义表情', exact: true })
+    const uploadBounds = (await uploadButton.boundingBox())!
+    const uploadText = (await uploadButton.locator('span').boundingBox())!
+    expect(uploadText.y).toBeGreaterThanOrEqual(uploadBounds.y)
+    expect(uploadText.y + uploadText.height).toBeLessThanOrEqual(
+      uploadBounds.y + uploadBounds.height,
+    )
     const chooser = player.waitForEvent('filechooser')
     await page.getByRole('button', { name: '上传自定义表情', exact: true }).click()
     await (await chooser).setFiles({ name: '新增.gif', mimeType: 'image/gif', buffer: gif })
@@ -296,6 +359,7 @@ test('official custom stickers load every page, upload to the library and send d
       .locator('.cloud-sticker-grid')
       .evaluate((node) => node.scrollTop)
     await page.getByRole('button', { name: '整理表情', exact: true }).click()
+    await expect(groupPicker).toBeDisabled()
     await page.getByRole('button', { name: '选择删除 收藏表情23', exact: true }).click()
     await page.getByRole('button', { name: '删除所选 (1)', exact: true }).click()
     await expect(page.getByText('23 个表情', { exact: true })).toBeVisible()
@@ -316,9 +380,12 @@ test('official custom stickers load every page, upload to the library and send d
     })
     await page.getByRole('button', { name: '发送自定义表情 新增.gif', exact: true }).click()
     await expect(page.getByRole('dialog', { name: '表情', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('log', { name: '私信消息' }).locator('.message-image')).toHaveCount(
-      1,
-    )
+    const sentSticker = page.getByRole('log', { name: '私信消息' }).locator('.chat-bubble')
+    await expect(sentSticker).toHaveCount(1)
+    await expect(sentSticker.locator('.message-caption')).toHaveCount(0)
+    await expect(
+      sentSticker.getByRole('button', { name: '查看图片：新增.gif', exact: true }),
+    ).toBeVisible()
     await expect(page.getByLabel('私信内容')).toHaveValue('保留输入的文字')
     const sent = JSON.parse(
       calls.find((call) => call.route === '/api/communication/send/msg')!.args.data.sendMsgBody,
@@ -328,6 +395,56 @@ test('official custom stickers load every page, upload to the library and send d
       emojiId: '5000',
       emojiGroupId: '-2',
       format: 'gif',
+    })
+    await test.step('chat tools share one panel and preserve the editor across layouts', async () => {
+      const editor = page.getByLabel('私信内容')
+      for (const [width, theme, fontScale] of [
+        [1159, 'light', 100],
+        [432, 'dark', 150],
+      ] as const) {
+        await player.evaluate((settings) => window.together.updatePreferences(settings), {
+          theme,
+          fontScale,
+        })
+        await widenPanel(app, player, width, 680)
+        await page.getByRole('button', { name: 'Emoji', exact: true }).click()
+        const picker = player.getByRole('dialog', { name: 'Emoji', exact: true })
+        const footer = player.locator('.adaptive-player-bar')
+        const checkPosition = async () => {
+          const panel = (await picker.boundingBox())!
+          const bar = (await footer.boundingBox())!
+          if (width === 432) return Math.abs(panel.y + panel.height - bar.y) <= 1
+          const thread = (await page.locator('.private-thread').boundingBox())!
+          return panel.x + panel.width <= thread.x && panel.y + panel.height <= bar.y
+        }
+        await expect.poll(checkPosition).toBe(true)
+        await expect(picker.getByRole('button', { name: '🎸', exact: true })).toHaveCount(1)
+        if (width === 1159) {
+          await page.getByRole('button', { name: '颜文字', exact: true }).click()
+          await expect(picker).toHaveCount(0)
+          const next = player.getByRole('dialog', { name: '颜文字', exact: true })
+          await expect(next).toBeVisible()
+          await next.getByRole('button', { name: '关闭颜文字' }).click()
+        } else {
+          await player.keyboard.press('Escape')
+          await expect(picker).toHaveCount(0)
+          await page.getByRole('button', { name: '表情包', exact: true }).click()
+          const stickers = player.getByRole('dialog', { name: '表情', exact: true })
+          const heading = stickers.locator('.overlay-heading')
+          await stickers.getByRole('button', { name: '更多表情操作' }).click()
+          await stickers.getByRole('button', { name: '整理表情', exact: true }).click()
+          const before = await heading.boundingBox()
+          const content = stickers.locator('.composer-panel-content')
+          await content.evaluate((node) => (node.scrollTop = node.scrollHeight))
+          expect(await heading.boundingBox()).toEqual(before)
+          await expect(
+            stickers.getByRole('button', { name: '删除所选 (0)', exact: true }),
+          ).toBeInViewport()
+          await stickers.getByRole('button', { name: '关闭表情' }).click()
+        }
+        await expect(editor).toBeFocused()
+        await expect(editor).toHaveValue('保留输入的文字')
+      }
     })
     expect(uploads).toBe(1)
     expect(errors).toEqual([])

@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react'
+import { ui } from '../../shared/ui-language'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { RoomQueueEntry } from '../../shared/types'
-import { parseRoomQueue } from '../../shared/playback-queue'
 import type { ApiCall } from './music-data'
+import { RoomQueuePages, type RoomQueueMethod } from './room-queue-pages'
 
 export function useRoomQueue(
   api: ApiCall,
@@ -9,59 +10,64 @@ export function useRoomQueue(
   version: number | undefined,
   enabled: boolean,
   actionRevision = 0,
+  method: RoomQueueMethod = 'multiQueue',
+  limit = Infinity,
 ) {
-  const [entries, setEntries] = useState<RoomQueueEntry[]>([])
-  const [loading, setLoading] = useState(false)
-  const [complete, setComplete] = useState(false)
-  const [error, setError] = useState('')
+  const scope = `${roomId || ''}:${method}`
   const [revision, setRevision] = useState(0)
-  const epoch = useRef(0)
+  const [list, setList] = useState({ scope, entries: [] as RoomQueueEntry[], complete: false })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const latestApi = useRef(api)
+  latestApi.current = api
+  const pages = useMemo(() => new RoomQueuePages(), [scope, version, revision, actionRevision])
   useEffect(() => {
-    setEntries([])
-    setComplete(false)
+    let active = true
     setError('')
-  }, [roomId])
-  useEffect(() => {
-    const run = ++epoch.current
+    setList((prev) => (prev.scope === scope ? prev : { scope, entries: [], complete: false }))
     if (!roomId || !enabled) {
       setLoading(false)
       return
     }
-    setLoading(true)
-    setComplete(false)
-    setError('')
-    const load = async () => {
-      const rows = new Map<string, RoomQueueEntry>()
-      const cursors = new Set<string>()
-      let cursor: string | null = null
+    async function load(id: string) {
+      setLoading(!pages.complete && pages.rows.size < limit)
       try {
-        do {
-          const page = parseRoomQueue(
-            await api('multiQueue', { roomId, ...(cursor ? { cursor } : {}) }),
+        // A hidden tab may have already finished an in-flight page.
+        if (pages.complete || pages.rows.size >= limit) {
+          setList({ scope, entries: [...pages.rows.values()], complete: pages.complete })
+          return
+        }
+        while (!pages.complete && pages.rows.size < limit) {
+          await pages.next(latestApi.current, id, method)
+          if (!active) return
+          const entries = [...pages.rows.values()]
+          const complete = pages.complete
+          // Keep the old rows while refreshing up to the user's current scroll position.
+          setList((prev) =>
+            prev.scope === scope && !complete && entries.length < prev.entries.length
+              ? { ...prev, complete }
+              : { scope, entries, complete },
           )
-          if (run !== epoch.current) return
-          const before = rows.size
-          page.entries.forEach((entry) => rows.set(entry.songBizId, entry))
-          setEntries([...rows.values()])
-          if (!page.more) {
-            setComplete(true)
-            break
-          }
-          if (!page.cursor || cursors.has(page.cursor) || rows.size === before)
-            throw new Error('待播列表分页未继续前进，请刷新重试')
-          cursors.add(page.cursor)
-          cursor = page.cursor
-        } while (run === epoch.current)
-      } catch (error: any) {
-        if (run === epoch.current) setError(error.message || '待播列表读取失败')
+        }
+      } catch (cause) {
+        if (active)
+          setError(
+            cause instanceof Error ? cause.message : ui('列表读取失败', "Couldn't load the list"),
+          )
       } finally {
-        if (run === epoch.current) setLoading(false)
+        if (active) setLoading(false)
       }
     }
-    load()
+    void load(roomId)
     return () => {
-      epoch.current++
+      active = false
     }
-  }, [roomId, version, enabled, revision, actionRevision])
-  return { entries, loading, complete, error, refresh: () => setRevision((value) => value + 1) }
+  }, [roomId, method, pages, scope, enabled, limit])
+  return {
+    entries: list.scope === scope ? list.entries : [],
+    complete: list.scope === scope && list.complete,
+    loading,
+    error: list.scope === scope ? error : '',
+    refresh: () => setRevision((value) => value + 1),
+  }
 }

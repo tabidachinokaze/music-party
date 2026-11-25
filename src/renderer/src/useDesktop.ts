@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { DesktopInfo, PlayerCommand, Preferences } from '../../shared/desktop'
 import type { useParty } from './useParty'
 import { applyAppearance } from './appearance'
+import { getUiLanguage, setUiLanguage, ui } from '../../shared/ui-language'
 
 type Party = ReturnType<typeof useParty>
 export function useDesktop(
@@ -20,6 +21,8 @@ export function useDesktop(
   const [fullScreenBusy, setFullScreenBusy] = useState(false)
   const fullScreenLock = useRef(false)
   function applyInfo(next: DesktopInfo) {
+    setUiLanguage(next.preferences.language)
+    document.documentElement.lang = getUiLanguage()
     if (next.fullScreenRevision >= fullScreenState.current.fullScreenRevision)
       fullScreenState.current = {
         fullScreen: next.fullScreen,
@@ -37,7 +40,9 @@ export function useDesktop(
     try {
       applyInfo(await window.together.setFullScreen(value))
     } catch (error: any) {
-      latest.current.party.setError(error.message || '全屏切换失败')
+      latest.current.party.setError(
+        error.message || ui('全屏切换失败', 'Could not switch fullscreen mode'),
+      )
     } finally {
       fullScreenLock.current = false
       setFullScreenBusy(false)
@@ -59,7 +64,7 @@ export function useDesktop(
     } catch (e: any) {
       if (run === requestEpoch.current) {
         if (previous) applyInfo(previous)
-        setError(e.message || '设置保存失败')
+        setError(e.message || ui('设置保存失败', 'Could not save settings'))
       }
     }
     return false
@@ -71,12 +76,16 @@ export function useDesktop(
       return
     }
     if (!p.current) return
-    if (command === 'toggle') p.act('播放控制', p.togglePlay)
-    else if (command === 'play' && p.audio.current?.paused) p.act('播放', p.togglePlay)
-    else if (command === 'pause' && !p.audio.current?.paused) p.act('暂停', p.togglePlay)
-    else if (command === 'next') p.act('下一首', () => (p.room ? p.nextSong() : p.nextLocal(1)))
-    else if (command === 'previous' && p.auditioning) p.act('重播试听', () => p.seek(0))
-    else if (command === 'previous' && !p.room) p.act('上一首', () => p.nextLocal(-1))
+    if (command === 'toggle') p.act(ui('播放控制', 'Playback controls'), p.togglePlay)
+    else if (command === 'play' && p.audio.current?.paused) p.act(ui('播放', 'Play'), p.togglePlay)
+    else if (command === 'pause' && !p.audio.current?.paused)
+      p.act(ui('暂停', 'Pause'), p.togglePlay)
+    else if (command === 'next')
+      p.act(ui('下一首', 'Next'), () => (p.room ? p.nextSong() : p.nextLocal(1)))
+    else if (command === 'previous' && p.auditioning)
+      p.act(ui('重播试听', 'Replay preview'), () => p.seek(0))
+    else if (command === 'previous' && !p.room)
+      p.act(ui('上一首', 'Previous'), () => p.nextLocal(-1))
   }
   useEffect(() => {
     let active = true
@@ -97,7 +106,7 @@ export function useDesktop(
         setReady(true)
       })
       .catch((e: any) => {
-        if (active) setError(e.message || '桌面设置读取失败')
+        if (active) setError(e.message || ui('桌面设置读取失败', 'Could not load desktop settings'))
       })
     const keyboard = (event: KeyboardEvent) => {
       if (
@@ -205,12 +214,16 @@ export function useDesktop(
   useEffect(() => {
     if (!('mediaSession' in navigator)) return
     const media = navigator.mediaSession
-    const set = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+    const register = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
       try {
         media.setActionHandler(action, handler)
       } catch {}
     }
     const current = !!party.current
+    // Null restores Chromium's automatic play/pause handlers. Consume media actions when disabled.
+    const ignoreAction = () => {}
+    const set = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) =>
+      register(action, current && info?.preferences.mediaKeys === false ? ignoreAction : handler)
     const canSeek = !party.room || party.auditioning
     set('play', current ? () => command('play') : null)
     set('pause', current ? () => command('pause') : null)
@@ -220,7 +233,9 @@ export function useDesktop(
     const seek = (position: number) => {
       const p = latest.current.party
       if (!p.room || p.auditioning)
-        p.act('调整进度', () => p.seek(Math.max(0, Math.min(position, p.current?.duration || 0))))
+        p.act(ui('调整进度', 'Seek'), () =>
+          p.seek(Math.max(0, Math.min(position, p.current?.duration || 0))),
+        )
     }
     set(
       'seekto',
@@ -253,9 +268,9 @@ export function useDesktop(
         'seekbackward',
         'seekforward',
       ] as const)
-        set(action, null)
+        register(action, null)
     }
-  }, [party.current?.id, party.room?.roomId, party.auditioning])
+  }, [party.current?.id, party.room?.roomId, party.auditioning, info?.preferences.mediaKeys])
   useEffect(() => {
     if (!('mediaSession' in navigator)) return
     try {

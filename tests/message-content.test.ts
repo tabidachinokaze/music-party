@@ -1,9 +1,16 @@
 import { expect, it } from 'vitest'
-import { messageContent } from '../src/shared/private-messages'
+import {
+  mergePrivate,
+  parsePrivatePage,
+  messageContent,
+  conversationName,
+} from '../src/shared/private-messages'
 import { parseChatPage, mergeChat } from '../src/shared/chat'
 import { musicMessageLink, mediaUrl, richMessageContent } from '../src/shared/message-content'
 import { multiPayload } from '../src/main/multi-api'
 import { validate } from '../src/main/service'
+import { getUiLanguage, setUiLanguage, ui } from '../src/shared/ui-language'
+import { roomActivityPresentation } from '../src/shared/room-activity-presentation'
 const emoji = {
   emojiId: '1',
   emojiGroupId: '2',
@@ -176,4 +183,73 @@ it('sends the official sticker envelope and deduplicates echoes by media as well
       [server],
     ),
   ).toHaveLength(2)
+})
+
+it('distinguishes a generated attachment preview from the same words typed by the sender', () => {
+  const picture = { picInfo: { url: 'https://p1.music.126.net/test.png' } }
+  expect(messageContent(picture)).toMatchObject({ text: '图片', previewOnlyText: true })
+  expect(messageContent({ ...picture, msg: '图片' }).previewOnlyText).toBeUndefined()
+})
+
+it('changes generated labels while preserving sender text, attachment names and room message IDs', () => {
+  const previous = getUiLanguage()
+  try {
+    const record = { sendUid: 1, sendTime: 1, msgType: 2, nickname: '歌曲' }
+    const body = { data: { records: [record], page: {} } }
+    setUiLanguage('zh-CN')
+    const unnamedPeer = { uid: '123', nickname: '' }
+    expect(conversationName(unnamedPeer)).toBe('用户 123')
+    const original = parseChatPage(body, 'room', '1').messages[0]
+    setUiLanguage('en')
+    expect(conversationName(unnamedPeer)).toBe('User 123')
+    expect(conversationName({ ...unnamedPeer, nickname: '用户 123' })).toBe('用户 123')
+    const translated = parseChatPage(body, 'room', '1').messages[0]
+    expect(translated.id).toEqual(original.id)
+    expect(roomActivityPresentation(original)).toMatchObject({
+      label: 'Recommended',
+      parts: [
+        { kind: 'actor', text: '歌曲' },
+        { kind: 'text', text: ' · Recommended a song' },
+      ],
+    })
+    const unnamed = messageContent({ image: { url: 'https://p1.music.126.net/cover.png' } })
+    const named = messageContent({
+      image: { name: '图片', url: 'https://p1.music.126.net/cover.png' },
+    })
+    expect(ui(unnamed.text, unnamed.fallbackTextEn!)).toBe('Image')
+    expect(named.text).toBe('图片')
+    expect(named.fallbackTextEn).toBeUndefined()
+    expect(messageContent({ msg: '邀请你加入官方多人一起听' }).fallbackTextEn).toBeUndefined()
+  } finally {
+    setUiLanguage(previous)
+  }
+})
+
+it('keeps distinct room sends with the same timestamp through overlapping history pages', () => {
+  const event = { roomId: 'r', sendUid: 1, sendTime: 1000, msgType: 0 }
+  const records = ['第一条', '第二条'].map((text) => ({ ...event, imChatRoomMsgBody: { text } }))
+  const page = parseChatPage({ data: { records, page: {} } }, 'r', '1')
+  expect(page.messages).toHaveLength(2)
+  expect(mergeChat(page.messages, page.messages)).toHaveLength(2)
+})
+
+it('keeps a text send separate from media with the same preview, including records without an ID', () => {
+  const message = { fromUser: { userId: 7 }, toUser: { userId: 8 }, time: 10 }
+  const page = parsePrivatePage(
+    {
+      msgs: [
+        { ...message, msg: { msg: '图片' } },
+        { ...message, msg: { picInfo: { url: 'https://p1.music.126.net/a.png' } } },
+        { ...message, msg: { picInfo: { url: 'https://p1.music.126.net/b.png' } } },
+      ],
+    },
+    '7',
+    '8',
+  )
+  expect(page.messages).toHaveLength(3)
+  const [plain] = page.messages.filter((m) => !m.attachments)
+  const photos = page.messages.filter((m) => m.attachments)
+  const sending = { ...plain, id: 'local:text', delivery: 'submitted' as const }
+  expect(mergePrivate([sending], photos)).toHaveLength(3)
+  expect(mergePrivate([sending, ...photos], page.messages)).toEqual(page.messages)
 })

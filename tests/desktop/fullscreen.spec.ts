@@ -32,7 +32,20 @@ test('immersive playback and native fullscreen preserve navigation, focus and no
     let player = await app.firstWindow()
     const native = await app.browserWindow(player)
     const search = await openTool(app, player, 'search')
-    await search.getByLabel('搜索音乐库').fill('保留搜索内容')
+    await native.evaluate((w) => w.setContentSize(1062, 641))
+    await expect(player.locator('.adaptive-shell')).toHaveAttribute('data-layout', 'wide')
+    const searchbox = search.getByLabel('搜索音乐库')
+    await player.keyboard.press('Control+k')
+    await expect(searchbox).toBeFocused()
+    await searchbox.click()
+    await expect(searchbox).toBeFocused()
+    // The contextual search shares the app title bar with the avatar and window controls.
+    const field = await searchbox.boundingBox()
+    const account = await player.getByRole('button', { name: '登录账号' }).boundingBox()
+    const chrome = await player.locator('.mp-window-chrome').boundingBox()
+    expect(field!.x + field!.width).toBeLessThan(account!.x)
+    expect(field!.y + field!.height).toBeLessThanOrEqual(chrome!.y + chrome!.height)
+    await searchbox.fill('保留搜索内容')
     for (const width of [288, 360, 405]) {
       await native.evaluate(
         (w, width) => w.setContentSize(width, Math.round((width * 16) / 9)),
@@ -48,9 +61,9 @@ test('immersive playback and native fullscreen preserve navigation, focus and no
     await expect
       .poll(() =>
         player.evaluate(() => {
-          const expected = matchMedia('(min-width: 960px)').matches
+          const expected = matchMedia('(min-width: 1040px)').matches
             ? 'wide'
-            : matchMedia('(min-width: 560px)').matches
+            : matchMedia('(min-width: 520px)').matches
               ? 'medium'
               : 'compact'
           return document.querySelector('.adaptive-shell')?.getAttribute('data-layout') === expected

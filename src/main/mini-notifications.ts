@@ -1,3 +1,4 @@
+import { ui } from '../shared/ui-language'
 // SPDX-License-Identifier: AGPL-3.0-only
 // Adapted from tabidachinokaze/folium-mod-music-party at b01525f.
 // Source: https://github.com/tabidachinokaze/folium-mod-music-party
@@ -40,14 +41,15 @@ export class MiniNotifications {
   private deadline: ReturnType<typeof setTimeout> | null = null
   private rejectLogin: ((error: Error) => void) | null = null
   private ended = false
-  private failure = '匹配通知连接已关闭'
+  private failure = ui('匹配通知连接已关闭', 'The matching notification connection has closed.')
   private touched = Date.now()
   private notices: MiniNotice[] = []
   private serial = 2
   private seen = new Set<string>()
   constructor(private readonly options: MiniNotificationOptions = {}) {}
   async open(credentials: { accId: string; token: string }): Promise<void> {
-    if (this.ended || this.socket) throw new Error('匹配通知连接已关闭')
+    if (this.ended || this.socket)
+      throw new Error(ui('匹配通知连接已关闭', 'The matching notification connection has closed.'))
     if (
       typeof credentials?.accId !== 'string' ||
       !credentials.accId.trim() ||
@@ -56,7 +58,12 @@ export class MiniNotifications {
       !credentials.token.trim() ||
       credentials.token.length > 4096
     )
-      throw new Error('未取得有效的网易云通知凭据')
+      throw new Error(
+        ui(
+          '未取得有效的网易云通知凭据',
+          'Could not obtain valid NetEase notification credentials.',
+        ),
+      )
     const key = randomBytes(16),
       encrypt = streamCipher(key),
       decrypt = streamCipher(key)
@@ -115,26 +122,55 @@ export class MiniNotifications {
       let authenticated = false
       let receivedAt = Date.now()
       const receive = (value: ReturnType<typeof packet>, depth = 0) => {
-        if (depth > 3) throw new Error('匹配通知包装无效')
+        if (depth > 3)
+          throw new Error(ui('匹配通知包装无效', 'Invalid matching notification envelope.'))
         if (value.service === 1 && value.command === 5) {
-          if (value.status !== 200 || !login) throw new Error(`匹配通知握手失败（${value.status}）`)
+          if (value.status !== 200 || !login)
+            throw new Error(
+              ui(
+                '匹配通知握手失败（{0}）',
+                'Matching notification handshake failed ({0})',
+                value.status,
+              ),
+            )
           socket.write(encrypt(login))
           login.fill(0)
           login = null
         } else if (value.service === 2 && value.command === 2) {
-          if (value.status !== 200) throw new Error(`匹配通知登录失败（${value.status}）`)
+          if (value.status !== 200)
+            throw new Error(
+              ui(
+                '匹配通知登录失败（{0}）',
+                'Matching notification sign-in failed ({0})',
+                value.status,
+              ),
+            )
           authenticated = true
           if (this.deadline) clearTimeout(this.deadline)
           this.deadline = null
           if (!this.options.persistent) {
-            this.deadline = setTimeout(() => stop('匹配通知连接已到期，请重试'), 150000)
+            this.deadline = setTimeout(
+              () =>
+                stop(
+                  ui(
+                    '匹配通知连接已到期，请重试',
+                    'The matching notification connection has expired. Try again.',
+                  ),
+                ),
+              150000,
+            )
             this.deadline.unref()
           }
           this.rejectLogin = null
           this.touched = Date.now()
           resolve()
         } else if (value.service === 2 && value.command === 5) {
-          throw new Error('匹配通知连接已在其他设备关闭，请重试')
+          throw new Error(
+            ui(
+              '匹配通知连接已在其他设备关闭，请重试',
+              'Another device closed the matching connection. Try again.',
+            ),
+          )
         } else if (value.service === 4 && [1, 2, 10, 11].includes(value.command) && authenticated) {
           const inner = embedded(value.body, value.command === 2 ? 0 : 1),
             deliveryId = inner.id.readBigInt64LE(),
@@ -181,17 +217,42 @@ export class MiniNotifications {
             receive(packet(bytesFrame))
           }
         } catch (error) {
-          stop(error instanceof Error ? error.message : '匹配通知数据无效')
+          stop(
+            error instanceof Error
+              ? error.message
+              : ui('匹配通知数据无效', 'Invalid matching notification data.'),
+          )
         }
       })
-      socket.on('error', () => stop('无法连接网易云匹配通知服务，请检查网络后重试'))
-      socket.once('close', () => stop('匹配通知连接已断开，请重试'))
-      this.deadline = setTimeout(() => stop('连接匹配通知服务超时，请重试'), 12000)
+      socket.on('error', () =>
+        stop(
+          ui(
+            '无法连接网易云匹配通知服务，请检查网络后重试',
+            'Could not connect to NetEase matching notifications. Check your connection and try again.',
+          ),
+        ),
+      )
+      socket.once('close', () =>
+        stop(
+          ui('匹配通知连接已断开，请重试', 'Disconnected from the matching service. Try again.'),
+        ),
+      )
+      this.deadline = setTimeout(
+        () =>
+          stop(ui('连接匹配通知服务超时，请重试', 'The matching service timed out. Try again.')),
+        12000,
+      )
       this.deadline.unref()
       this.heartbeat = setInterval(() => {
-        if (!this.options.persistent && Date.now() - this.touched > 20000) stop('匹配页面已关闭')
+        if (!this.options.persistent && Date.now() - this.touched > 20000)
+          stop(ui('匹配页面已关闭', 'The matching screen has closed.'))
         else if (this.options.persistent && authenticated && Date.now() - receivedAt > 45000)
-          stop('网易云通知心跳超时，正在重新连接')
+          stop(
+            ui(
+              '网易云通知心跳超时，正在重新连接',
+              'NetEase notifications timed out. Reconnecting…',
+            ),
+          )
         else if (authenticated) send(1, 2)
       }, 10000)
       this.heartbeat.unref()
@@ -202,7 +263,7 @@ export class MiniNotifications {
     this.touched = Date.now()
     return this.notices.splice(0)
   }
-  close(reason = '匹配已取消') {
+  close(reason = ui('匹配已取消', 'Matching canceled')) {
     if (this.ended) return
     this.ended = true
     this.failure = reason

@@ -1,5 +1,26 @@
 import { expect, type ElectronApplication, type Locator, type Page } from '@playwright/test'
+import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { PanelId } from '../../src/shared/panels'
+
+export function serveSeekableWav(req: IncomingMessage, res: ServerResponse, pcm: Buffer) {
+  res.setHeader('Content-Type', 'audio/wav')
+  res.setHeader('Accept-Ranges', 'bytes')
+  const range = req.headers.range?.match(/^bytes=(\d+)-(\d*)$/)
+  const start = range ? Number(range[1]) : 0
+  const end = range?.[2] ? Math.min(Number(range[2]), pcm.length - 1) : pcm.length - 1
+  if (start > end) {
+    res.writeHead(416, { 'Content-Range': `bytes */${pcm.length}` })
+    res.end()
+    return
+  }
+  if (range) {
+    res.statusCode = 206
+    res.setHeader('Content-Range', `bytes ${start}-${end}/${pcm.length}`)
+  }
+  res.setHeader('Content-Length', end - start + 1)
+  res.end(pcm.subarray(start, end + 1))
+}
+
 // Domain surfaces share one document. Composer popovers and image previews portal to its body.
 function surface(player: Page, id: PanelId) {
   return player.locator(
@@ -11,6 +32,52 @@ export async function panelPage(app: ElectronApplication, id: PanelId) {
   const player = await app.firstWindow()
   await expect(player.locator(`[data-panel="${id}"]`)).toBeVisible()
   return surface(player, id)
+}
+
+export async function expectRoomHeaderSingleLine(panel: Locator) {
+  const header = panel.locator('.panel-titlebar')
+  await expect(header.getByRole('heading', { level: 1 })).toBeVisible()
+  await expect(header.getByRole('button', { name: /刷新|同步/ })).toHaveCount(0)
+  await expect(header).not.toContainText(/人一起听|人正在一起听|首待播/)
+  const geometry = await header.evaluate((bar) => {
+    const bounds = bar.getBoundingClientRect()
+    const centers = Array.from(bar.querySelectorAll('h1, button'), (item) =>
+      item.getBoundingClientRect(),
+    ).filter((rect) => rect.height > 0)
+    return {
+      height: bounds.height,
+      offsets: centers.map((rect) =>
+        Math.abs(rect.y + rect.height / 2 - bounds.y - bounds.height / 2),
+      ),
+    }
+  })
+  expect(geometry.height).toBeLessThanOrEqual(49)
+  for (const offset of geometry.offsets) expect(offset).toBeLessThanOrEqual(2)
+}
+
+export async function expectQueueHeaderFits(queue: Locator) {
+  const spans = await queue
+    .locator('.panel-titlebar h1, .panel-titlebar .queue-total, .room-queue-order :is(span, small)')
+    .evaluateAll((nodes) =>
+      nodes.flatMap((node) => {
+        const text = document.createRange()
+        text.selectNodeContents(node)
+        const visible = node.getBoundingClientRect()
+        return Array.from(text.getClientRects(), (ink) => {
+          const rightmost = document.elementFromPoint(ink.right - 1, (ink.y + ink.bottom) / 2)
+          return {
+            label: node.textContent,
+            clipped: ink.right > visible.right + 1 || ink.left < visible.left - 1,
+            covering: node.contains(rightmost) ? null : rightmost?.tagName || 'outside viewport',
+          }
+        })
+      }),
+    )
+  expect(spans.length).toBeGreaterThanOrEqual(2)
+  for (const span of spans) {
+    expect(span.clipped, span.label || '').toBe(false)
+    expect(span.covering, span.label || '').toBeNull()
+  }
 }
 export async function openTool(
   app: ElectronApplication,
@@ -44,20 +111,36 @@ export async function openTool(
   const directory = player.getByRole('button', { name: /^(全部功能|打开内容)$/ }).first()
   const catalog = player.locator('[data-panel="windows"]')
   for (let depth = 0; depth < 8; depth++) {
+    const modal = player.locator('body > .modal-backdrop').last()
+    if (await modal.isVisible()) {
+      const count = await player.locator('body > .modal-backdrop').count()
+      await player.keyboard.press('Escape')
+      await expect(player.locator('body > .modal-backdrop')).toHaveCount(count - 1)
+      continue
+    }
+    if (await target.isVisible()) return surface(player, id)
     if (await catalog.isVisible()) break
-    if (
-      (await target.isVisible()) &&
-      (await player.locator('[aria-modal="true"]:visible').count()) === 0
-    )
-      return surface(player, id)
+    const floating = player.locator('.surface-dialog, .surface-drawer:not([inert])').last()
+    if (await floating.isVisible()) {
+      await player.keyboard.press('Escape')
+      continue
+    }
+    const direct = player
+      .locator('.main-sidebar, .adaptive-player-bar, .mp-chrome-actions')
+      .getByRole('button', { name: id === 'login' ? '登录账号' : names[id], exact: true })
+      .first()
+    if (await direct.isVisible()) {
+      await direct.click()
+      return panelPage(app, id)
+    }
     if (await directory.isVisible()) {
-      try {
-        await directory.click({ trial: true, timeout: 300 })
-        await directory.click()
-        break
-      } catch {
-        // A modal or drawer is covering the persistent directory control.
-      }
+      await directory.click()
+      break
+    }
+    const collapse = player.getByRole('button', { name: '返回浏览', exact: true })
+    if (await collapse.isVisible()) {
+      await collapse.click()
+      continue
     }
     await player.keyboard.press('Escape')
   }
@@ -79,10 +162,13 @@ export async function widenPanel(
   const page = 'page' in target ? target.page() : target
   const win = await app.browserWindow(page)
   await win.evaluate((w, size) => w.setContentSize(size.width, size.height), { width, height })
-  await expect.poll(() => page.evaluate(() => innerWidth)).toBe(width)
+  const scale = await win.evaluate((w) => w.webContents.getZoomFactor())
+  await expect
+    .poll(async () => Math.abs((await page.evaluate(() => innerWidth)) - width / scale))
+    .toBeLessThan(1)
   await expect(page.locator('.adaptive-shell')).toHaveAttribute(
     'data-layout',
-    width >= 960 ? 'wide' : width >= 560 ? 'medium' : 'compact',
+    width / scale >= 1040 ? 'wide' : width / scale >= 520 ? 'medium' : 'compact',
   )
 }
 
@@ -102,9 +188,36 @@ export async function serveArtwork(app: ElectronApplication, bytes: Buffer, cont
   )
 }
 
+export async function mouseSide(page: Page, button: 'back' | 'forward', x: number, y: number) {
+  const session = await page.context().newCDPSession(page)
+  try {
+    await session.send('Input.dispatchMouseEvent', {
+      type: 'mousePressed',
+      button,
+      buttons: button === 'back' ? 8 : 16,
+      x,
+      y,
+      clickCount: 1,
+    })
+    await session.send('Input.dispatchMouseEvent', {
+      type: 'mouseReleased',
+      button,
+      buttons: 0,
+      x,
+      y,
+      clickCount: 1,
+    })
+  } finally {
+    await session.detach()
+  }
+}
+
 export async function showPrivateList(panel: Locator) {
-  const back = panel.getByRole('button', { name: '返回私信列表', exact: true })
-  if (await back.isVisible()) await back.click()
+  if (await panel.locator('.conversation-pane').isVisible()) return
+  await panel
+    .getByRole('navigation', { name: '页面导航' })
+    .getByRole('button', { name: '私信', exact: true })
+    .click()
 }
 
 export async function settingsGroup(
@@ -113,6 +226,9 @@ export async function settingsGroup(
 ) {
   const nav = page.getByRole('navigation', { name: '设置分类' })
   if (!(await nav.isVisible()))
-    await page.getByRole('button', { name: '设置分类', exact: true }).click()
+    await page
+      .getByRole('navigation', { name: '页面导航' })
+      .getByRole('button', { name: '设置', exact: true })
+      .click()
   await nav.getByRole('button', { name: title, exact: true }).click()
 }

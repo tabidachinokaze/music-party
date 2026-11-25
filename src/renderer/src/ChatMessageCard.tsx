@@ -1,4 +1,6 @@
+import { ui, getUiLanguage } from '../../shared/ui-language'
 import type { ReactNode } from 'react'
+import { UserAvatar } from './design/UserAvatar'
 import { ArrowUpToLine, Heart, Info, LogOut, Music2, ThumbsUp, UserPlus } from 'lucide-react'
 import type { ChatMessage } from '../../shared/types'
 import { roomActivityPresentation } from '../../shared/room-activity-presentation'
@@ -15,10 +17,10 @@ const activityIcons = {
 
 export function MessageTime({ time }: { time: number }) {
   const date = new Date(time)
-  if (!Number.isFinite(date.getTime())) return <time>时间未知</time>
+  if (!Number.isFinite(date.getTime())) return <time>{ui('时间未知', 'Unknown time')}</time>
   return (
-    <time dateTime={date.toISOString()} title={date.toLocaleString('zh-CN')}>
-      {date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}
+    <time dateTime={date.toISOString()} title={date.toLocaleString(getUiLanguage())}>
+      {date.toLocaleTimeString(getUiLanguage(), { hour: '2-digit', minute: '2-digit' })}
     </time>
   )
 }
@@ -47,21 +49,7 @@ export function ChatMessageCard({
       data-message-id={id}
       className={`chat-message ${mine ? 'mine' : ''} ${mentioned ? 'chat-mentioned' : ''}`}
     >
-      <span className="chat-message-avatar" aria-hidden="true">
-        <span>{Array.from(author)[0] || '♪'}</span>
-        {avatar && (
-          <img
-            key={avatar}
-            src={avatar}
-            alt=""
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            onError={(event) => {
-              event.currentTarget.hidden = true
-            }}
-          />
-        )}
-      </span>
+      <UserAvatar name={author} src={avatar} className="chat-message-avatar" />
       <div className="chat-message-body">
         <div className="chat-author">
           <span>
@@ -69,7 +57,7 @@ export function ChatMessageCard({
               <button
                 type="button"
                 className="chat-author-name"
-                aria-label={`提及 ${author}`}
+                aria-label={ui('提及 {0}', 'Mention {0}', author)}
                 onClick={onAuthor}
               >
                 {author}
@@ -79,7 +67,9 @@ export function ChatMessageCard({
             )}
           </span>
           <MessageTime time={time} />
-          {mentioned && <small className="chat-mention-badge">提到了你</small>}
+          {mentioned && (
+            <small className="chat-mention-badge">{ui('提到了你', 'Mentioned you')}</small>
+          )}
         </div>
         {children}
       </div>
@@ -109,10 +99,6 @@ export function RoomActivityCard({
         <Icon size={13} />
       </span>
       <div className="chat-activity-body">
-        <div className="chat-activity-heading">
-          <span>{activity.label}</span>
-          <MessageTime time={message.time} />
-        </div>
         <p className="chat-activity-text">
           {activity.parts.map((part, index) =>
             part.kind === 'actor' && onAuthor ? (
@@ -121,7 +107,7 @@ export function RoomActivityCard({
                 key={index}
                 className="chat-activity-actor chat-author-name"
                 onClick={onAuthor}
-                aria-label={`提及 ${message.nickname}`}
+                aria-label={ui('提及 {0}', 'Mention {0}', message.nickname)}
               >
                 {part.text}
               </button>
@@ -135,6 +121,10 @@ export function RoomActivityCard({
             ),
           )}
         </p>
+        <div className="chat-activity-heading">
+          <span>{activity.label}</span>
+          <MessageTime time={message.time} />
+        </div>
         {children}
       </div>
     </article>

@@ -1,3 +1,4 @@
+import { ui } from '../shared/ui-language'
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import {
@@ -29,11 +30,18 @@ export class SettingsStore {
           maximized: window.maximized === true,
         }
     } catch (e: any) {
-      if (e.code !== 'ENOENT') this.error = '原设置文件无法读取，已使用默认设置'
+      if (e.code !== 'ENOENT')
+        this.error = ui(
+          '原设置文件无法读取，已使用默认设置',
+          "Saved settings couldn't be read. Default settings are in use.",
+        )
     }
   }
   update(value: unknown) {
-    const next = { ...this.preferences, ...validatePreferences(value) }
+    const next = {
+      ...this.preferences,
+      ...validatePreferences(value, this.preferences.playerBackground),
+    }
     this.save(next, this.window)
     this.preferences = next
     return next
@@ -52,7 +60,10 @@ export class SettingsStore {
       renameSync(temporary, this.file)
       this.error = ''
     } catch {
-      this.error = '设置保存失败，请检查应用数据目录权限'
+      this.error = ui(
+        '设置保存失败，请检查应用数据目录权限',
+        "Couldn't save settings. Check permissions for the app data directory.",
+      )
       throw new Error(this.error)
     }
   }

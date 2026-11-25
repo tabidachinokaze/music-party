@@ -102,12 +102,12 @@
 .member-directory {
   display: flex;
   flex-direction: column;
-  gap: 15px;
-  padding: 8px 0 22px;
-  max-height: 320px;
+  gap: 4px;
+  padding: 0;
+  min-height: 0;
   overflow: auto;
 }
-.member-directory > div {
+.member-directory > .member-pending {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -124,18 +124,6 @@
 }
 .member-directory small {
   margin-left: auto;
-}
-.member-directory-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 15px;
-  border-top: 1px solid var(--line);
-  padding-top: 16px;
-}
-.member-directory-footer small {
-  font-size: calc(10px * var(--ui-font-scale, 1));
-  overflow-wrap: anywhere;
 }
 .equalizer {
   display: flex;
@@ -247,21 +235,6 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.queue-playing .queue-playing-like {
-  flex: none;
-  width: auto;
-  min-width: 32px;
-  padding: 6px;
-  gap: 4px;
-}
-.queue-playing .queue-playing-like small {
-  margin: 0;
-  color: inherit;
-}
-.queue-playing-like.liked {
-  color: var(--pink);
-  opacity: 1;
-}
 .queue-playing strong {
   display: block;
   font-size: calc(12px * var(--ui-font-scale, 1));
@@ -333,11 +306,21 @@
   height: 35px;
 }
 .queue-index {
-  width: 17px;
+  min-width: 17px;
   flex: none;
   font-size: calc(10px * var(--ui-font-scale, 1));
   color: var(--hf-ink-3);
   font-variant-numeric: tabular-nums;
+  text-align: end;
+  white-space: nowrap;
+}
+.queue-index::before {
+  /* Reserve the full queue's tabular digit width even before later pages load. */
+  content: var(--queue-last-index);
+  display: block;
+  visibility: hidden;
+  height: 0;
+  overflow: hidden;
 }
 .queue-track-copy {
   flex: 1;
@@ -396,12 +379,6 @@
 .queue-error {
   color: var(--hf-danger);
 }
-.queue-drawer-footer {
-  font-size: calc(10px * var(--ui-font-scale, 1));
-  padding: 12px 20px;
-  border-top: 1px solid var(--line);
-  color: var(--hf-ink-3);
-}
 .player-modal {
   width: 450px;
   padding: 24px 26px;
@@ -422,76 +399,6 @@
 .overlay-intro {
   margin: 9px 0 23px !important;
   font-size: calc(12px * var(--ui-font-scale, 1)) !important;
-}
-.room-setup-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 22px;
-}
-.room-setup-grid section {
-  padding: 19px;
-  border: 1px solid var(--line);
-  border-radius: 11px;
-  min-width: 0;
-}
-.room-setup-grid h3 {
-  font-size: calc(14px * var(--ui-font-scale, 1));
-  margin: 14px 0 0;
-  font-weight: 500;
-}
-.room-setup-grid p {
-  font-size: calc(11px * var(--ui-font-scale, 1));
-  margin: 8px 0 18px;
-  line-height: 1.8;
-}
-.setup-symbol {
-  color: var(--pink);
-  display: flex;
-}
-.setup-symbol.muted {
-  color: var(--hf-ink-2);
-}
-.room-setup-grid form {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.room-setup-grid input {
-  width: 100%;
-  font-size: calc(11px * var(--ui-font-scale, 1));
-}
-.room-setup-grid button {
-  font-size: calc(11px * var(--ui-font-scale, 1));
-}
-.room-setup-grid section > .text-btn {
-  display: flex;
-  margin-top: 10px;
-}
-.setup-secondary {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 11px;
-}
-.setup-secondary button {
-  font-size: calc(9px * var(--ui-font-scale, 1));
-  gap: 4px;
-}
-.setup-preview {
-  margin-top: 17px;
-  padding: 13px 15px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  font-size: calc(12px * var(--ui-font-scale, 1));
-}
-.setup-preview > span {
-  font-size: calc(10px * var(--ui-font-scale, 1));
-  color: var(--muted);
-  margin-right: 12px;
-}
-.setup-preview p {
-  font-size: calc(11px * var(--ui-font-scale, 1));
-  margin: 7px 0 0;
 }
 .login-dialog {
   display: flex;

@@ -63,7 +63,7 @@
 }
 .party-composer .composer-tools > .icon-btn:hover:not(:disabled),
 .party-composer .composer-tools > .icon-btn[aria-expanded='true'] {
-  background: color-mix(in srgb, currentColor 10%, transparent);
+  background: --skin-tint(color-mix(in srgb, currentColor 10%, transparent));
 }
 .party-composer .composer-tools > .icon-btn svg {
   width: 16px;
@@ -87,36 +87,6 @@
   margin: 0;
   font-size: calc(11px * var(--ui-font-scale, 1));
 }
-.composer-text-picker {
-  position: fixed;
-  inset: auto;
-  width: 320px;
-  max-width: calc(100dvw - 32px);
-  max-height: min(340px, calc(100dvh - 32px));
-  margin: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  color: var(--hf-ink);
-  background: var(--hf-surface);
-  box-shadow: 0 8px 24px #0003;
-}
-.composer-text-picker::backdrop {
-  background: transparent;
-}
-.party-composer > .composer-text-picker:popover-open {
-  display: block;
-}
-.party-composer > .composer-text-picker:not(:popover-open) {
-  display: none;
-}
-.composer-text-picker h3 {
-  margin: 0 0 8px;
-  font-size: calc(12px * var(--ui-font-scale, 1));
-  font-weight: 600;
-}
 .composer-text-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -131,12 +101,15 @@
   font-size: calc(20px * var(--ui-font-scale, 1));
 }
 .composer-text-grid button:hover {
-  background: color-mix(in srgb, currentColor 5%, transparent);
+  background: --skin-tint(color-mix(in srgb, currentColor 5%, transparent));
 }
-.composer-kaomoji .composer-text-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.composer-kaomoji.composer-text-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
-.composer-kaomoji .composer-text-grid button {
+.composer-kaomoji.composer-text-grid button {
+  flex: 1 0 auto;
   padding: 8px 2px;
   font-size: calc(12px * var(--ui-font-scale, 1));
 }
@@ -170,7 +143,7 @@
   text-align: left;
 }
 .party-composer .composer-mentions button[aria-selected='true'] {
-  background: color-mix(in srgb, currentColor 10%, transparent);
+  background: --skin-tint(color-mix(in srgb, currentColor 10%, transparent));
 }
 .composer-mention-avatar {
   display: grid;

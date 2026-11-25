@@ -1,89 +1,105 @@
-import { ChevronDown, Mail, MessageCircle } from 'lucide-react'
+import { ui } from '../../../shared/ui-language'
+import { MusicianNames } from '../MusicianNames'
 import { AlbumArtwork } from './AlbumArtwork'
-import { Lyrics } from '../Lyrics'
+import { Lyrics, type useTrackLyrics } from '../Lyrics'
 import type { useParty } from '../useParty'
-import type { Preferences } from '../../../shared/desktop'
 
 type Party = ReturnType<typeof useParty>
 
 export function ImmersivePlayer({
   party: p,
   position,
-  background,
-  onClose,
-  onChat,
-  onPrivate,
+  vinyl,
+  focus,
+  lyrics,
+  onRead,
   onAlbum,
+  onArtist,
   act = p.act,
 }: {
   party: Party
   position: number
-  background?: Preferences['playerBackground']
-  onClose(): void
-  onChat(): void
-  onPrivate(): void
+  vinyl: boolean
+  focus: 'both' | 'cover' | 'lyrics'
+  lyrics: ReturnType<typeof useTrackLyrics>
+  onRead(): void
   onAlbum(id: string, title: string): void
+  onArtist(id: string, title: string): void
   act?: Party['act']
 }) {
   const song = p.current
   const albumId = song?.albumId
+  let activeIndex = -1
+  while (lyrics.lines[activeIndex + 1]?.time <= position) activeIndex++
+  const currentLine = focus === 'cover' ? lyrics.lines[activeIndex] : null
   return (
-    <section className="immersive-player" aria-label="正在播放" data-playing={p.playing}>
-      {!background?.image && song?.cover && (
-        <div className="cover-tint" aria-hidden="true">
-          <img src={song.cover} alt="" draggable={false} referrerPolicy="no-referrer" />
-        </div>
-      )}
-      <header className="immersive-header">
-        <button className="icon-btn" aria-label="返回浏览" title="返回浏览" onClick={onClose}>
-          <ChevronDown />
-        </button>
-        <span>正在播放</span>
-        <div className="immersive-tools">
-          {p.room && (
-            <button className="icon-btn" aria-label="房间聊天" title="房间聊天" onClick={onChat}>
-              <MessageCircle />
-            </button>
-          )}
-          <button className="icon-btn" aria-label="打开私信" title="打开私信" onClick={onPrivate}>
-            <Mail />
-          </button>
-        </div>
-      </header>
+    <section
+      className="immersive-player"
+      aria-label={ui('正在播放', 'Now Playing')}
+      data-playing={p.playing}
+      data-focus={focus}
+    >
       <div className="immersive-body">
-        <div className="turntable" aria-hidden="true">
-          <div className="turntable-plinth">
-            <div className="vinyl-disc">
-              <AlbumArtwork song={song} className="vinyl-label" />
+        <div className="immersive-identity">
+          <div className="immersive-art-frame">
+            {vinyl ? (
+              <div className="turntable" aria-hidden="true">
+                <div className="turntable-plinth">
+                  <div className="vinyl-disc">
+                    <AlbumArtwork song={song} className="vinyl-label" />
+                  </div>
+                  <div className="tonearm" />
+                </div>
+              </div>
+            ) : (
+              <div className="playing-cover">
+                <AlbumArtwork song={song} className="sleeve" />
+              </div>
+            )}
+          </div>
+          <div className="immersive-song-info">
+            <div className="immersive-song-heading">
+              <h1>{song?.name || ui('尚未选歌', 'No track selected')}</h1>
+              {p.auditioning && (
+                <small className="audition-label">{ui('本机试听', 'Local preview')}</small>
+              )}
             </div>
-            <div className="tonearm" />
+            <div className="immersive-metadata">
+              {song?.artist && (
+                <span>
+                  <MusicianNames credits={song.artists} fallback={song.artist} onOpen={onArtist} />
+                </span>
+              )}
+              {song?.album &&
+                (albumId ? (
+                  <button
+                    className="album-link"
+                    title={ui('打开专辑《{0}》', 'Open album “{0}”', song.album)}
+                    onClick={() => onAlbum(albumId, song.album)}
+                  >
+                    {song.album}
+                  </button>
+                ) : (
+                  <span>{song.album}</span>
+                ))}
+            </div>
+            {(lyrics.status === 'instrumental' || lyrics.status === 'missing') && (
+              <small className="playing-lyric-status" role="status">
+                {lyrics.status === 'instrumental'
+                  ? ui('纯音乐，请欣赏', 'Instrumental')
+                  : ui('这首歌暂时没有歌词', 'Lyrics are unavailable for this track')}
+              </small>
+            )}
+            {currentLine && <p className="cover-lyric">{currentLine.text}</p>}
           </div>
         </div>
         <div className="immersive-song">
-          <h1>{song?.name || '尚未选歌'}</h1>
-          <div className="immersive-metadata">
-            {song?.artist && <span>{song.artist}</span>}
-            {song?.album &&
-              (albumId ? (
-                <button
-                  className="album-link"
-                  title={'打开专辑《' + song.album + '》'}
-                  onClick={() => onAlbum(albumId, song.album)}
-                >
-                  {song.album}
-                </button>
-              ) : (
-                <span>{song.album}</span>
-              ))}
-            {p.auditioning && <span>本机试听</span>}
-          </div>
           <Lyrics
-            api={p.api}
-            songId={song?.id}
-            position={position}
-            heading
+            content={lyrics}
+            onRead={onRead}
+            activeIndex={activeIndex}
             seekable={!!song && (!p.room || p.auditioning) && !p.busy}
-            onSeek={(pos) => void act('跳转歌词', () => p.seek(pos))}
+            onSeek={(pos) => void act(ui('跳转歌词', 'Seek to lyric'), () => p.seek(pos))}
           />
         </div>
       </div>

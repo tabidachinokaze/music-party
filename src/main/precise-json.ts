@@ -1,3 +1,4 @@
+import { ui } from '../shared/ui-language'
 export function preciseMediaEndpoint(value: unknown): boolean {
   return (
     typeof value === 'string' &&
@@ -11,7 +12,9 @@ export function parsePreciseJson(value: string): any {
   return JSON.parse(value, (_key, item, context?: { source?: string }) => {
     if (typeof item === 'number' && Number.isInteger(item) && !Number.isSafeInteger(item)) {
       if (!context?.source || !/^-?\d+$/.test(context.source))
-        throw new Error('资源 ID 无法精确解析')
+        throw new Error(
+          ui('资源 ID 无法精确解析', 'Could not parse the resource ID without losing precision.'),
+        )
       return context.source
     }
     return item

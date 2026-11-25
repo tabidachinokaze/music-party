@@ -10,7 +10,9 @@ import { MediaSender } from './media-send'
 import { parsePreciseJson, preciseMediaEndpoint } from './precise-json'
 import { SharedNotifications } from './shared-notifications'
 import { LtChatroom } from './lt-chatroom'
+import { setUiLanguage, ui } from '../shared/ui-language'
 
+setUiLanguage(process.env.MUSIC_PARTY_LANGUAGE === 'en' ? 'en' : 'zh-CN')
 const requireApi = createRequire(__filename)
 // Upstream can print raw error responses; diagnostics leave this process only through ApiService.
 console.log = console.info = console.warn = console.error = () => {}
@@ -76,7 +78,13 @@ const invoke = async (endpoint: string, args: Record<string, unknown>) => {
     token =
       (await standard('register_checktoken_v3', { cookie: args.cookie, timeout: 12000 })).body
         ?.token || ''
-    if (!token) throw new Error('未取得网易云请求校验令牌，请稍后重试')
+    if (!token)
+      throw new Error(
+        ui(
+          '未取得网易云请求校验令牌，请稍后重试',
+          "Couldn't get a NetEase verification token. Try again later.",
+        ),
+      )
   }
   return standard('api', {
     uri: multiEndpoints[method],
@@ -130,7 +138,8 @@ function enableNotifications(uid: string) {
     notifications = new SharedNotifications(
       async () => {
         const auth = service.session()
-        if (!auth.cookie || !auth.uid) throw new Error('请先重新登录')
+        if (!auth.cookie || !auth.uid)
+          throw new Error(ui('请先重新登录', 'Sign in again to continue'))
         const result = await standard('api', {
           uri: '/api/middle/im/token/get',
           data: { bizTag: 'platform' },
@@ -138,7 +147,8 @@ function enableNotifications(uid: string) {
           cookie: auth.cookie,
           timeout: 12000,
         })
-        if (service.session().epoch !== auth.epoch) throw new Error('账号已变化')
+        if (service.session().epoch !== auth.epoch)
+          throw new Error(ui('账号已变化', 'The account has changed'))
         const data = result.body?.data
         if (
           result.body?.code !== 200 ||
@@ -147,7 +157,12 @@ function enableNotifications(uid: string) {
           typeof data?.token !== 'string' ||
           !data.token
         )
-          throw new Error('暂时无法取得私信通知凭据')
+          throw new Error(
+            ui(
+              '暂时无法取得私信通知凭据',
+              'Direct message notification credentials are temporarily unavailable',
+            ),
+          )
         return { accId: data.accId, token: data.token }
       },
       undefined,
@@ -184,7 +199,8 @@ async function startLtChatroom(chatroomId: string) {
   if (ltChatroom && ltChatroomId === chatroomId) return
   stopLtChatroom()
   const auth = service.session()
-  if (!auth.cookie || !auth.uid) throw new Error('请先登录网易云账号')
+  if (!auth.cookie || !auth.uid)
+    throw new Error(ui('请先登录网易云账号', 'Sign in to NetEase Cloud Music first'))
   const result = await standard('api', {
     uri: '/api/middle/im/token-and-chatroom-addr/get',
     data: { bizName: 'music_listenTogether', roomId: chatroomId, appType: '6' },
@@ -200,8 +216,11 @@ async function startLtChatroom(chatroomId: string) {
     typeof data?.token !== 'string' ||
     !data.token
   )
-    throw new Error('暂时无法取得聊天室凭据')
-  if (service.session().epoch !== auth.epoch) throw new Error('账号已变化')
+    throw new Error(
+      ui('暂时无法取得聊天室凭据', 'Chat room credentials are temporarily unavailable'),
+    )
+  if (service.session().epoch !== auth.epoch)
+    throw new Error(ui('账号已变化', 'The account has changed'))
   ltChatroomId = chatroomId
   ltChatroom = await LtChatroom.open({
     chatroomId,
@@ -242,6 +261,10 @@ const service = new ApiService(
 )
 
 process.parentPort?.on('message', async ({ data }) => {
+  if (data.type === 'ui-language') {
+    setUiLanguage(data.language)
+    return
+  }
   if (data.type === 'restore') {
     stopNotifications()
     mediaCookie = data.cookie
@@ -295,7 +318,7 @@ process.parentPort?.on('message', async ({ data }) => {
       else if (data.type === 'match-close') notifications?.matchClose(data.attemptId)
       else {
         if (!notifications || !notificationUid || notificationUid !== service.session().uid)
-          throw new Error('请先重新登录')
+          throw new Error(ui('请先重新登录', 'Sign in again to continue'))
         if (data.type === 'match-open') await notifications.matchOpen(data.attemptId)
         else result = notifications.matchPoll(data.attemptId)
       }
@@ -308,7 +331,13 @@ process.parentPort?.on('message', async ({ data }) => {
       process.parentPort?.postMessage({
         type: 'reply',
         id: data.id,
-        reply: { ok: false, error: '通知连接暂不可用，请重新同步或重试匹配' },
+        reply: {
+          ok: false,
+          error: ui(
+            '通知连接暂不可用，请重新同步或重试匹配',
+            'Notifications are temporarily unavailable. Try syncing or matching again.',
+          ),
+        },
       })
     }
     return

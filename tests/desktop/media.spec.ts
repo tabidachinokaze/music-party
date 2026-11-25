@@ -1,4 +1,11 @@
-import { showPrivateList, settingsGroup, openTool, loginFixture, widenPanel } from './windows'
+import {
+  showPrivateList,
+  settingsGroup,
+  openTool,
+  loginFixture,
+  widenPanel,
+  serveArtwork,
+} from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -135,11 +142,7 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     })
     const errors: string[] = []
     player.on('pageerror', (error) => errors.push(error.message))
-    await app
-      .context()
-      .route('https://p1.music.126.net/media-test.png', (route) =>
-        route.fulfill({ contentType: 'image/png', body: png }),
-      )
+    await serveArtwork(app, png, 'image/png')
     await loginFixture(app, player)
     page = await openTool(app, player, 'private')
     await widenPanel(app, page)
@@ -158,7 +161,16 @@ test('private attachment previews, upload retry, recording, video and fixed reci
     await expect(page.getByRole('alert')).toContainText('模拟上传失败')
     await page.getByRole('button', { name: '重试发送附件' }).click()
     await expect(page.getByRole('dialog', { name: '发送附件' })).toHaveCount(0)
-    await expect(page.getByRole('log', { name: '私信消息' })).toContainText('表情.png')
+    const sentBubble = page.getByRole('log', { name: '私信消息' }).locator('.chat-bubble')
+    await expect(sentBubble).toHaveCount(1)
+    await expect(sentBubble.locator('.message-caption')).toHaveCount(0)
+    const sentImage = sentBubble.getByRole('button', { name: '查看图片：表情.png', exact: true })
+    await expect(sentImage.getByAltText('表情.png', { exact: true })).toBeVisible()
+    await sentImage.click()
+    const imagePreview = page.getByRole('dialog', { name: '图片预览' })
+    await expect(imagePreview.getByAltText('表情.png', { exact: true })).toBeVisible()
+    await player.keyboard.press('Escape')
+    await expect(imagePreview).toHaveCount(0)
 
     await player.evaluate(() => {
       const original = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices)

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Adapted from tabidachinokaze/folium-mod-music-party at b01525f.
 // Source: https://github.com/tabidachinokaze/folium-mod-music-party
+import { ui } from './ui-language'
 import type { ChatMessage } from './types'
 import { hasActivityActor, likeActivitySongRange, roomActivityText } from './room-activity'
 
@@ -18,13 +19,13 @@ export interface RoomActivityPresentation {
 }
 type Span = { start: number; end: number; kind: 'actor' | 'song' }
 const events = {
-  join: { label: '加入', icon: 'user-plus' },
-  recommend: { label: '推荐', icon: 'music-2' },
-  promote: { label: '置顶', icon: 'arrow-up-to-line' },
-  like: { label: '点赞', icon: 'thumbs-up' },
-  redheart: { label: '红心', icon: 'heart' },
-  leave: { label: '离开', icon: 'log-out' },
-  notice: { label: '动态', icon: 'info' },
+  join: { label: ['加入', 'Joined'], icon: 'user-plus' },
+  recommend: { label: ['推荐', 'Recommended'], icon: 'music-2' },
+  promote: { label: ['置顶', 'Moved up'], icon: 'arrow-up-to-line' },
+  like: { label: ['点赞', 'Liked'], icon: 'thumbs-up' },
+  redheart: { label: ['红心', 'Favorited'], icon: 'heart' },
+  leave: { label: ['离开', 'Left'], icon: 'log-out' },
+  notice: { label: ['动态', 'Activity'], icon: 'info' },
 } as const
 
 function eventType(action: string): RoomActivityPresentation['type'] {
@@ -96,10 +97,12 @@ function templateTitle(action: string, offset: number): Span | null {
 
 export function roomActivityPresentation(
   message: Pick<ChatMessage, 'nickname' | 'text' | 'attachments'> &
-    Partial<Pick<ChatMessage, 'kind' | 'interactType'>>,
+    Partial<Pick<ChatMessage, 'kind' | 'interactType' | 'fallbackTextEn'>>,
 ): RoomActivityPresentation {
-  const text = roomActivityText(message),
-    body = message.text.trim(),
+  const body = message.fallbackTextEn
+      ? ui(message.text, message.fallbackTextEn).trim()
+      : message.text.trim(),
+    text = roomActivityText({ ...message, text: body }),
     nickname = message.nickname.trim(),
     hasActor = !!nickname && hasActivityActor(body, nickname),
     bodyOffset = nickname && !hasActor ? nickname.length + 3 : 0,
@@ -111,7 +114,9 @@ export function roomActivityPresentation(
         ? 'redheart'
         : message.kind === 'interaction' && message.interactType === 3
           ? 'like'
-          : eventType(action)
+          : message.fallbackTextEn && message.kind === 'resource'
+            ? 'recommend'
+            : eventType(action)
   const spans: Span[] = nickname ? [{ start: 0, end: nickname.length, kind: 'actor' }] : []
   const titles = [
     ...new Set(
@@ -142,5 +147,6 @@ export function roomActivityPresentation(
     position = span.end
   }
   if (position < text.length) parts.push({ kind: 'text', text: text.slice(position) })
-  return { text, type, ...events[type], parts }
+  const { label, icon } = events[type]
+  return { text, type, label: ui(label[0], label[1]), icon, parts }
 }

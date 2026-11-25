@@ -1,7 +1,16 @@
+import { ui } from './ui-language'
 import type { Conversation, MultiInvitation, PrivateMessage, PrivatePage } from './types'
 import { richMessageContent, messageObject } from './message-content'
 import { neteaseAssetUrl } from './media'
 import { invitation, parseInvitation } from './protocol'
+export function conversationName(peer: Pick<Conversation, 'uid' | 'nickname'>) {
+  return peer.nickname || ui('用户 {0}', 'User {0}', peer.uid)
+}
+export function conversationPreview(contact: Conversation) {
+  return contact.fallbackPreviewEn
+    ? ui(contact.preview, contact.fallbackPreviewEn)
+    : contact.preview
+}
 export const PRIVATE_TEXT_LIMIT = 500
 export const SEND_METHODS = new Set([
   'multiChatSend',
@@ -130,14 +139,26 @@ export function findInvitations(value: unknown): MultiInvitation[] {
 export function messageContent(
   value: unknown,
   envelope?: unknown,
-): Pick<PrivateMessage, 'text' | 'invitations' | 'attachments' | 'richText'> {
+): Pick<
+  PrivateMessage,
+  'text' | 'fallbackTextEn' | 'previewOnlyText' | 'invitations' | 'attachments' | 'richText'
+> {
   const data = { ...messageObject(envelope), ...payload(value) }
   const invitations = findInvitations(envelope ? [data, envelope] : data)
   const content = richMessageContent(data)
+  let fileEnvelope = false
   if (typeof data.msg === 'string' && data.msg.startsWith('[文件] ')) {
     const [name, url] = data.msg.slice(5).split('\n')
     const safe = neteaseAssetUrl(url)
-    if (name && safe) content.attachments = [{ kind: 'file', title: name, actionUrl: safe }]
+    if (name && safe) {
+      if (!content.attachments?.some((item) => item.kind === 'file' && item.actionUrl === safe)) {
+        content.attachments = [
+          { kind: 'file', title: name, actionUrl: safe },
+          ...(content.attachments || []),
+        ]
+      }
+      fileEnvelope = data.msg === '[文件] ' + name + '\n' + url
+    }
   }
   if (invitations.length && content.attachments)
     content.attachments = content.attachments.filter((item) => item.resourceType !== 'general')
@@ -159,32 +180,56 @@ export function messageContent(
                   ? body.text
                   : ''
   let text = label
+  let fallbackTextEn: string | undefined
   if (!text) {
-    if (invitations.length) text = '邀请你加入官方多人一起听'
-    else if (data.song) text = `[分享歌曲] ${data.song.name || ''}`
-    else if (data.playlist) text = `[分享歌单] ${data.playlist.name || ''}`
-    else if (data.album) text = `[分享专辑] ${data.album.name || ''}`
-    else if (content.attachments?.length) text = content.attachments[0].title
-    else text = '[暂不支持的私信类型]'
+    if (invitations.length) {
+      text = '邀请你加入官方多人一起听'
+      fallbackTextEn = 'Invited you to a listening room'
+    } else if (data.song || data.playlist || data.album) {
+      const [item, type, english] = data.song
+        ? [data.song, '歌曲', 'song']
+        : data.playlist
+          ? [data.playlist, '歌单', 'playlist']
+          : [data.album, '专辑', 'album']
+      text = `[分享${type}] ${item.name || ''}`
+      fallbackTextEn = `[Shared ${english}] ${item.name || ''}`
+    } else if (content.attachments?.length) {
+      text = content.attachments[0].title
+      fallbackTextEn = content.attachments[0].fallbackTitleEn
+    } else {
+      text = '[暂不支持的私信类型]'
+      fallbackTextEn = '[Unsupported message]'
+    }
   }
-  return { text: text.slice(0, 10000), invitations, ...content }
+  return {
+    text: text.slice(0, 10000),
+    ...(fallbackTextEn && { fallbackTextEn: fallbackTextEn.slice(0, 10000) }),
+    ...((fileEnvelope || (!label && (content.attachments?.length || invitations.length))) && {
+      previewOnlyText: true,
+    }),
+    invitations,
+    ...content,
+  }
 }
 export function parseConversations(
   body: any,
   selfUid: string,
 ): { conversations: Conversation[]; more: boolean; count: number } {
-  if (!Array.isArray(body?.msgs)) throw new Error('私信会话响应格式异常，请重试')
+  if (!Array.isArray(body?.msgs))
+    throw new Error(ui('私信会话响应格式异常，请重试', 'Couldn’t load conversations. Try again.'))
   const conversations: Conversation[] = []
   for (const raw of body.msgs) {
     if (!raw || typeof raw !== 'object') continue
     const profile = String(raw.fromUser?.userId) === selfUid ? raw.toUser : raw.fromUser
     const peer = uid(profile?.userId)
     if (!peer || peer === selfUid) continue
+    const preview = messageContent(raw.lastMsg)
     conversations.push({
       uid: peer,
-      nickname: profile.nickname || `用户 ${peer}`,
+      nickname: profile.nickname || '',
       avatar: profile.avatarUrl || '',
-      preview: messageContent(raw.lastMsg).text,
+      preview: preview.text,
+      ...(preview.fallbackTextEn && { fallbackPreviewEn: preview.fallbackTextEn }),
       time: Number(raw.lastMsgTime) || 0,
       unread: Math.max(0, Number(raw.newMsgCount) || 0),
     })
@@ -207,7 +252,8 @@ export function mergeConversations(
   return [...values.values()].sort((a, b) => b.time - a.time)
 }
 export function parsePrivatePage(body: any, selfUid: string, peerUid: string): PrivatePage {
-  if (!Array.isArray(body?.msgs)) throw new Error('私信内容响应格式异常，请重试')
+  if (!Array.isArray(body?.msgs))
+    throw new Error(ui('私信内容响应格式异常，请重试', 'Couldn’t load messages. Try again.'))
   const messages: PrivateMessage[] = []
   const times: number[] = []
   for (const raw of body.msgs) {
@@ -229,9 +275,9 @@ export function parsePrivatePage(body: any, selfUid: string, peerUid: string): P
       msgBody: raw.msgBody,
       nativeUrl: raw.nativeUrl,
     })
-    const recordId = uid(raw.id)
+    const recordId = uid(raw.id) || uid(raw.msgId) || uid(messageObject(raw.msgBody).msgId)
     messages.push({
-      id: recordId ? `server:${recordId}` : `${from}:${to}:${time}:${content.text}`,
+      id: recordId ? `server:${recordId}` : `${from}:${to}:${time}:${JSON.stringify(content)}`,
       senderId: from,
       recipientId: to,
       time,
@@ -265,16 +311,17 @@ export function mergePrivate(
         !used.has(m.id) &&
         m.senderId === local.senderId &&
         m.recipientId === local.recipientId &&
-        (m.text === local.text ||
-          !!local.attachments?.some((a) =>
-            m.attachments?.some(
-              (b) =>
-                a.kind === b.kind &&
-                ((a.resourceId && a.resourceId === b.resourceId) ||
-                  sameMedia(a.url, b.url) ||
-                  (a.actionUrl && a.actionUrl === b.actionUrl)),
-            ),
-          )) &&
+        (local.attachments?.length
+          ? local.attachments.every((a) =>
+              m.attachments?.some(
+                (b) =>
+                  a.kind === b.kind &&
+                  ((a.resourceId && a.resourceId === b.resourceId) ||
+                    sameMedia(a.url, b.url) ||
+                    (a.actionUrl && a.actionUrl === b.actionUrl)),
+              ),
+            )
+          : !m.attachments?.length && m.text === local.text) &&
         m.time > (local.echoAfter ?? -1) &&
         Math.abs(m.time - local.time) <= 60000,
     )

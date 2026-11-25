@@ -1,5 +1,6 @@
+import { ui } from '../../shared/ui-language'
 import { Search, X } from 'lucide-react'
-import { useLayoutEffect, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 export interface BrowserNavigationState {
   scope: string
@@ -16,6 +17,7 @@ export interface BrowserNavigationState {
 }
 
 export function BrowserSearch({ navigation }: { navigation: BrowserNavigationState }) {
+  const inputRef = useRef<HTMLInputElement>(null)
   const [draft, setDraft] = useState({
     key: navigation.inputKey,
     text: navigation.query,
@@ -42,50 +44,60 @@ export function BrowserSearch({ navigation }: { navigation: BrowserNavigationSta
       className="header-search"
       onSubmit={(event) => {
         event.preventDefault()
-        const input = event.currentTarget.querySelector<HTMLInputElement>('input')
-        if (!navigation.busy && input?.value.trim()) navigation.onSubmit?.(input.value)
+        const value = inputRef.current?.value
+        if (!navigation.busy && value?.trim()) navigation.onSubmit?.(value)
       }}
     >
-      <Search size={16} aria-hidden="true" />
-      <input
-        autoFocus={!!navigation.onSubmit}
-        type="search"
-        aria-label={navigation.label}
-        placeholder={navigation.placeholder}
-        value={text}
-        onChange={(event) => change(event.target.value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' && navigation.onSubmit && !event.nativeEvent.isComposing) {
-            // The browser context reaches the header after an effect. Use the
-            // actual input value so quick typing + Enter cannot submit stale text.
-            event.preventDefault()
-            if (!event.repeat && !navigation.busy && event.currentTarget.value.trim())
-              navigation.onSubmit(event.currentTarget.value)
-          }
-          if (
-            event.key === 'Escape' &&
-            event.currentTarget.value &&
-            !event.nativeEvent.isComposing
-          ) {
-            event.preventDefault()
-            event.stopPropagation()
-            change('')
-          }
-        }}
-      />
+      <label className="header-search-field">
+        <Search size={16} aria-hidden="true" />
+        <input
+          ref={inputRef}
+          autoFocus={!!navigation.onSubmit}
+          type="search"
+          aria-label={navigation.label}
+          placeholder={navigation.placeholder}
+          value={text}
+          onChange={(event) => change(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && navigation.onSubmit && !event.nativeEvent.isComposing) {
+              // The browser context reaches the header after an effect. Use the
+              // actual input value so quick typing + Enter cannot submit stale text.
+              event.preventDefault()
+              if (!event.repeat && !navigation.busy && event.currentTarget.value.trim())
+                navigation.onSubmit(event.currentTarget.value)
+            }
+            if (
+              event.key === 'Escape' &&
+              event.currentTarget.value &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault()
+              event.stopPropagation()
+              change('')
+            }
+          }}
+        />
+      </label>
       {text && (
         <button
           className="icon-btn"
           type="button"
-          aria-label={navigation.onSubmit ? '清空搜索' : '清空列表搜索'}
-          onClick={() => change('')}
+          aria-label={
+            navigation.onSubmit
+              ? ui('清空搜索', 'Clear search')
+              : ui('清空列表搜索', 'Clear list search')
+          }
+          onClick={() => {
+            change('')
+            inputRef.current?.focus()
+          }}
         >
           <X size={15} />
         </button>
       )}
       {navigation.onSubmit && (
         <button className="text-btn" type="submit" disabled={!text.trim() || navigation.busy}>
-          搜索
+          {ui('搜索', 'Search')}
         </button>
       )}
     </form>

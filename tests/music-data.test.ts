@@ -7,9 +7,20 @@ import {
   likedPlaylist,
   writablePlaylists,
   playlistFrom,
+  readSearchPage,
 } from '../src/renderer/src/music-data'
 import { nextQueueIndex } from '../src/shared/personal-queue'
 import { ApiService, validate } from '../src/main/service'
+it('paginates song picker results by server rows even when pages overlap', () => {
+  const result = { songs: [{ id: 7 }, { id: 8 }, { id: 8 }], songCount: 6 }
+  const previous = [{ id: '7' }]
+  expect(readSearchPage(result, 'songs', 2, previous)).toEqual({
+    items: [{ id: 8 }],
+    nextOffset: 5,
+    more: true,
+  })
+  expect(() => readSearchPage(result, 'songs', 5, [...previous, { id: '8' }])).toThrow()
+})
 it('loads all subscribed album pages without duplicates and preserves artist metadata', async () => {
   const api = vi.fn(async (_method, args) =>
     args.offset === 0

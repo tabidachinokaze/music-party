@@ -1,222 +1,317 @@
+import { ui } from '../../../shared/ui-language'
 import { PanelHeader } from '../windows/Surface'
-import { useEffect, useRef, useState } from 'react'
-import { ArrowUpToLine, ListMusic, Music2, Play, RefreshCw, ThumbsUp, Trash2 } from 'lucide-react'
-import type { Song, QueueSong, RoomQueueEntry } from '../../../shared/types'
+import { type CSSProperties, useEffect, useState } from 'react'
+import { ArrowUpToLine, ListMusic, Music2, Play, Repeat2, Sparkles, Trash2 } from 'lucide-react'
+import type { QueueSong, RoomQueueEntry } from '../../../shared/types'
 import type { useParty } from '../useParty'
 import { waitingCount } from '../../../shared/playback-queue'
-import { toSong } from '../../../shared/protocol'
+import { MusicianNames } from '../MusicianNames'
+import { useQueueTracks } from './useQueueTracks'
 import { useRoomQueue } from '../useRoomQueue'
 import { Overlay } from './Overlay'
 import { useScrollPagination } from '../useScrollPagination'
 
+export const queueTitle = (inRoom: boolean) =>
+  inRoom ? ui('房间待播列表', 'Room queue') : ui('个人播放队列', 'Personal queue')
+
 export function QueueDrawer({
   party: p,
   closing,
+  inTrail,
+  onArtist,
 }: {
   party: ReturnType<typeof useParty>
   closing: boolean
+  inTrail: boolean
+  onArtist: (id: string, name: string) => void
 }) {
   const [limit, setLimit] = useState(100)
-  const [tracks, setTracks] = useState<Record<string, Song | null>>({})
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(false)
+  const [historyLimit, setHistoryLimit] = useState(100)
+  const [historyRoomId, setHistoryRoomId] = useState<string | null>(null)
   const [removing, setRemoving] = useState<RoomQueueEntry | null>(null)
-  const cache = useRef<Record<string, Song | null>>({})
-  const inRoom = !!p.room
+  const roomId = p.room?.roomId
+  const inRoom = !!roomId
+  const historyTab = inRoom && historyRoomId === roomId
   const roomQueue = useRoomQueue(
     p.api,
-    p.room?.roomId,
+    roomId,
     p.roomPlayback?.version,
-    !closing,
+    !closing && !historyTab,
     p.queueRevision,
   )
+  const history = useRoomQueue(
+    p.api,
+    roomId,
+    p.roomPlayback?.version,
+    !closing && historyTab,
+    0,
+    'multiPlayed',
+    historyLimit,
+  )
+  const activeList = historyTab ? history : roomQueue
   const scope = `${p.account?.userId || 'guest'}:${p.room?.roomId || 'personal'}`
   const currentIndex = roomQueue.entries.findIndex(
     (entry) => entry.songBizId === p.roomPlayback?.song?.songBizId,
   )
   const officialSong = p.roomPlayback?.song
   const roomSong = inRoom ? officialSong : null
+  const recommenderName = (song: QueueSong, entry?: Partial<RoomQueueEntry>) => {
+    if (!song.songRcmdUid || song.songRcmdUid === '0')
+      return ui('系统推荐', 'System recommendation')
+    const member = p.members.find((member) => member.uid === song.songRcmdUid)
+    const nickname = entry?.songRcmdUid === song.songRcmdUid ? entry.recommender?.trim() : ''
+    return ui(
+      '{0} 推荐',
+      'Recommended by {0}',
+      nickname || member?.nickname || ui('用户 {0}', 'User {0}', song.songRcmdUid),
+    )
+  }
+  const currentRecommender = roomSong
+    ? recommenderName(roomSong, roomQueue.entries[currentIndex])
+    : ''
+  const queued = currentIndex < 0 ? roomQueue.entries : roomQueue.entries.slice(currentIndex + 1)
+  const ids = p.room ? [] : p.personalQueue.slice(0, limit)
+  const historyRows = history.entries.filter((entry) => entry.songBizId !== roomSong?.songBizId)
+  const visibleRoomRows = historyTab ? historyRows.slice(0, historyLimit) : queued.slice(0, limit)
+  const currentSongId = inRoom ? roomSong?.songId : p.current?.id
+  const detailIds = inRoom ? visibleRoomRows.map((entry) => entry.songId) : [...ids]
+  if (!historyTab && currentSongId && !detailIds.includes(currentSongId))
+    detailIds.push(currentSongId)
+  const { tracks, loading, error, retry } = useQueueTracks(p.api, scope, closing ? [] : detailIds)
   const nowPlaying = inRoom
     ? roomQueue.entries[currentIndex]?.track ||
       (p.current?.id === officialSong?.songId ? p.current : null) ||
       (officialSong ? tracks[officialSong.songId] : null)
     : p.current
-  const recommenderName = (song: QueueSong, entry?: Partial<RoomQueueEntry>) => {
-    if (!song.songRcmdUid || song.songRcmdUid === '0') return '系统推荐'
-    const member = p.members.find((member) => member.uid === song.songRcmdUid)
-    const nickname = entry?.songRcmdUid === song.songRcmdUid ? entry.recommender?.trim() : ''
-    return nickname || member?.nickname || `用户 ${song.songRcmdUid}`
-  }
-  const currentRecommender = roomSong
-    ? recommenderName(roomSong, roomQueue.entries[currentIndex])
-    : ''
-  const currentReaction = roomSong?.songBizId === p.roomReaction.bizId
-  const currentLiked = currentReaction && p.roomReaction.liked
-  const currentLikeCount = Math.max(
-    currentReaction ? p.roomReaction.count : 0,
-    p.roomPlayback?.likeCount || 0,
-  )
-  const queued = currentIndex < 0 ? roomQueue.entries : roomQueue.entries.slice(currentIndex + 1)
-  const ids = p.room ? [] : p.personalQueue.slice(0, limit)
+  const nowPlayingCredits = nowPlaying
+    ? tracks[nowPlaying.id]?.artists ||
+      (p.current?.id === nowPlaying.id ? p.current.artists : undefined) ||
+      nowPlaying.artists
+    : undefined
+  const listError = (inRoom && activeList.error) || error
   const queueSentinel = useScrollPagination({
     enabled: !closing,
-    scope,
-    loading: loading || (inRoom && roomQueue.loading),
-    hasMore: (inRoom ? queued.length : p.personalQueue.length) > limit,
-    blocked: !!error || !!roomQueue.error,
-    contentKey: limit,
-    onLoad: () => setLimit((value) => value + 100),
+    scope: historyTab ? scope + ':history' : scope,
+    loading: inRoom ? activeList.loading : loading,
+    hasMore: historyTab
+      ? !history.complete || historyRows.length > historyLimit
+      : (inRoom ? queued.length : p.personalQueue.length) > limit,
+    blocked: inRoom ? !!activeList.error : !!error,
+    contentKey: historyTab ? historyLimit : limit,
+    onLoad: () => (historyTab ? setHistoryLimit : setLimit)((value) => value + 100),
   })
-  const idsToLoad = officialSong ? [officialSong.songId, ...ids] : ids
-  const idsKey = idsToLoad.join(',')
   useEffect(() => {
-    cache.current = {}
-    setTracks({})
     setLimit(100)
+    setHistoryLimit(100)
+    setHistoryRoomId(null)
     setRemoving(null)
   }, [scope])
   useEffect(() => {
-    let active = true
-    setError('')
-    const missing = [...new Set(idsToLoad)].filter((id) => !Object.hasOwn(cache.current, id))
-    if (!missing.length) {
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    const fetch = async () => {
-      try {
-        for (let offset = 0; offset < missing.length; offset += 100) {
-          const batch = missing.slice(offset, offset + 100)
-          const body = await p.api('song', { ids: batch.join(',') })
-          if (!active) return
-          if (!Array.isArray(body.songs)) throw new Error('歌曲信息暂时无法读取')
-          for (const id of batch) cache.current[id] = null
-          for (const raw of body.songs) cache.current[String(raw.id)] = toSong(raw)
-          setTracks({ ...cache.current })
-        }
-      } catch (e: any) {
-        if (active) setError(e.message || '歌曲信息暂时无法读取')
-      } finally {
-        if (active) setLoading(false)
-      }
-    }
-    fetch()
-    return () => {
-      active = false
-    }
-  }, [scope, idsKey])
-  const title = inRoom ? '房间待播列表' : '播放队列'
+    if (!inTrail) setHistoryRoomId(null)
+  }, [inTrail])
   const count = inRoom
     ? roomQueue.complete
       ? queued.length
       : waitingCount(p.roomPlayback)
     : p.personalQueue.length
   const entries: (QueueSong & Partial<RoomQueueEntry>)[] = inRoom
-    ? queued.slice(0, limit)
+    ? visibleRoomRows
     : ids.map((songId, index) => ({ songId, songBizId: `${index}`, songRcmdUid: '' }))
   return (
     <aside
       className="queue-drawer"
+      data-room={inRoom}
       data-closing={closing}
       aria-hidden={closing}
       inert={closing}
       role="dialog"
-      aria-label={title}
+      aria-label={queueTitle(inRoom)}
       aria-modal="false"
     >
-      <PanelHeader>
-        <div className="panel-inline-actions">
-          <small>
-            {count === undefined ? '正在同步房间…' : `${count} 首${inRoom ? '待播' : ''}`}
-          </small>
-          {inRoom && (
-            <button
-              className="icon-btn"
-              aria-label="刷新待播列表"
-              disabled={roomQueue.loading}
-              onClick={roomQueue.refresh}
-            >
-              <RefreshCw size={15} />
-            </button>
-          )}
-        </div>
-      </PanelHeader>
-      {nowPlaying && (
-        <div className="queue-playing">
-          <span className="queue-section-label">正在播放</span>
-          <div>
-            {nowPlaying.cover ? (
-              <img src={nowPlaying.cover} alt="" />
-            ) : (
-              <span className="queue-art-placeholder">
-                <Music2 size={20} />
-              </span>
-            )}
-            <span className="queue-playing-copy">
-              {currentRecommender && (
-                <span className="queue-track-overline" title={currentRecommender}>
-                  {currentRecommender}
-                </span>
-              )}
-              <strong>{nowPlaying.name}</strong>
-              <small>{nowPlaying.artist}</small>
-            </span>
-            <span className={`equalizer ${p.playing ? 'playing' : ''}`} aria-hidden="true">
-              <i />
-              <i />
-              <i />
-            </span>
-            {roomSong && (
-              <button
-                className={`icon-btn queue-playing-like ${currentLiked ? 'liked' : ''}`}
-                aria-label={`点赞正在播放歌曲 ${nowPlaying.name}`}
-                aria-pressed={currentLiked}
-                title={currentLiked ? '已为房间当前歌曲点赞' : '为房间当前歌曲点赞'}
-                disabled={!!p.busy || p.auditioning || !currentReaction || p.roomReaction.loading}
-                onClick={() => p.act('一起听点赞', p.likeRoomSong)}
-              >
-                <ThumbsUp size={16} />
-                <small>{currentLikeCount}</small>
-              </button>
-            )}
+      {!inRoom && (
+        <PanelHeader>
+          <div className="panel-inline-actions">
+            <small className="queue-total">
+              {ui('{0} 首', count === 1 ? '{0} track' : '{0} tracks', count)}
+            </small>
           </div>
-        </div>
+        </PanelHeader>
       )}
       {!inRoom && (
         <div className="queue-toolbar">
           <select
-            aria-label="播放模式"
+            aria-label={ui('播放模式', 'Playback mode')}
             value={p.repeatMode}
             onChange={(event) => p.changeRepeat(event.target.value as 'order' | 'loop' | 'single')}
           >
-            <option value="order">顺序播放</option>
-            <option value="loop">列表循环</option>
-            <option value="single">单曲循环</option>
+            <option value="order">{ui('顺序播放', 'Play in order')}</option>
+            <option value="loop">{ui('列表循环', 'Repeat all')}</option>
+            <option value="single">{ui('单曲循环', 'Repeat one')}</option>
           </select>
-          <button className="text-btn" onClick={p.clearPersonalQueue}>
-            清空队列
+          <button
+            className="text-btn"
+            disabled={!p.personalQueue.length}
+            onClick={p.clearPersonalQueue}
+          >
+            <Trash2 size={13} />
+            {ui('清空队列', 'Clear queue')}
           </button>
         </div>
       )}
-      <div className="queue-drawer-list">
-        {inRoom && <div className="queue-section-label">接下来播放</div>}
-        {(error || roomQueue.error) && (
-          <p className="queue-error" role="alert">
-            {error || roomQueue.error}
-            {roomQueue.error && (
-              <button className="text-btn" onClick={roomQueue.refresh}>
-                重试
+      {inRoom && (
+        <div
+          className="room-queue-tabs filter-tabs"
+          role="tablist"
+          aria-label={ui('房间队列', 'Room queue')}
+        >
+          {(['listening', 'history'] as const).map((tab) => {
+            const selected = tab === (historyTab ? 'history' : 'listening')
+            return (
+              <button
+                key={tab}
+                type="button"
+                id={'queue-tab-' + tab}
+                role="tab"
+                aria-controls="room-queue-content"
+                aria-selected={selected}
+                tabIndex={selected ? 0 : -1}
+                onClick={() => setHistoryRoomId(tab === 'history' ? roomId : null)}
+                onKeyDown={(event) => {
+                  const tabs =
+                    event.currentTarget.parentElement!.querySelectorAll<HTMLButtonElement>(
+                      '[role="tab"]',
+                    )
+                  let index: number
+                  switch (event.key) {
+                    case 'Home':
+                      index = 0
+                      break
+                    case 'End':
+                      index = tabs.length - 1
+                      break
+                    case 'ArrowLeft':
+                    case 'ArrowRight':
+                      index = tab === 'listening' ? 1 : 0
+                      break
+                    default:
+                      return
+                  }
+                  event.preventDefault()
+                  tabs[index].focus()
+                  tabs[index].click()
+                }}
+              >
+                {tab === 'listening'
+                  ? ui('正在听', 'Now listening')
+                  : ui('听过的', 'Previously played')}
               </button>
-            )}
+            )
+          })}
+        </div>
+      )}
+      {inRoom && !historyTab && (
+        <div className="queue-toolbar room-queue-order">
+          <Repeat2 size={13} />
+          <span>{ui('按顶歌排序', 'Ranked by upvotes')}</span>
+          <small>{ui('待播顺序由一起听房间同步', 'Queue order is synced with the room')}</small>
+        </div>
+      )}
+      <div
+        key={historyTab ? 'history' : 'queue'}
+        role={inRoom ? 'tabpanel' : undefined}
+        id={inRoom ? 'room-queue-content' : undefined}
+        aria-labelledby={
+          inRoom ? (historyTab ? 'queue-tab-history' : 'queue-tab-listening') : undefined
+        }
+        data-list-viewport=""
+        className="queue-drawer-list"
+        style={
+          inRoom
+            ? undefined
+            : ({
+                '--queue-last-index': `"${String(p.personalQueue.length).padStart(2, '0')}"`,
+              } as CSSProperties)
+        }
+      >
+        {!historyTab && nowPlaying && (inRoom || ids[p.personalIndex] !== nowPlaying.id) && (
+          <div className="queue-playing">
+            <span className="queue-section-label">{ui('正在播放', 'Now playing')}</span>
+            <div>
+              <div className="queue-playing-art">
+                {nowPlaying.cover ? (
+                  <img src={nowPlaying.cover} alt="" />
+                ) : (
+                  <span className="queue-art-placeholder">
+                    <Music2 size={20} />
+                  </span>
+                )}
+                <span className={`equalizer ${p.playing ? 'playing' : ''}`} aria-hidden="true">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+              </div>
+              <span className="queue-playing-copy">
+                {currentRecommender && (
+                  <span className="queue-track-overline" title={currentRecommender}>
+                    {(!roomSong?.songRcmdUid || roomSong.songRcmdUid === '0') && (
+                      <Sparkles size={11} aria-hidden="true" />
+                    )}
+                    <span>{currentRecommender}</span>
+                  </span>
+                )}
+                <strong>{nowPlaying.name}</strong>
+                <small>
+                  <MusicianNames
+                    credits={nowPlayingCredits}
+                    fallback={nowPlaying.artist}
+                    onOpen={onArtist}
+                  />
+                </small>
+              </span>
+            </div>
+          </div>
+        )}
+        {!historyTab && entries.length > 0 && (
+          <div className="queue-section-label">
+            {inRoom
+              ? count === undefined
+                ? ui('接下来播放', 'Up next')
+                : ui('接下来播放（{0}）', 'Up next ({0})', count)
+              : ui('队列中的歌曲', 'Queued songs')}
+          </div>
+        )}
+        {listError && (
+          <p className="queue-error" role="alert">
+            {listError}
+            <button
+              className="text-btn"
+              onClick={() => {
+                if (inRoom && activeList.error) activeList.refresh()
+                if (error) retry()
+              }}
+            >
+              {ui('重试', 'Retry')}
+            </button>
           </p>
         )}
         {entries.map((entry, index) => {
-          const track = entry.track || tracks[entry.songId]
+          const current = p.current?.id === entry.songId ? p.current : undefined
+          const detail = tracks[entry.songId]
+          const track = entry.track || current || detail
           const recommender = recommenderName(entry, entry)
-          const content = (
-            <>
-              <span className="queue-index">{String(index + 1).padStart(2, '0')}</span>
+          const title =
+            track?.name ||
+            (track === null
+              ? ui('歌曲信息暂不可用', 'Song details unavailable')
+              : ui('正在读取歌曲…', 'Loading song…'))
+          return (
+            <div
+              className={`queue-track ${!inRoom && index === p.personalIndex ? 'current' : ''}`}
+              key={entry.songBizId}
+              aria-current={!inRoom && index === p.personalIndex ? true : undefined}
+            >
+              {!inRoom && <span className="queue-index">{String(index + 1).padStart(2, '0')}</span>}
               {track?.cover ? (
                 <img src={track.cover} alt="" />
               ) : (
@@ -227,85 +322,140 @@ export function QueueDrawer({
               <span className="queue-track-copy">
                 {inRoom && (
                   <span className="queue-track-overline" title={recommender}>
-                    {recommender}
+                    {(!entry.songRcmdUid || entry.songRcmdUid === '0') && (
+                      <Sparkles size={11} aria-hidden="true" />
+                    )}
+                    <span>{recommender}</span>
                   </span>
                 )}
                 <strong>
-                  {track?.name || (track === null ? '歌曲信息暂不可用' : '正在读取歌曲…')}
+                  {inRoom ? (
+                    title
+                  ) : (
+                    <button
+                      type="button"
+                      className="queue-row-play"
+                      disabled={!!p.busy}
+                      title={track?.name ? ui('播放《{0}》', 'Play “{0}”', track.name) : undefined}
+                      aria-label={ui('播放队列第 {0} 首', 'Play queue item {0}', index + 1)}
+                      onClick={() =>
+                        p.act(ui('播放队列', 'Play queue'), () => p.playQueueIndex(index))
+                      }
+                    >
+                      {title}
+                    </button>
+                  )}
                 </strong>
-                <small>{track?.artist || '—'}</small>
+                <small>
+                  <MusicianNames
+                    credits={detail?.artists || current?.artists || track?.artists}
+                    fallback={track?.artist || '—'}
+                    onOpen={onArtist}
+                  />
+                </small>
               </span>
-              {!inRoom && <Play size={15} className="queue-track-play" />}
-            </>
-          )
-          return inRoom ? (
-            <div className="queue-track" key={entry.songBizId}>
-              {content}
-              <div className="queue-entry-actions">
-                <button
-                  className="icon-btn"
-                  aria-label={`顶歌 ${track?.name || entry.songId}`}
-                  title="UP 顶歌，提高待播优先级"
-                  disabled={!!p.busy || entry.uped}
-                  onClick={() =>
-                    p.act('顶歌', () => p.recommendOperation('multiUp', entry as RoomQueueEntry))
-                  }
-                >
-                  <ArrowUpToLine size={15} />
-                  <small>{entry.upCountKnown === false ? '' : entry.upCount}</small>
-                </button>
-                {entry.songRcmdUid === String(p.account?.userId) && (
+              {!inRoom &&
+                (index === p.personalIndex ? (
+                  <span
+                    className={`equalizer ${p.playing ? 'playing' : ''}`}
+                    aria-label={ui('正在播放', 'Now playing')}
+                  >
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                ) : (
+                  <Play size={15} className="queue-track-play" />
+                ))}
+              {inRoom && !historyTab && (
+                <div className="queue-entry-actions">
                   <button
                     className="icon-btn"
-                    aria-label={`删除推荐 ${track?.name || entry.songId}`}
-                    title="删除自己的推荐"
-                    disabled={!!p.busy}
-                    onClick={() => {
-                      p.setError('')
-                      setRemoving(entry as RoomQueueEntry)
-                    }}
+                    aria-label={ui('顶歌 {0}', 'Upvote {0}', track?.name || entry.songId)}
+                    title={ui('UP 顶歌，提高待播优先级', 'Upvote to move this song up the queue')}
+                    disabled={!!p.busy || entry.uped}
+                    onClick={() =>
+                      p.act(ui('顶歌', 'Upvote'), () =>
+                        p.recommendOperation('multiUp', entry as RoomQueueEntry),
+                      )
+                    }
                   >
-                    <Trash2 size={14} />
+                    <ArrowUpToLine size={15} />
+                    <small>{entry.upCountKnown === false ? '' : entry.upCount}</small>
                   </button>
-                )}
-              </div>
+                  {entry.songRcmdUid === String(p.account?.userId) && (
+                    <button
+                      className="icon-btn"
+                      aria-label={ui(
+                        '删除推荐 {0}',
+                        'Remove recommendation: {0}',
+                        track?.name || entry.songId,
+                      )}
+                      title={ui('删除自己的推荐', 'Remove your recommendation')}
+                      disabled={!!p.busy}
+                      onClick={() => {
+                        p.setError('')
+                        setRemoving(entry as RoomQueueEntry)
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-          ) : (
-            <button
-              className={`queue-track ${index === p.personalIndex ? 'current' : ''}`}
-              key={entry.songBizId}
-              disabled={!!p.busy}
-              aria-label={`播放队列第 ${index + 1} 首`}
-              onClick={() => p.act('播放队列', () => p.playQueueIndex(index))}
-            >
-              {content}
-            </button>
           )
         })}
-        {inRoom && !p.roomPlayback && <p className="queue-loading">正在同步房间待播列表…</p>}
-        {!entries.length && !loading && (!inRoom || roomQueue.complete) && (
+        {inRoom && !historyTab && !p.roomPlayback && (
+          <p className="queue-loading">{ui('正在同步房间待播列表…', 'Syncing room queue…')}</p>
+        )}
+        {historyTab && history.loading && (
+          <p className="queue-loading" role="status">
+            {ui('正在读取播放历史…', 'Loading listening history…')}
+          </p>
+        )}
+        {!entries.length && !listError && !loading && (!inRoom || activeList.complete) && (
           <div className="queue-empty">
             <ListMusic size={30} />
-            <strong>{inRoom ? '还没有待播歌曲' : '队列还是空的'}</strong>
-            <p>
-              {inRoom
-                ? '从歌单或搜索中选一首，推荐给大家。'
-                : '播放歌单或搜索结果后，歌曲会出现在这里。'}
-            </p>
+            <strong>
+              {historyTab
+                ? ui('还没有听过的歌曲', 'No listening history yet')
+                : inRoom
+                  ? ui('还没有待播歌曲', 'No upcoming songs')
+                  : ui('队列还是空的', 'Your queue is empty')}
+            </strong>
+            {!historyTab && (
+              <p>
+                {inRoom
+                  ? ui(
+                      '从歌单或搜索中选一首，推荐给大家。',
+                      'Recommend a song from a playlist or search.',
+                    )
+                  : ui(
+                      '播放歌单或搜索结果后，歌曲会出现在这里。',
+                      'Play a playlist or a search result to add songs here.',
+                    )}
+              </p>
+            )}
           </div>
         )}
-        {loading && <p className="queue-loading">正在读取歌曲信息…</p>}
-        {inRoom && roomQueue.loading && (
-          <p className="queue-loading">正在读取完整待播列表 · 已获取 {queued.length} 首…</p>
+        {loading && (
+          <p className="queue-loading">{ui('正在读取歌曲信息…', 'Loading song details…')}</p>
         )}
         <div ref={queueSentinel} className="pagination-sentinel" aria-hidden="true" />
       </div>
-      <div className="queue-drawer-footer">
-        {inRoom ? '待播顺序由一起听房间同步' : '个人播放队列'}
-      </div>
       {removing && (
-        <Overlay title="删除自己的推荐？" onClose={() => setRemoving(null)}>
-          <p className="overlay-intro">将「{removing.track.name}」从房间待播列表移除。</p>
+        <Overlay
+          title={ui('删除自己的推荐？', 'Remove your recommendation?')}
+          onClose={() => setRemoving(null)}
+        >
+          <p className="overlay-intro">
+            {ui(
+              '将「{0}」从房间待播列表移除。',
+              'Remove “{0}” from the room queue.',
+              removing.track.name,
+            )}
+          </p>
           {p.error && (
             <p className="private-error" role="alert">
               {p.error}
@@ -313,19 +463,19 @@ export function QueueDrawer({
           )}
           <div className="row-actions">
             <button className="secondary" onClick={() => setRemoving(null)}>
-              取消
+              {ui('取消', 'Cancel')}
             </button>
             <button
               className="primary"
               disabled={!!p.busy}
               onClick={() =>
-                p.act('删除推荐', async () => {
+                p.act(ui('删除推荐', 'Remove recommendation'), async () => {
                   await p.recommendOperation('multiRemove', removing)
                   setRemoving(null)
                 })
               }
             >
-              确认删除推荐
+              {ui('确认删除推荐', 'Remove recommendation')}
             </button>
           </div>
         </Overlay>

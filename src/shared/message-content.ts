@@ -112,7 +112,12 @@ export function richMessageContent(value: unknown): {
   const body = messageObject(root.body ?? root.msgBody)
   const data = { ...root, ...body }
   const attachments: MessageAttachment[] = []
-  const addMedia = (kind: 'image' | 'audio' | 'video', raw: any, title: string) => {
+  const addMedia = (
+    kind: 'image' | 'audio' | 'video',
+    raw: any,
+    title: string,
+    english?: string,
+  ) => {
     if (!raw) return
     const item = messageObject(raw)
     const url = mediaUrl(
@@ -128,9 +133,11 @@ export function richMessageContent(value: unknown): {
             item.playUrlInfo?.url ||
             item.videoUrl,
     )
+    const mediaTitle = text(item.name || item.title)
     attachments.push({
       kind,
-      title: text(item.name || item.title) || title,
+      title: mediaTitle || title,
+      ...(!mediaTitle && english && { fallbackTitleEn: english }),
       url,
       cover: mediaUrl(
         item.coverUrl || item.cover || item.coverImage?.url || item.coverImage?.picUrl,
@@ -161,7 +168,8 @@ export function richMessageContent(value: unknown): {
   const emoji = parseEmoji(data.emoji)
   if (emoji) addMedia('image', emoji, emoji.emojiName)
   const images = data.pics || data.pictures || data.images
-  if (Array.isArray(images)) images.slice(0, 9).forEach((pic) => addMedia('image', pic, '图片'))
+  if (Array.isArray(images))
+    images.slice(0, 9).forEach((pic) => addMedia('image', pic, '图片', 'Image'))
   else
     addMedia(
       'image',
@@ -172,8 +180,14 @@ export function richMessageContent(value: unknown): {
           ? undefined
           : data.picUrl),
       '图片',
+      'Image',
     )
-  addMedia('audio', data.voice || data.audio || (data.voiceUrl ? data : null), '语音消息')
+  addMedia(
+    'audio',
+    data.voice || data.audio || (data.voiceUrl ? data : null),
+    '语音消息',
+    'Voice message',
+  )
   const video = messageObject(data.video)
   if (
     video.url ||
@@ -182,35 +196,36 @@ export function richMessageContent(value: unknown): {
     data.videoUrl ||
     data.playUrlInfo?.url
   )
-    addMedia('video', data.video || data, '视频消息')
+    addMedia('video', data.video || data, '视频消息', 'Video')
   // New message-center envelopes use msgType; legacy private-history type values are different.
-  if (root.msgType === 1 && !attachments.length) addMedia('image', body, '图片')
-  if (root.msgType === 4 && !attachments.length) addMedia('audio', body, '语音消息')
-  if (root.msgType === 5 && !attachments.length) addMedia('video', body, '视频消息')
-  const resources: [string, string, string][] = [
-    ['song', 'song', '歌曲'],
-    ['playlist', 'playlist', '歌单'],
-    ['album', 'album', '专辑'],
-    ['artist', 'artist', '歌手'],
-    ['program', 'program', '播客节目'],
-    ['djRadio', 'radio', '播客'],
-    ['radio', 'radio', '播客'],
-    ['mv', 'mv', 'MV'],
-    ['video', 'video', '视频'],
-    ['user', 'user', '用户'],
-    ['profile', 'user', '用户'],
-    ['topic', 'topic', '话题'],
-    ['subject', 'topic', '专题'],
-    ['event', 'event', '动态'],
-    ['activity', 'event', '活动'],
-    ['mlog', 'mlog', 'Mlog'],
-    ['concert', 'concert', '演出'],
-    ['live', 'live', '直播'],
-    ['comment', 'comment', '评论'],
-    ['generalMsg', 'general', '消息卡片'],
-    ['promotion', 'general', '活动卡片'],
+  if (root.msgType === 1 && !attachments.length) addMedia('image', body, '图片', 'Image')
+  if (root.msgType === 4 && !attachments.length)
+    addMedia('audio', body, '语音消息', 'Voice message')
+  if (root.msgType === 5 && !attachments.length) addMedia('video', body, '视频消息', 'Video')
+  const resources: [string, string, string, string][] = [
+    ['song', 'song', '歌曲', 'Song'],
+    ['playlist', 'playlist', '歌单', 'Playlist'],
+    ['album', 'album', '专辑', 'Album'],
+    ['artist', 'artist', '歌手', 'Artist'],
+    ['program', 'program', '播客节目', 'Podcast episode'],
+    ['djRadio', 'radio', '播客', 'Podcast'],
+    ['radio', 'radio', '播客', 'Podcast'],
+    ['mv', 'mv', 'MV', 'MV'],
+    ['video', 'video', '视频', 'Video'],
+    ['user', 'user', '用户', 'User'],
+    ['profile', 'user', '用户', 'User'],
+    ['topic', 'topic', '话题', 'Topic'],
+    ['subject', 'topic', '专题', 'Feature'],
+    ['event', 'event', '动态', 'Post'],
+    ['activity', 'event', '活动', 'Event'],
+    ['mlog', 'mlog', 'Mlog', 'Mlog'],
+    ['concert', 'concert', '演出', 'Concert'],
+    ['live', 'live', '直播', 'Live stream'],
+    ['comment', 'comment', '评论', 'Comment'],
+    ['generalMsg', 'general', '消息卡片', 'Message card'],
+    ['promotion', 'general', '活动卡片', 'Event card'],
   ]
-  for (const [key, type, label] of resources) {
+  for (const [key, type, label, english] of resources) {
     let raw = data[key]
     const typed: Record<number, string> = {
       2: 'generalMsg',
@@ -256,14 +271,17 @@ export function richMessageContent(value: unknown): {
             .filter(Boolean)
             .join(' / ')
         : '')
+    const title = text(
+      item.name || item.title || item.nickname || item.mainTitle?.title || item.mainTitle,
+    )
     attachments.push({
       kind: 'resource',
       resourceType: type,
       resourceId: id,
-      title:
-        text(item.name || item.title || item.nickname || item.mainTitle?.title || item.mainTitle) ||
-        label,
+      title: title || label,
       subtitle: subtitle || label,
+      ...(!title && { fallbackTitleEn: english }),
+      ...(!subtitle && { fallbackSubtitleEn: english }),
       cover: mediaUrl(
         item.picUrl ||
           item.coverImgUrl ||
@@ -281,9 +299,11 @@ export function richMessageContent(value: unknown): {
   }
   if (data.file || root.msgType === 49) {
     const file = messageObject(data.file || body)
+    const title = text(file.name || file.fileName)
     attachments.push({
       kind: 'file',
-      title: text(file.name || file.fileName) || '文件',
+      title: title || '文件',
+      ...(!title && { fallbackTitleEn: 'File' }),
       subtitle: text(file.description),
       actionUrl: musicMessageLink(file.url) || neteaseAssetUrl(file.url),
     })

@@ -1,3 +1,4 @@
+import { ui } from '../../shared/ui-language'
 import type { RoomPlayback, Song } from '../../shared/types'
 import { shouldAccept, targetPosition } from '../../shared/multiplayer'
 
@@ -17,7 +18,7 @@ export interface AudioPort {
 export class RoomPlayer {
   private epoch = 0
   private state: RoomPlayback | null = null
-  private loaded = ''
+  private loaded: { key: string; song: Song } | null = null
   private desired = ''
   private loading: Promise<void> | null = null
   private cancelLoad: (() => void) | null = null
@@ -37,30 +38,41 @@ export class RoomPlayer {
   suspend() {
     this.suspended = true
     if (this.auditioning) return
+    this.discardRoomSource()
+    this.audio.pause()
+  }
+  private discardRoomSource() {
     this.epoch++
     this.cancelLoad?.()
     this.cancelLoad = null
     this.state = null
-    this.loaded = ''
+    this.loaded = null
     this.endedKey = ''
     this.desired = ''
     this.loading = null
-    this.audio.pause()
   }
   reset() {
+    this.detachForLocal(null)
+    this.audio.pause()
+  }
+  detachForLocal(current: RoomPlayback['song']) {
+    const key = current && `${current.songId}:${current.songBizId}`
+    const song = key && this.loaded?.key === key ? this.loaded.song : null
+    const listening = this.listening
+    this.discardRoomSource()
     this.auditioning = false
     this.auditionLoaded = false
     this.auditionChanged(false)
-    this.suspend()
     this.listening = true
     this.suspended = false
+    return { song, listening }
   }
   async ended() {
     if (this.auditioning) {
       await this.returnToRoom()
       return
     }
-    this.endedKey = this.loaded
+    this.endedKey = this.loaded?.key || ''
   }
   async setListening(listening: boolean) {
     if (this.auditioning) {
@@ -71,7 +83,7 @@ export class RoomPlayer {
     }
     this.listening = listening
     if (!listening) this.audio.pause()
-    else if (this.state && this.loaded && this.endedKey !== this.loaded) {
+    else if (this.state && this.loaded && this.endedKey !== this.loaded.key) {
       this.align(true)
       await this.audio.play()
     }
@@ -97,14 +109,14 @@ export class RoomPlayer {
       this.cancelLoad?.()
       this.cancelLoad = null
       this.loading = null
-      this.loaded = ''
+      this.loaded = null
       this.desired = ''
       this.audio.pause()
       this.changed(null)
       return
     }
     const key = `${next.song.songId}:${next.song.songBizId}`
-    if (key === this.loaded) {
+    if (key === this.loaded?.key) {
       if (key === this.endedKey) return
       this.align()
       if (
@@ -117,6 +129,7 @@ export class RoomPlayer {
     }
     if (key === this.desired && this.loading) return this.loading
     this.cancelLoad?.()
+    this.loaded = null
     this.desired = key
     const epoch = ++this.epoch
     this.audio.pause()
@@ -125,7 +138,7 @@ export class RoomPlayer {
       if (epoch !== this.epoch) return
       await this.loadSource(track.url, epoch)
       if (epoch !== this.epoch) return
-      this.loaded = key
+      this.loaded = { key, song: track.song }
       this.endedKey = ''
       this.changed(track.song)
       this.align(true)
@@ -158,11 +171,11 @@ export class RoomPlayer {
       }
       const fail: EventListener = () => {
         cleanup()
-        reject(new Error('当前歌曲音频加载失败'))
+        reject(new Error(ui('当前歌曲音频加载失败', "Couldn't load audio for this song")))
       }
       const timer = setTimeout(() => {
         cleanup()
-        reject(new Error('音频加载超时'))
+        reject(new Error(ui('音频加载超时', 'Audio loading timed out')))
       }, 15000)
       this.cancelLoad = () => {
         cleanup()
@@ -175,10 +188,17 @@ export class RoomPlayer {
     await ready
   }
   async audition(id: string) {
-    if (!this.state) throw new Error('房间播放状态尚未同步，请稍后试听')
+    if (!this.state)
+      throw new Error(
+        ui(
+          '房间播放状态尚未同步，请稍后试听',
+          'Room playback is still syncing. Try the preview again shortly.',
+        ),
+      )
     this.cancelLoad?.()
     const epoch = ++this.epoch
-    this.loaded = this.desired = this.endedKey = ''
+    this.loaded = null
+    this.desired = this.endedKey = ''
     this.loading = null
     this.auditioning = true
     this.auditionLoaded = false
@@ -219,7 +239,8 @@ export class RoomPlayer {
     this.cancelLoad?.()
     this.cancelLoad = null
     this.loading = null
-    this.loaded = this.desired = this.endedKey = ''
+    this.loaded = null
+    this.desired = this.endedKey = ''
     this.auditioning = false
     this.auditionLoaded = false
     this.auditionChanged(false)

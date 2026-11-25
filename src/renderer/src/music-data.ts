@@ -1,6 +1,36 @@
-import type { Album, Artist, Method, Playlist, Song } from '../../shared/types'
+import { ui } from '../../shared/ui-language'
+import type { Album, Artist, Method, Playlist, SearchKind, Song } from '../../shared/types'
 import { toSong } from '../../shared/protocol'
 export type ApiCall = (method: Method, args?: Record<string, unknown>) => Promise<any>
+export function readSearchPage(
+  result: any,
+  kind: SearchKind,
+  offset: number,
+  previous: readonly { id: string }[],
+) {
+  const rows: any[] = Array.isArray(result?.[kind]) ? result[kind] : []
+  const seen = new Set(previous.map((item) => item.id))
+  const items = rows.filter((item) => {
+    const id = String(item.id)
+    if (seen.has(id)) return false
+    seen.add(id)
+    return true
+  })
+  if (rows.length && !items.length)
+    throw new Error(
+      ui('搜索结果分页未继续前进，请重试', 'Search results stopped loading. Try again.'),
+    )
+  const countField = { songs: 'songCount', playlists: 'playlistCount', artists: 'artistCount' }[
+    kind
+  ]
+  const total = Number(result?.[countField] || 0)
+  const nextOffset = offset + rows.length
+  return {
+    items,
+    nextOffset,
+    more: rows.length > 0 && (total ? nextOffset < total : rows.length === 30),
+  }
+}
 export function likedPlaylist(playlists: Playlist[], uid: string | null): Playlist | undefined {
   return playlists.find((playlist) => playlist.creatorId === uid && playlist.specialType === 5)
 }
@@ -10,7 +40,7 @@ export function writablePlaylists(playlists: Playlist[], uid: string): Playlist[
 export function playlistFrom(value: any): Playlist {
   return {
     id: String(value.id),
-    name: value.name || '未命名歌单',
+    name: value.name || ui('未命名歌单', 'Untitled playlist'),
     cover: value.coverImgUrl || value.picUrl || '',
     count: value.trackCount || 0,
     creatorId: String(value.creator?.userId || ''),
@@ -37,13 +67,19 @@ export async function allPlaylists(
   while (active()) {
     const body = await api('playlists', { uid, offset })
     if (!active()) return []
-    if (!Array.isArray(body.playlist)) throw new Error('歌单响应格式异常，请重试')
+    if (!Array.isArray(body.playlist))
+      throw new Error(ui('歌单响应格式异常，请重试', 'Invalid playlist response. Try again.'))
     const before = byId.size
     for (const item of body.playlist) byId.set(String(item.id), playlistFrom(item))
     progress([...byId.values()])
     if (!body.more) return [...byId.values()]
     if (!body.playlist.length || before === byId.size)
-      throw new Error('服务端重复返回同一页，歌单尚未加载完整，请刷新重试')
+      throw new Error(
+        ui(
+          '服务端重复返回同一页，歌单尚未加载完整，请刷新重试',
+          'The server returned the same page twice. Refresh to load the rest of your playlists.',
+        ),
+      )
     offset += body.playlist.length
   }
   return []
@@ -51,10 +87,27 @@ export async function allPlaylists(
 export async function songsByIds(api: ApiCall, ids: string[]): Promise<Song[]> {
   if (!ids.length) return []
   const body = await api('song', { ids: ids.join(',') })
-  if (!Array.isArray(body.songs)) throw new Error('歌曲响应格式异常')
+  if (!Array.isArray(body.songs)) throw new Error(ui('歌曲响应格式异常', 'Invalid track response'))
   const byId = new Map<string, Song>(body.songs.map((s: any) => [String(s.id), toSong(s)]))
   return ids.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []))
 }
+/** Album credits may be returned as a list, or only as a primary artist. */
+export function albumArtistName(
+  album?: {
+    artists?: { name?: string }[]
+    artist?: { name?: string }
+  } | null,
+): string {
+  const names = Array.isArray(album?.artists)
+    ? album.artists
+        .map((artist) => (typeof artist?.name === 'string' ? artist.name.trim() : ''))
+        .filter(Boolean)
+    : []
+  return (
+    names.join(' / ') || (typeof album?.artist?.name === 'string' ? album.artist.name.trim() : '')
+  )
+}
+
 export async function allAlbums(
   api: ApiCall,
   active: () => boolean,
@@ -65,19 +118,17 @@ export async function allAlbums(
   while (active()) {
     const body = await api('albums', { offset })
     if (!active()) return []
-    if (!Array.isArray(body.data)) throw new Error('收藏专辑响应异常，请重试')
+    if (!Array.isArray(body.data))
+      throw new Error(ui('收藏专辑响应异常，请重试', 'Could not read saved albums. Try again.'))
     const before = byId.size
     for (const item of body.data) {
       if (!/^[1-9]\d*$/.test(String(item.id))) continue
       byId.set(String(item.id), {
         id: String(item.id),
-        name: item.name || '未命名专辑',
+        name: item.name || ui('未命名专辑', 'Untitled album'),
         cover: item.picUrl || '',
         count: Number(item.size || 0),
-        artist: (item.artists || [])
-          .map((artist: any) => artist.name)
-          .filter(Boolean)
-          .join(' / '),
+        artist: albumArtistName(item),
       })
     }
     progress([...byId.values()])
@@ -87,7 +138,10 @@ export async function allAlbums(
       body.more ??
       (Number.isFinite(body.count) ? offset < body.count : body.data.length === 50)
     if (!more) return [...byId.values()]
-    if (!body.data.length || before === byId.size) throw new Error('收藏专辑分页未继续前进，请重试')
+    if (!body.data.length || before === byId.size)
+      throw new Error(
+        ui('收藏专辑分页未继续前进，请重试', 'No more saved albums could be loaded. Try again.'),
+      )
   }
   return []
 }

@@ -55,7 +55,7 @@ export class UpdateController {
         phase: 'downloaded',
         version: info.version,
         percent: 100,
-        message: '更新已下载并通过校验，点击安装后将退出房间并重启。',
+        message: '更新已下载并通过校验，点击安装后将重启播放器。',
       }),
     )
     backend.on('error', (error) => this.fail(error))
@@ -117,7 +117,7 @@ export class UpdateController {
   }
   async install(): Promise<UpdateState> {
     if (this.state.phase !== 'downloaded') return this.state
-    this.set({ phase: 'installing', message: '正在退出房间并安装更新…' })
+    this.set({ phase: 'installing', message: '正在安装更新并重启播放器…' })
     try {
       await this.beforeInstall()
       this.backend.quitAndInstall(false, true)

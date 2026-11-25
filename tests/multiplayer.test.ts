@@ -3,6 +3,7 @@ import { parseInvitation, invitation } from '../src/shared/protocol'
 import {
   parseSnapshot,
   parseRoomPlayback,
+  parsePreviewCreator,
   targetPosition,
   shouldAccept,
   heartbeatInterval,
@@ -40,6 +41,21 @@ it.each([
     expect(roomTypeLabel(snapshot.roomBizType)).toBe(label)
   },
 )
+it('keeps ordered room tags while distinguishing an empty list from an omitted list', () => {
+  expect(parseSnapshot({ roomId: 'r' }, 0).tags).toBeUndefined()
+  expect(parseSnapshot({ roomId: 'r', roomTagList: [] }, 0).tags).toEqual([])
+  expect(
+    parseSnapshot(
+      {
+        roomId: 'r',
+        multiRoomInfoDTO: {
+          roomTagList: [' 电子 ', null, '电子', '', '流行'],
+        },
+      },
+      0,
+    ).tags,
+  ).toEqual(['电子', '流行'])
+})
 it('creates a public friend room and rematches without inviting any contacts', () => {
   expect(multiPayload('multiCreate', { songId: '123', allowStrangerMatch: true }, 'token')).toEqual(
     {
@@ -59,6 +75,59 @@ it('creates a public friend room and rematches without inviting any contacts', (
     roomId: 'r',
     exitType: 'CHANGE_ROOM',
   })
+})
+
+it('identifies the room creator by the official creatorId independent of inviter, current listener and list order', () => {
+  const creator = '90071992547409931'
+  const snapshot = {
+    roomId: 'r',
+    inviterUid: '7',
+    multiRoomInfoDTO: {
+      firstUserId: 8,
+      creatorId: creator,
+      roomUsers: [{ userId: creator, nickname: '房间资料名' }],
+    },
+    multiLtRoomUserAgg: {
+      onlineUserInfos: [
+        { uid: 7, nickname: '发出邀请的人' },
+        { uid: 8, nickname: '第一位参与者' },
+        { uid: creator, nickname: '创建者的新昵称' },
+      ],
+    },
+  }
+  expect(parseSnapshot(snapshot, 0)).toMatchObject({
+    creatorUid: creator,
+    creatorName: '创建者的新昵称',
+  })
+  snapshot.multiLtRoomUserAgg.onlineUserInfos.pop()
+  expect(parseSnapshot(snapshot, 0)).toMatchObject({
+    creatorUid: creator,
+    creatorName: '房间资料名',
+  })
+  snapshot.multiRoomInfoDTO.roomUsers = []
+  expect(parseSnapshot(snapshot, 0).creatorName).toBeUndefined()
+})
+it.each([undefined, 0, -1, 9007199254740992, 'abc'])(
+  'does not infer a creator from incomplete or invalid ID %s',
+  (creatorId) => {
+    const snapshot = parseSnapshot(
+      {
+        roomId: 'r',
+        inviterUid: '3',
+        roomInfo: { creatorId, firstUserId: 3, roomUsers: [{ userId: 3, nickname: '邀请人' }] },
+      },
+      0,
+    )
+    expect(snapshot.creatorUid).toBeUndefined()
+    expect(snapshot.creatorName).toBeUndefined()
+  },
+)
+it('reads only matching creator profiles from share previews, including when only the inviter is known', () => {
+  const inviter = { userId: 7, nickname: '好友' }
+  const data = { roomCreator: { userId: 8, nickname: ' 创建者 ' }, inviter }
+  expect(parsePreviewCreator(data, '8')).toEqual({ creatorUid: '8', creatorName: '创建者' })
+  expect(parsePreviewCreator(data, '7')).toEqual({})
+  expect(parsePreviewCreator({ inviter })).toEqual({})
 })
 
 it('parses markdown official multi invitations and preserves large inviter IDs', () => {
@@ -430,4 +499,50 @@ it('leaving while an audition loads cannot restart audio or restore an obsolete 
   await pending
   expect(audio.paused).toBe(true)
   expect(player.auditioning).toBe(false)
+})
+
+it('hands loaded room audio to the personal player without seeking or interrupting it', async () => {
+  const audio = new FakeAudio()
+  const player = new RoomPlayer(
+    audio,
+    async (id) => track(id),
+    vi.fn(),
+    () => 2000,
+  )
+  const playback = state()
+  await player.apply(playback)
+  audio.currentTime = 19
+  const pause = vi.spyOn(audio, 'pause')
+  const load = vi.spyOn(audio, 'load')
+  expect(player.detachForLocal(playback.song)).toEqual({ song: track('123').song, listening: true })
+  expect(audio.currentTime).toBe(19)
+  expect(audio.paused).toBe(false)
+  expect(pause).not.toHaveBeenCalled()
+  expect(load).not.toHaveBeenCalled()
+})
+
+it('invalidates a pending preview when paused room playback is handed to the personal queue', async () => {
+  const audio = new FakeAudio()
+  let resolvePreview!: (value: ReturnType<typeof track>) => void
+  const player = new RoomPlayer(
+    audio,
+    (id) =>
+      id === '777'
+        ? new Promise((resolve) => {
+            resolvePreview = resolve
+          })
+        : Promise.resolve(track(id)),
+    vi.fn(),
+    () => 2000,
+  )
+  const playback = state()
+  await player.apply(playback)
+  await player.setListening(false)
+  const preview = player.audition('777')
+  expect(player.detachForLocal(playback.song)).toEqual({ song: null, listening: false })
+  audio.src = 'local'
+  resolvePreview(track('777'))
+  await preview
+  expect(audio.src).toBe('local')
+  expect(audio.paused).toBe(true)
 })

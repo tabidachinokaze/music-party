@@ -1,13 +1,14 @@
-import { settingsGroup, openTool, panelPage, loginFixture } from './windows'
+import { settingsGroup, openTool, panelPage, loginFixture, widenPanel } from './windows'
 import { test, expect, _electron as electron } from '@playwright/test'
 import { createServer } from 'node:http'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-test('favorite views share server playlist ordering and adding to an owned playlist needs confirmation', async () => {
+test('favorite views share server playlist ordering and multi-playlist writes retain selection and retry only failures', async () => {
   const favoriteIds = ['9', '2', '7']
-  const targetIds: string[] = []
+  const tracks = new Map<string, string[]>([['301', ['9']]])
+  const playlistTracks = (id: string) => tracks.get(id) ?? []
   const calls: { route: string; args: any }[] = []
   let failWrite = true
   const self = { userId: 123, nickname: '歌单测试账户' }
@@ -54,7 +55,13 @@ test('favorite views share server playlist ordering and adding to an owned playl
               trackCount: favoriteIds.length,
               creator: self,
             },
-            { id: 20, name: '晚间歌单', trackCount: targetIds.length, creator: self },
+            ...Array.from({ length: 24 }, (_, index) => ({
+              id: 300 + index,
+              name: '测试歌单 ' + index,
+              trackCount: playlistTracks(String(300 + index)).length,
+              creator: self,
+            })),
+            { id: 20, name: '晚间歌单', trackCount: playlistTracks('20').length, creator: self },
             { id: 30, name: '他人歌单', trackCount: 1, creator: { userId: 456, nickname: '好友' } },
           ],
         }
@@ -73,7 +80,9 @@ test('favorite views share server playlist ordering and adding to an owned playl
             id: Number(args.id),
             creator: self,
             specialType: isFavorite ? 5 : 0,
-            trackIds: (isFavorite ? favoriteIds : targetIds).map((id) => ({ id: Number(id) })),
+            trackIds: (isFavorite ? favoriteIds : playlistTracks(args.id)).map((id) => ({
+              id: Number(id),
+            })),
           },
         }
         break
@@ -97,11 +106,14 @@ test('favorite views share server playlist ordering and adding to an owned playl
         body = { code: 200, msgs: [], more: false }
         break
       case '/api/playlist/manipulate/tracks':
-        if (failWrite) {
+        if (failWrite && args.data.pid === '20') {
           failWrite = false
           body = { code: 500, message: '模拟添加失败，请检查歌单' }
         } else {
-          targetIds.push(...JSON.parse(args.data.trackIds))
+          tracks.set(args.data.pid, [
+            ...playlistTracks(args.data.pid),
+            ...JSON.parse(args.data.trackIds),
+          ])
           body = { code: 200 }
         }
         break
@@ -127,12 +139,17 @@ test('favorite views share server playlist ordering and adding to an owned playl
   })
   try {
     const player = await app.firstWindow()
+    await player.emulateMedia({ reducedMotion: 'reduce' })
     let page = player.locator('body')
     const errors: string[] = []
     player.on('pageerror', (error) => errors.push(error.message))
     await loginFixture(app, player)
     // A category reacts only within its own button; the rest of the bar stays unchanged.
     page = await openTool(app, player, 'library')
+    const cards = page.locator('.playlist-card')
+    await expect(cards.filter({ hasText: '晚间歌单' })).toContainText(self.nickname)
+    await expect(cards.filter({ hasText: '他人歌单' })).toContainText('好友')
+    await expect(cards.getByText(/自建歌单|收藏歌单/)).toHaveCount(0)
     const category = page
       .locator('.filter-tabs')
       .getByRole('button', { name: '我创建的', exact: true })
@@ -149,9 +166,21 @@ test('favorite views share server playlist ordering and adding to an owned playl
     expect(
       await page.locator('.filter-tabs').evaluate((node) => getComputedStyle(node).backgroundColor),
     ).toBe(tabsBackground)
+    await category.click()
+    await expect(cards.filter({ hasText: '他人歌单' })).toHaveCount(0)
+    await page.getByRole('button', { name: /^晚间歌单/ }).click()
+    const detail = await panelPage(app, 'detail-playlist-20')
+    await detail
+      .getByRole('navigation', { name: '页面导航' })
+      .getByRole('button', { name: /^返回/ })
+      .click()
+    await expect(category).toHaveAttribute('aria-pressed', 'true')
+    await expect(cards.filter({ hasText: '他人歌单' })).toHaveCount(0)
+    await page.getByRole('button', { name: '全部', exact: true }).click()
+
     page = await openTool(app, player, 'settings')
     await settingsGroup(page, '外观')
-    await page.getByLabel('界面字体大小', { exact: true }).fill('150')
+    await page.getByLabel('显示大小', { exact: true }).fill('150')
     page = await openTool(app, player, 'library')
     await player
       .locator('.main-sidebar')
@@ -178,44 +207,127 @@ test('favorite views share server playlist ordering and adding to an owned playl
       '排序歌曲7',
     ])
     await page.getByRole('button', { name: '添加到歌单 排序歌曲9', exact: true }).click()
-    let popup = (await panelPage(app, 'add')).getByRole('dialog', {
-      name: '添加歌曲到歌单',
-      exact: true,
-    })
-    await expect(popup.getByRole('button', { name: /^他人歌单/ })).toHaveCount(0)
-    await expect(popup.getByRole('button', { name: /^喜欢的音乐/ })).toHaveCount(0)
-    await expect(popup.getByRole('button', { name: '确认添加', exact: true })).toBeDisabled()
-    await popup.getByRole('button', { name: /^晚间歌单/ }).click()
-    expect(calls.filter((call) => call.route.endsWith('/manipulate/tracks'))).toHaveLength(0)
-    await popup.getByRole('button', { name: '确认添加', exact: true }).click()
-    await expect(popup.getByRole('alert')).toContainText('模拟添加失败')
-    expect(calls.filter((call) => call.route.endsWith('/manipulate/tracks'))).toHaveLength(1)
-    await popup.getByRole('button', { name: '确认添加', exact: true }).click()
+    let popup = player.getByRole('dialog', { name: '添加到歌单', exact: true })
+    await expect(popup.getByRole('checkbox', { name: /^他人歌单/ })).toHaveCount(0)
+    await expect(popup.getByRole('checkbox', { name: /^喜欢的音乐/ })).toHaveCount(0)
+    await expect(popup.getByRole('button', { name: /^确认添加/ })).toBeDisabled()
+    const pinned = popup.locator('.panel-titlebar')
+    const needle = popup.getByRole('searchbox')
+    const addButton = popup.getByRole('button', { name: /^确认添加/ })
+    const list = popup.locator('.playlist-target-list')
+    for (const [width, height] of [
+      [321, 682],
+      [288, 410],
+      [740, 590],
+      [1159, 750],
+      [2560, 1440],
+    ]) {
+      await widenPanel(app, player, width, height)
+      const headerBefore = await pinned.boundingBox()
+      const searchBefore = await needle.boundingBox()
+      await needle.focus()
+      await popup.getByRole('checkbox', { name: /^晚间歌单/ }).focus()
+      await expect(popup.getByRole('checkbox', { name: /^晚间歌单/ })).toBeInViewport()
+      expect(await list.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+      expect(await pinned.boundingBox()).toEqual(headerBefore)
+      expect(await needle.boundingBox()).toEqual(searchBefore)
+      await expect(addButton).toBeInViewport({ ratio: 1 })
+      await expect(popup.getByRole('button', { name: '关闭添加到歌单' })).toBeInViewport({
+        ratio: 1,
+      })
+      await list.evaluate((element) => {
+        element.scrollTop = 0
+      })
+    }
+    await player.evaluate(() => window.together.updatePreferences({ fontScale: 100 }))
+    await expect.poll(() => player.evaluate(() => innerWidth)).toBe(2560)
+    const full = (await popup.boundingBox())!
+    expect(full.width).toBeCloseTo(600, 0)
+    expect(full.height).toBeLessThanOrEqual(801)
+    const items = popup.locator('.playlist-target')
+    const viewport = (await list.boundingBox())!
+    const first = (await items.first().boundingBox())!
+    const eighth = (await items.nth(7).boundingBox())!
+    expect(eighth.y + eighth.height).toBeLessThanOrEqual(viewport.y + viewport.height + 1)
+    expect(viewport.x + viewport.width - first.x - first.width).toBeGreaterThanOrEqual(8)
+    const searchBounds = (await popup.locator('.playlist-target-search').boundingBox())!
+    expect(first.x + first.width).toBeCloseTo(searchBounds.x + searchBounds.width, 0)
+    await needle.fill('晚间歌单')
+    await expect(items).toHaveCount(1)
+    expect((await popup.boundingBox())!.height).toBeLessThan(full.height / 2)
+    await needle.fill('')
+    await widenPanel(app, player, 1159, 750)
+    const writes = () => calls.filter((call) => call.route.endsWith('/manipulate/tracks'))
+    const late = popup.getByRole('checkbox', { name: /^晚间歌单/ })
+    const previous = popup.getByRole('checkbox', { name: /^测试歌单 1 / })
+    const fresh = popup.getByRole('checkbox', { name: /^测试歌单 2 / })
+    await expect(popup.getByText(/请使用歌曲红心按钮/)).toHaveCount(0)
+    await late.check()
+    await player.keyboard.press('Escape')
+    await expect(popup).toHaveCount(0)
+    expect(writes()).toHaveLength(0)
+    await page.getByRole('button', { name: '添加到歌单 排序歌曲9', exact: true }).click()
+    await expect(late).not.toBeChecked()
+    await late.check()
+    await needle.fill('没有此歌单')
+    await expect(popup.getByText('没有找到匹配歌单')).toBeVisible()
+    await expect(addButton).toHaveText('确认添加（1）')
+    await needle.fill('测试歌单')
+    await previous.check()
+    await fresh.check()
+    await fresh.uncheck()
+    await expect(addButton).toHaveText('确认添加（2）')
+    await fresh.check()
+    await expect(addButton).toHaveText('确认添加（3）')
+    expect(writes()).toHaveLength(0)
+    await addButton.click()
+    await expect(popup.getByRole('alert')).toContainText('1 个歌单添加失败')
+    await expect(late).toHaveAccessibleName(/模拟添加失败/)
+    await expect(late).toBeChecked()
+    await expect(late).toBeEnabled()
+    await expect(previous).toHaveAccessibleName(/1 首 · 已收录/)
+    await expect(previous).toBeDisabled()
+    await expect(fresh).toHaveAccessibleName(/1 首 · 已添加/)
+    await expect(fresh).toBeDisabled()
+    await expect(addButton).toHaveText('确认添加（1）')
+    expect(
+      writes()
+        .map((call) => call.args.data.pid)
+        .sort(),
+    ).toEqual(['20', '302'])
+    const checksBeforeRetry = calls.filter(
+      (call) => call.route === '/playlist/detail' && ['301', '302'].includes(call.args.id),
+    ).length
+    await addButton.click()
     await expect(popup).toHaveCount(0)
     await expect(
       (await panelPage(app, 'feedback'))
         .getByRole('status')
-        .filter({ hasText: '已添加到“晚间歌单”' }),
+        .filter({ hasText: '已添加到 2 个歌单，1 个歌单已收录' }),
     ).toBeVisible()
-    expect(targetIds).toEqual(['9'])
     expect(
-      calls.filter((call) => call.route.endsWith('/manipulate/tracks')).at(-1)?.args.data,
-    ).toEqual({ op: 'add', pid: '20', trackIds: '["9"]', imme: 'true' })
-    await page.getByRole('button', { name: '添加到歌单 排序歌曲9', exact: true }).click()
-    popup = (await panelPage(app, 'add')).getByRole('dialog', {
-      name: '添加歌曲到歌单',
-      exact: true,
+      calls.filter(
+        (call) => call.route === '/playlist/detail' && ['301', '302'].includes(call.args.id),
+      ),
+    ).toHaveLength(checksBeforeRetry)
+    expect(writes().at(-1)?.args.data).toEqual({
+      op: 'add',
+      pid: '20',
+      trackIds: '["9"]',
+      imme: 'true',
     })
-    await popup.getByRole('button', { name: /^晚间歌单 1/ }).click()
-    await popup.getByRole('button', { name: '确认添加', exact: true }).click()
+    expect(playlistTracks('302')).toEqual(['9'])
+    expect(playlistTracks('20')).toEqual(['9'])
+    await page.getByRole('button', { name: '添加到歌单 排序歌曲9', exact: true }).click()
+    await popup.getByRole('checkbox', { name: /^晚间歌单 1/ }).check()
+    await addButton.click()
     await expect(popup).toHaveCount(0)
     await expect(
       (await panelPage(app, 'feedback'))
         .getByRole('status')
         .filter({ hasText: '歌曲已在“晚间歌单”中' }),
     ).toBeVisible()
-    expect(calls.filter((call) => call.route.endsWith('/manipulate/tracks'))).toHaveLength(2)
-    expect(targetIds).toEqual(['9'])
+    expect(writes()).toHaveLength(3)
     await player.screenshot({ path: 'test-results/music-party-library-order.png' })
     expect(errors).toEqual([])
   } finally {
@@ -232,6 +344,9 @@ test('player playlist entry keeps the chosen song across playback changes and is
     roomSong = '9',
     version = 1
   const self = { userId: 123, nickname: '播放页歌单账户' }
+  const longList = Array.from({ length: 225 }, (_, i) => String(i + 100))
+  longList.splice(207, 0, '7')
+  let failMiddlePage = true
   const targetIds: string[] = []
   const writes: any[] = []
   const playback = () => ({
@@ -307,6 +422,7 @@ test('player playlist entry keeps the chosen song across playback changes and is
           playlist: [
             { id: 10, name: '喜欢的音乐', specialType: 5, trackCount: 3, creator: self },
             { id: 20, name: '晚间歌单', trackCount: targetIds.length, creator: self },
+            { id: 40, name: '分页歌单', trackCount: longList.length, creator: self },
             { id: 30, name: '他人歌单', trackCount: 1, creator: { userId: 456 } },
           ],
         }
@@ -324,22 +440,42 @@ test('player playlist entry keeps the chosen song across playback changes and is
             id: Number(args.id),
             creator: self,
             specialType: args.id === '10' ? 5 : 0,
-            trackIds: (args.id === '10' ? ['2', '7', '9'] : targetIds).map((id) => ({ id })),
+            trackIds: (args.id === '40'
+              ? longList
+              : args.id === '10'
+                ? ['2', '7', '9']
+                : targetIds
+            ).map((id) => ({ id })),
           },
         }
         break
       case '/song/detail':
+        if (failMiddlePage && String(args.ids).startsWith('200,201,')) {
+          failMiddlePage = false
+          body = { code: 500, message: '模拟歌曲分页失败' }
+          break
+        }
         body = {
           code: 200,
           songs: String(args.ids)
             .split(',')
+            .filter((id) => Number(id) < 200 || Number(id) >= 300)
             .map((id) => ({
               id,
               name: `播放页歌曲${id}`,
-              ar: [{ name: '测试歌手' }],
+              ar: [{ id: 41, name: '艺人A' }, { id: 42, name: '艺人B' }, { name: '无编号艺人' }],
+              composers: [{ id: 43, name: '作曲C' }],
               al: { name: '测试专辑' },
               dt: 30000,
             })),
+        }
+        break
+      case '/artist/songs':
+        body = {
+          code: 200,
+          songs: [{ id: 75, name: '音乐人作品', ar: [{ id: 42, name: '艺人B' }] }],
+          more: false,
+          total: 1,
         }
         break
       case '/song/url/v1':
@@ -362,6 +498,22 @@ test('player playlist entry keeps the chosen song across playback changes and is
         break
       case '/api/listen/together/multi/match/heartbeat':
         body = { code: 200, data: { heartBeatDuration: 1, roomPlaySongInfo: playback() } }
+        break
+      case '/api/listen/together/multi/match/wait/song/list':
+        body = {
+          code: 200,
+          data: {
+            songLists: [roomSong, '7'].map((id) => ({
+              songInfo: {
+                resourceId: id,
+                bizId: '1000' + id,
+                title: '房间歌曲' + id,
+                artistName: ['房间艺人'],
+              },
+              rcmdUid: self.userId,
+            })),
+          },
+        }
         break
       case '/api/listen/together/multi/played/song/info':
         body = { code: 200, data: { liked: false, songInfo: { zanCnt: 0 } } }
@@ -405,27 +557,97 @@ test('player playlist entry keeps the chosen song across playback changes and is
     page = await panelPage(app, 'liked')
     await page.getByRole('button', { name: '播放 播放页歌曲2', exact: true }).click()
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('播放页歌曲2')
-    await player.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
-    let popup = (await panelPage(app, 'add')).getByRole('dialog', {
-      name: '添加歌曲到歌单',
-      exact: true,
+    await test.step('open a personal queue artist by keyboard without starting that track', async () => {
+      const queue = await openTool(app, player, 'queue')
+      const second = queue.locator('.queue-track').nth(1)
+      await expect(second).toContainText('无编号艺人')
+      await expect(second.getByRole('button', { name: '查看音乐人 无编号艺人' })).toHaveCount(0)
+      await second.getByRole('button', { name: '查看音乐人 艺人B' }).press('Enter')
+      const artist = await panelPage(app, 'detail-artist-42')
+      await expect(artist.locator('.song-title strong')).toHaveText('音乐人作品')
+      await expect(player.locator('.footer-track-copy strong:visible')).toHaveText('播放页歌曲2')
+      await artist.locator('.surface-back').click()
+      await expect(queue.locator('.queue-track[aria-current=true]')).toContainText('播放页歌曲2')
+      await player.keyboard.press('Escape')
     })
+    await test.step('open individual artists from the transport and now playing', async () => {
+      const footer = player.locator('.adaptive-player-bar')
+      await footer.getByRole('button', { name: '查看音乐人 艺人B' }).click()
+      const artist = await panelPage(app, 'detail-artist-42')
+      await expect(artist.locator('.song-title strong')).toHaveText('音乐人作品')
+      await artist.locator('.surface-back').click()
+      await footer.getByRole('button', { name: '展开正在播放', exact: true }).click()
+      const playing = player.locator('.immersive-song-info')
+      await expect(playing.getByRole('button', { name: '查看音乐人 无编号艺人' })).toHaveCount(0)
+      await playing.getByRole('button', { name: '查看音乐人 艺人A' }).click()
+      const firstArtist = await panelPage(app, 'detail-artist-41')
+      await firstArtist.locator('.surface-back').click()
+      await expect(playing.locator('h1')).toHaveText('播放页歌曲2')
+      await player.getByRole('button', { name: '返回浏览' }).click()
+    })
+    await player.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
+    let popup = player.getByRole('dialog', { name: '添加到歌单', exact: true })
     await expect(popup.locator('.playlist-add-song strong')).toHaveText('播放页歌曲2')
-    await expect(popup.getByRole('button', { name: /^他人歌单|^喜欢的音乐/ })).toHaveCount(0)
-    await expect(popup.getByRole('button', { name: '确认添加', exact: true })).toBeDisabled()
+    await expect(popup.getByRole('checkbox', { name: /^他人歌单|^喜欢的音乐/ })).toHaveCount(0)
+    await expect(popup.getByRole('button', { name: /^确认添加/ })).toBeDisabled()
     // Playback may advance while the user is choosing a playlist; the dialog retains song 2.
     await player.locator('audio').evaluate((node) => node.dispatchEvent(new Event('ended')))
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('播放页歌曲7')
     await expect(popup.locator('.playlist-add-song strong')).toHaveText('播放页歌曲2')
-    await popup.getByRole('button', { name: /^晚间歌单/ }).click()
+    await popup.getByRole('checkbox', { name: /^晚间歌单/ }).click()
     expect(writes).toHaveLength(0)
-    await popup.getByRole('button', { name: '确认添加', exact: true }).click()
+    await popup.getByRole('button', { name: /^确认添加/ }).click()
     await expect(popup).toHaveCount(0)
     expect(targetIds).toEqual(['2'])
+    await test.step('locate an unpaged playing song, filter it, open a credited artist and return to the same position', async () => {
+      const library = await openTool(app, player, 'library')
+      await library.getByRole('button', { name: /^分页歌单/ }).click()
+      const collection = await panelPage(app, 'detail-playlist-40')
+      const locate = collection.getByRole('button', { name: '定位正在播放的歌曲' })
+      const row = collection.locator('.song-row[aria-current="true"]')
+      await expect(collection.locator('.song-row:not(.list-label)')).toHaveCount(100)
+      await expect(row).toHaveCount(0)
+      await locate.click()
+      await expect(collection.getByRole('alert')).toContainText('模拟歌曲分页失败')
+      await locate.click()
+      await expect(row).toBeInViewport()
+      await expect(collection.locator('.collection-summary')).toContainText('100 首暂不可用')
+      await expect(locate).toBeHidden()
+
+      const viewport = collection.locator('.panel-content')
+      await viewport.evaluate((node) => node.scrollTo(0, 0))
+      await expect(locate).toBeVisible()
+      const search = collection.getByRole('searchbox')
+      await search.fill('无匹配记录')
+      await expect(locate).toBeHidden()
+      await search.fill('播放页歌曲')
+      await locate.click()
+      await expect(row).toBeInViewport()
+      await expect(row.getByRole('button', { name: /无编号艺人/ })).toHaveCount(0)
+      for (const [name, id] of [
+        ['艺人B', 42],
+        ['作曲C', 43],
+      ] as const) {
+        const top = await viewport.evaluate((node) => node.scrollTop)
+        await row.getByRole('button', { name: '查看音乐人 ' + name }).click()
+        const artist = await panelPage(app, `detail-artist-${id}`)
+        await expect(artist.locator('.song-title strong')).toHaveText('音乐人作品')
+        await expect(artist.getByRole('button', { name: '定位正在播放的歌曲' })).toBeHidden()
+        await artist.locator('.surface-back').click()
+        await expect(search).toHaveValue('播放页歌曲')
+        await expect.poll(() => viewport.evaluate((node) => node.scrollTop)).toBe(top)
+        await expect(row).toBeInViewport()
+      }
+      await viewport.evaluate((node) => node.scrollTo(0, node.scrollHeight))
+      await expect(locate).toBeVisible()
+      await locate.click()
+      await expect(row).toBeInViewport()
+      await expect(locate).toBeHidden()
+    })
     await player.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
     await expect(popup.locator('.playlist-add-song strong')).toHaveText('播放页歌曲7')
     // Leaving the picker and switching accounts must discard the old song choice.
@@ -434,7 +656,7 @@ test('player playlist entry keeps the chosen song across playback changes and is
     await settings.getByRole('button', { name: '退出账号', exact: true }).click()
     await expect(popup).toBeHidden()
     await expect(
-      player.locator('.main-sidebar').getByRole('button', { name: '扫码登录', exact: true }),
+      player.getByRole('banner').getByRole('button', { name: '登录账号', exact: true }),
     ).toBeVisible()
     roomActive = true
     await loginFixture(app, player)
@@ -444,16 +666,26 @@ test('player playlist entry keeps the chosen song across playback changes and is
     page = await openTool(app, player, 'room')
     await page.getByRole('button', { name: '恢复当前房间', exact: true }).click()
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('播放页歌曲9')
-    await player.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
-    popup = (await panelPage(app, 'add')).getByRole('dialog', {
-      name: '添加歌曲到歌单',
-      exact: true,
+    await test.step('use track IDs to resolve both current and upcoming room artists', async () => {
+      const queue = await openTool(app, player, 'queue')
+      await expect(
+        queue.locator('.queue-playing').getByRole('button', { name: '查看音乐人 艺人A' }),
+      ).toBeVisible()
+      await queue.locator('.queue-track').getByRole('button', { name: '查看音乐人 艺人B' }).click()
+      const artist = await panelPage(app, 'detail-artist-42')
+      await expect(artist.locator('.song-title strong')).toHaveText('音乐人作品')
+      await expect(player.locator('.footer-track-copy strong:visible')).toHaveText('播放页歌曲9')
+      await artist.locator('.surface-back').click()
+      await expect(queue.locator('.queue-playing strong')).toHaveText('房间歌曲9')
+      await player.keyboard.press('Escape')
     })
+    await player.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
+    popup = player.getByRole('dialog', { name: '添加到歌单', exact: true })
     await expect(popup.locator('.playlist-add-song strong')).toHaveText('播放页歌曲9')
-    await popup.getByRole('button', { name: /^晚间歌单/ }).click()
-    await popup.getByRole('button', { name: '确认添加', exact: true }).click()
+    await popup.getByRole('checkbox', { name: /^晚间歌单/ }).click()
+    await popup.getByRole('button', { name: /^确认添加/ }).click()
     await expect(popup).toHaveCount(0)
     expect(targetIds).toEqual(['2', '9'])
     page = await openTool(app, player, 'library')
@@ -464,18 +696,15 @@ test('player playlist entry keeps the chosen song across playback changes and is
     page = await panelPage(app, 'liked')
     await page.getByRole('button', { name: '试听 播放页歌曲7', exact: true }).click()
     await expect(
-      player.locator('.footer-track-copy strong:visible, .portrait-identity strong:visible'),
+      player.locator('.footer-track-copy strong:visible, .immersive-song-heading h1:visible'),
     ).toHaveText('播放页歌曲7')
     await player.getByRole('button', { name: '添加当前歌曲到歌单', exact: true }).click()
-    popup = (await panelPage(app, 'add')).getByRole('dialog', {
-      name: '添加歌曲到歌单',
-      exact: true,
-    })
+    popup = player.getByRole('dialog', { name: '添加到歌单', exact: true })
     await expect(popup.locator('.playlist-add-song strong')).toHaveText('播放页歌曲7')
     roomSong = '2'
     version++
-    await popup.getByRole('button', { name: /^晚间歌单/ }).click()
-    await popup.getByRole('button', { name: '确认添加', exact: true }).click()
+    await popup.getByRole('checkbox', { name: /^晚间歌单/ }).click()
+    await popup.getByRole('button', { name: /^确认添加/ }).click()
     await expect(popup).toHaveCount(0)
     expect(targetIds).toEqual(['2', '9', '7'])
     expect(writes.map((args) => JSON.parse(args.trackIds))).toEqual([['2'], ['9'], ['7']])

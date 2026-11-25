@@ -1,8 +1,45 @@
+import { ui } from '../../shared/ui-language'
 import type { Preferences } from '../../shared/desktop'
+
+// The dark swatch is the persisted identifier so one selection follows both themes.
+export const ACCENT_PRESETS = [
+  {
+    id: 'violet',
+    get name() {
+      return ui('雾紫', 'Violet')
+    },
+    dark: '#a99bf2',
+    light: '#6351b8',
+  },
+  {
+    id: 'jade',
+    get name() {
+      return ui('翡翠', 'Jade')
+    },
+    dark: '#6fd4b5',
+    light: '#1f7a61',
+  },
+  {
+    id: 'amber',
+    get name() {
+      return ui('琥珀', 'Amber')
+    },
+    dark: '#f0b27a',
+    light: '#a35719',
+  },
+  {
+    id: 'sky',
+    get name() {
+      return ui('晴空', 'Sky')
+    },
+    dark: '#8abdf7',
+    light: '#295fa6',
+  },
+] as const
 
 type Color = readonly [number, number, number]
 function color(hex: string): Color {
-  if (!/^#[\da-f]{6}$/i.test(hex)) throw new Error('主题颜色无效')
+  if (!/^#[\da-f]{6}$/i.test(hex)) throw new Error(ui('主题颜色无效', 'Invalid accent color'))
   return [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16)) as unknown as Color
 }
 function hex(value: Color) {
@@ -60,7 +97,6 @@ export function applyAppearance(
   preferences: Preferences,
   theme: 'dark' | 'light',
 ) {
-  root.style.setProperty('--ui-font-scale', String(preferences.fontScale / 100))
   const roles = [
     'text',
     'fill',
@@ -70,8 +106,12 @@ export function applyAppearance(
     'containerHover',
     'border',
   ] as const
-  if (!preferences.accentColor) {
-    delete root.dataset.customAccent
+  const preset = ACCENT_PRESETS.find(({ dark }) => dark === preferences.accentColor?.toLowerCase())
+  if (preset) root.dataset.mpAccent = preset.id
+  else delete root.dataset.mpAccent
+  if (!preferences.accentColor || preset) {
+    if (preset) root.dataset.customAccent = 'true'
+    else delete root.dataset.customAccent
     root.style.removeProperty('--pink')
     for (const role of roles) root.style.removeProperty('--accent-' + role)
     return

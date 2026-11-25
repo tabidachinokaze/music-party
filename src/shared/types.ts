@@ -1,6 +1,8 @@
 import type { ProjectLink, UpdateState } from './updates'
 import type {
   DesktopInfo,
+  WindowAction,
+  NavigationDirection,
   DesktopMediaState,
   PlayerCommand,
   Preferences,
@@ -97,6 +99,8 @@ export interface Bridge {
   updateState(): Promise<UpdateState>
   updateAction(action: 'check' | 'download' | 'install'): Promise<UpdateState>
   onUpdate(callback: (state: UpdateState) => void): () => void
+  windowAction(action: WindowAction): Promise<void>
+  onNavigate(callback: (direction: NavigationDirection) => void): () => void
   desktopInfo(): Promise<DesktopInfo>
   setFullScreen(value: boolean | 'toggle'): Promise<DesktopInfo>
   updatePreferences(value: Partial<Preferences>): Promise<DesktopInfo>
@@ -116,10 +120,16 @@ export interface Bridge {
   leaveImChatroom(): Promise<void>
 }
 export type AccountNotifications = PrivateNotificationBatch & { accountUid: string }
+export interface MusicianCredit {
+  name: string
+  id?: string
+}
 export interface Song {
   id: string
   name: string
   artist: string
+  artists?: MusicianCredit[]
+  composers?: MusicianCredit[]
   album: string
   albumId?: string
   cover: string
@@ -139,6 +149,9 @@ export interface MultiInvitation {
 }
 export interface Room {
   roomId: string
+  tags?: string[]
+  creatorUid?: string
+  creatorName?: string
   inviterUid: string
   role: 'host' | 'guest' | 'unknown'
   chatRoomId?: string | null
@@ -177,6 +190,9 @@ export interface Member {
 }
 export interface RoomSnapshot {
   roomId: string
+  tags?: string[]
+  creatorUid?: string
+  creatorName?: string
   playback: RoomPlayback | null
   members: Member[]
   membersKnown: boolean
@@ -215,6 +231,8 @@ export interface ChatMessage {
   avatar: string
   time: number
   text: string
+  fallbackTextEn?: string
+  previewOnlyText?: boolean
   kind: 'text' | 'notice' | 'image' | 'resource' | 'interaction'
   interactType?: number
   attachments?: MessageAttachment[]
@@ -235,6 +253,7 @@ export interface Conversation {
   nickname: string
   avatar: string
   preview: string
+  fallbackPreviewEn?: string
   time: number
   unread: number
   online?: boolean | null
@@ -245,6 +264,8 @@ export interface PrivateMessage {
   recipientId: string
   time: number
   text: string
+  fallbackTextEn?: string
+  previewOnlyText?: boolean
   invitations: MultiInvitation[]
   attachments?: MessageAttachment[]
   richText?: MessageTextPart[]
@@ -269,6 +290,9 @@ export interface MessageTextPart {
 export interface MessageAttachment {
   kind: 'image' | 'audio' | 'video' | 'resource' | 'file'
   title: string
+  /** English counterparts exist only for app-generated labels, never for sender-supplied metadata. */
+  fallbackTitleEn?: string
+  fallbackSubtitleEn?: string
   subtitle?: string
   url?: string
   cover?: string

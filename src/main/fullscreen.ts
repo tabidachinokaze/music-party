@@ -1,3 +1,4 @@
+import { ui } from '../shared/ui-language'
 import type { BrowserWindow } from 'electron'
 
 // Events are authoritative; window managers may update isFullScreen() after emitting them.
@@ -36,11 +37,13 @@ export class FullScreenController {
           }
           const closed = () => {
             cleanup()
-            reject(new Error('窗口已关闭'))
+            reject(new Error(ui('窗口已关闭', 'The window was closed')))
           }
           const timer = setTimeout(() => {
             cleanup()
-            reject(new Error('系统全屏切换超时，请重试'))
+            reject(
+              new Error(ui('系统全屏切换超时，请重试', 'Fullscreen request timed out. Try again.')),
+            )
           }, 5000)
           this.changed = () => {
             if (this.value === requested) {

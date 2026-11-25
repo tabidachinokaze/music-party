@@ -1,0 +1,843 @@
+{
+  "description": "虚构的离线 UI 样例。业务调用的 reply 是 IPC 回包，事件的 payload 是订阅回调实参。按 events 的数组顺序投递，分别观察人数和名单。时间戳固定，演示通知补读时可使用模拟时钟。",
+  "calls": [
+    {
+      "request": {
+        "method": "account"
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "data": {
+            "code": 200,
+            "profile": {
+              "userId": "1101",
+              "nickname": "北岸",
+              "avatarUrl": ""
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "search",
+        "args": {
+          "keywords": "桥边",
+          "kind": "songs",
+          "offset": 0
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "result": {
+            "songs": [
+              {
+                "id": "4101",
+                "name": "桥边的灯",
+                "ar": [
+                  {
+                    "id": "5101",
+                    "name": "纸飞机"
+                  }
+                ],
+                "al": {
+                  "id": "3101",
+                  "name": "沿河散步",
+                  "picUrl": ""
+                },
+                "dt": 193000
+              }
+            ],
+            "songCount": 1
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "song",
+        "args": {
+          "ids": "4101,4102"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "songs": [
+            {
+              "id": "4101",
+              "name": "桥边的灯",
+              "ar": [
+                {
+                  "id": "5101",
+                  "name": "纸飞机"
+                }
+              ],
+              "al": {
+                "id": "3101",
+                "name": "沿河散步",
+                "picUrl": ""
+              },
+              "dt": 193000
+            },
+            {
+              "id": "4102",
+              "name": "最后一班电车",
+              "ar": [
+                {
+                  "id": "5101",
+                  "name": "纸飞机"
+                }
+              ],
+              "al": {
+                "id": "3101",
+                "name": "沿河散步",
+                "picUrl": ""
+              },
+              "dt": 216000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "playlists",
+        "args": {
+          "uid": "1101",
+          "offset": 0
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "playlist": [
+            {
+              "id": "2101",
+              "name": "散步歌单",
+              "coverImgUrl": "",
+              "trackCount": 2,
+              "creator": {
+                "userId": "1101",
+                "nickname": "北岸",
+                "avatarUrl": ""
+              },
+              "specialType": 0
+            },
+            {
+              "id": "2102",
+              "name": "北岸喜欢的音乐",
+              "coverImgUrl": "",
+              "trackCount": 1,
+              "creator": {
+                "userId": "1101",
+                "nickname": "北岸",
+                "avatarUrl": ""
+              },
+              "specialType": 5
+            }
+          ],
+          "more": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "playlist",
+        "args": {
+          "id": "2101"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "playlist": {
+            "id": "2101",
+            "name": "散步歌单",
+            "coverImgUrl": "",
+            "trackCount": 2,
+            "creator": {
+              "userId": "1101",
+              "nickname": "北岸",
+              "avatarUrl": ""
+            },
+            "specialType": 0,
+            "trackIds": [
+              {
+                "id": "4102"
+              },
+              {
+                "id": "4101"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "likes",
+        "args": {
+          "uid": "1101"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "ids": ["4101"]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "album",
+        "args": {
+          "id": "3101"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "album": {
+            "id": "3101",
+            "name": "沿河散步",
+            "picUrl": ""
+          },
+          "songs": [
+            {
+              "id": "4101",
+              "name": "桥边的灯",
+              "ar": [
+                {
+                  "id": "5101",
+                  "name": "纸飞机"
+                }
+              ],
+              "al": {
+                "id": "3101",
+                "name": "沿河散步",
+                "picUrl": ""
+              },
+              "dt": 193000
+            },
+            {
+              "id": "4102",
+              "name": "最后一班电车",
+              "ar": [
+                {
+                  "id": "5101",
+                  "name": "纸飞机"
+                }
+              ],
+              "al": {
+                "id": "3101",
+                "name": "沿河散步",
+                "picUrl": ""
+              },
+              "dt": 216000
+            }
+          ]
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "lyrics",
+        "args": {
+          "id": "4101"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "lrc": {
+            "lyric": "[00:00.00]桥上的风\n[00:42.00]点亮了岸边的灯"
+          },
+          "tlyric": {
+            "lyric": "[00:00.00]The wind on the bridge\n[00:42.00]Lights the lamps along the riverbank"
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "multiStatus"
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "data": {
+            "status": "RECONNECT_SUCCESS",
+            "multiLtRoomSnapshot": {
+              "roomId": "room_demo",
+              "multiLtRoomUserAgg": {
+                "onlineNums": 1,
+                "onlineUserInfos": [
+                  {
+                    "uid": "1101",
+                    "nickname": "北岸",
+                    "avatar": ""
+                  }
+                ]
+              },
+              "multiRoomInfoDTO": {
+                "chatRoomId": "8101",
+                "creatorId": "1101",
+                "roomBizType": 1
+              },
+              "roomPlaySongInfo": {
+                "playSong": {
+                  "songId": "4101",
+                  "songBizId": "7101",
+                  "songRcmdUid": "1101"
+                },
+                "nextSongs": [
+                  {
+                    "songId": "4101",
+                    "songBizId": "7102",
+                    "songRcmdUid": "1102"
+                  },
+                  {
+                    "songId": "4102",
+                    "songBizId": "7103",
+                    "songRcmdUid": "0"
+                  }
+                ],
+                "version": 12,
+                "playedTime": 45000,
+                "songDuration": 193000,
+                "forceSync": false,
+                "waitSongCount": 2,
+                "playingSongZanCnt": 2
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "multiHeartbeat",
+        "args": {
+          "roomId": "room_demo"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "data": {
+            "heartBeatDuration": 5,
+            "roomPlaySongInfo": {
+              "playSong": {
+                "songId": "4101",
+                "songBizId": "7101",
+                "songRcmdUid": "1101"
+              },
+              "nextSongs": [
+                {
+                  "songId": "4101",
+                  "songBizId": "7102",
+                  "songRcmdUid": "1102"
+                },
+                {
+                  "songId": "4102",
+                  "songBizId": "7103",
+                  "songRcmdUid": "0"
+                }
+              ],
+              "version": 12,
+              "playedTime": 45000,
+              "songDuration": 193000,
+              "forceSync": false,
+              "waitSongCount": 2,
+              "playingSongZanCnt": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "multiQueue",
+        "args": {
+          "roomId": "room_demo"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "data": {
+            "roomTagList": ["民谣", "流行"],
+            "songLists": [
+              {
+                "rcmdUid": "1101",
+                "nickname": "北岸",
+                "selfRcmd": true,
+                "liked": false,
+                "songInfo": {
+                  "resourceId": "4101",
+                  "bizId": "7101",
+                  "title": "桥边的灯",
+                  "artistName": ["纸飞机"],
+                  "coverUrl": "",
+                  "uped": false,
+                  "upCnt": 0,
+                  "zanCnt": 2
+                }
+              },
+              {
+                "rcmdUid": "1102",
+                "nickname": "南桥",
+                "selfRcmd": false,
+                "liked": false,
+                "songInfo": {
+                  "resourceId": "4101",
+                  "bizId": "7102",
+                  "title": "桥边的灯",
+                  "artistName": ["纸飞机"],
+                  "coverUrl": "",
+                  "uped": false,
+                  "upCnt": 0,
+                  "zanCnt": 0
+                }
+              },
+              {
+                "rcmdUid": "0",
+                "nickname": "",
+                "selfRcmd": false,
+                "liked": false,
+                "songInfo": {
+                  "resourceId": "4102",
+                  "bizId": "7103",
+                  "title": "最后一班电车",
+                  "artistName": ["纸飞机"],
+                  "coverUrl": "",
+                  "uped": false,
+                  "zanCnt": 0
+                }
+              }
+            ],
+            "page": {
+              "more": false,
+              "cursor": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "multiPlayed",
+        "args": {
+          "roomId": "room_demo"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "data": {
+            "songLists": [
+              {
+                "rcmdUid": "1101",
+                "nickname": "北岸",
+                "selfRcmd": true,
+                "liked": false,
+                "songInfo": {
+                  "resourceId": "4102",
+                  "bizId": "7100",
+                  "title": "最后一班电车",
+                  "artistName": ["纸飞机"],
+                  "coverUrl": "",
+                  "zanCnt": 1
+                }
+              }
+            ],
+            "page": {
+              "more": false,
+              "cursor": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "multiSongInfo",
+        "args": {
+          "roomId": "room_demo",
+          "bizId": "7101"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "data": {
+            "liked": false,
+            "songInfo": {
+              "zanCnt": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "multiChatHistory",
+        "args": {
+          "roomId": "room_demo"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "data": {
+            "records": [
+              {
+                "roomId": "room_demo",
+                "sendUid": "1102",
+                "sendTime": 1700000003000,
+                "nickname": "南桥",
+                "avatarUrl": "",
+                "msgType": 2,
+                "imChatRoomMsgBody": {
+                  "mainStateText": "推荐了歌曲《桥边的灯》"
+                },
+                "resourceInfo": {
+                  "resourceId": "4101",
+                  "title": "桥边的灯",
+                  "artistName": ["纸飞机"]
+                }
+              }
+            ],
+            "page": {
+              "more": false,
+              "cursor": null
+            }
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "privateConversations",
+        "args": {
+          "offset": 0
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "msgs": [
+            {
+              "fromUser": {
+                "userId": "1102",
+                "nickname": "南桥",
+                "avatarUrl": ""
+              },
+              "toUser": {
+                "userId": "1101",
+                "nickname": "北岸",
+                "avatarUrl": ""
+              },
+              "lastMsg": {
+                "msg": "这首歌的专辑也值得听。",
+                "type": 1
+              },
+              "lastMsgTime": 1700000005000,
+              "newMsgCount": 1
+            }
+          ],
+          "more": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "privateHistory",
+        "args": {
+          "uid": "1102"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "msgs": [
+            {
+              "id": "9101",
+              "fromUser": {
+                "userId": "1102",
+                "nickname": "南桥",
+                "avatarUrl": ""
+              },
+              "toUser": {
+                "userId": "1101",
+                "nickname": "北岸",
+                "avatarUrl": ""
+              },
+              "time": 1700000005000,
+              "msg": {
+                "msg": "这首歌的专辑也值得听。",
+                "type": 1
+              }
+            },
+            {
+              "id": "9100",
+              "fromUser": {
+                "userId": "1102",
+                "nickname": "南桥",
+                "avatarUrl": ""
+              },
+              "toUser": {
+                "userId": "1101",
+                "nickname": "北岸",
+                "avatarUrl": ""
+              },
+              "time": 1700000004000,
+              "msg": {
+                "album": {
+                  "id": "3101",
+                  "name": "沿河散步",
+                  "artists": [
+                    {
+                      "id": "5101",
+                      "name": "纸飞机"
+                    }
+                  ]
+                }
+              }
+            }
+          ],
+          "more": false
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "privatePresence",
+        "args": {
+          "uid": "1102"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "data": {
+            "uid": "1102",
+            "nickname": "南桥",
+            "avatar": "",
+            "online": null
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "stickerGroups",
+        "args": {
+          "scope": "private"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "data": {
+            "emojiGroups": [
+              {
+                "id": "-1",
+                "name": "自定义表情",
+                "edit": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "request": {
+        "method": "stickerPage",
+        "args": {
+          "groupId": "-1"
+        }
+      },
+      "reply": {
+        "ok": true,
+        "data": {
+          "code": 200,
+          "data": {
+            "emojis": [],
+            "unavailable": 0,
+            "page": {
+              "more": false,
+              "cursor": null
+            }
+          }
+        }
+      }
+    }
+  ],
+  "events": [
+    {
+      "member": "onRoomMembers",
+      "payload": {
+        "roomId": "room_demo",
+        "version": 8,
+        "onlineCount": 2,
+        "members": [
+          {
+            "uid": "1101",
+            "nickname": "北岸",
+            "avatar": ""
+          }
+        ]
+      }
+    },
+    {
+      "member": "onRoomMembers",
+      "payload": {
+        "roomId": "room_demo",
+        "version": 9,
+        "onlineCount": 2,
+        "members": [
+          {
+            "uid": "1101",
+            "nickname": "北岸",
+            "avatar": ""
+          },
+          {
+            "uid": "1102",
+            "nickname": "南桥",
+            "avatar": ""
+          }
+        ]
+      }
+    },
+    {
+      "member": "onPrivateNotifications",
+      "payload": {
+        "accountUid": "1101",
+        "session": "demo-session-A",
+        "cursor": 1,
+        "connected": true,
+        "reset": false,
+        "events": [
+          {
+            "sequence": 1,
+            "notice": {
+              "kind": "message",
+              "id": "demo-notice-1",
+              "peerUid": "1102",
+              "senderUid": "1102",
+              "senderName": "南桥",
+              "senderAvatar": "",
+              "messageId": "9101",
+              "timestamp": 1700000005000,
+              "messageType": 1,
+              "text": "这首歌的专辑也值得听。",
+              "self": false
+            }
+          }
+        ]
+      }
+    },
+    {
+      "member": "onMediaProgress",
+      "payload": {
+        "requestId": "00000000-0000-4000-8000-000000000002",
+        "phase": "uploading",
+        "percent": 45
+      }
+    }
+  ],
+  "desktop": [
+    {
+      "member": "desktopInfo",
+      "result": {
+        "maximized": false,
+        "preferences": {
+          "language": "zh-CN",
+          "closeToTray": true,
+          "mediaKeys": true,
+          "theme": "system",
+          "volume": 0.6,
+          "repeatMode": "order",
+          "fontScale": 100,
+          "accentColor": null,
+          "playerBackground": {
+            "image": null,
+            "zoom": 100,
+            "opacity": 35,
+            "layoutTransparency": 100,
+            "componentTransparency": 16,
+            "popupTransparency": 12,
+            "blur": 0,
+            "x": 50,
+            "y": 50
+          }
+        },
+        "trayAvailable": true,
+        "fullScreen": false,
+        "fullScreenRevision": 0,
+        "resolvedTheme": "dark",
+        "platform": "linux",
+        "persistenceError": ""
+      }
+    },
+    {
+      "member": "updateState",
+      "result": {
+        "phase": "current",
+        "currentVersion": "0.13.0",
+        "message": "已是最新版本"
+      }
+    }
+  ],
+  "failures": [
+    {
+      "request": {
+        "method": "privateSend",
+        "args": {
+          "uid": "1102",
+          "text": "我听到了。",
+          "requestId": "00000000-0000-4000-8000-000000000001"
+        }
+      },
+      "reply": {
+        "ok": false,
+        "error": "提交超时，请刷新会话确认结果",
+        "deliveryUnknown": true
+      }
+    },
+    {
+      "request": {
+        "method": "multiHeartbeat",
+        "args": {
+          "roomId": "room_demo"
+        }
+      },
+      "reply": {
+        "ok": false,
+        "code": 488,
+        "error": "房间已失效"
+      }
+    }
+  ]
+}

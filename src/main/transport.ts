@@ -1,11 +1,12 @@
+import { ui } from '../shared/ui-language'
 import { randomUUID } from 'node:crypto'
 import { parsePreciseJson, preciseMediaEndpoint } from './precise-json'
 export function createHttpInvoker(base: string, fetcher: typeof fetch = fetch) {
   const url = new URL(base)
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password)
-    throw new Error('API 地址格式不正确')
+    throw new Error(ui('API 地址格式不正确', 'Invalid API address.'))
   if (url.protocol === 'http:' && !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname))
-    throw new Error('远程 API 地址必须使用 HTTPS')
+    throw new Error(ui('远程 API 地址必须使用 HTTPS', 'Remote API addresses must use HTTPS.'))
   return async (endpoint: string, args: Record<string, unknown>) => {
     const path = endpoint.replaceAll('_', '/')
     const target = new URL(`${url.pathname.replace(/\/$/, '')}/${path}`, url.origin)
@@ -26,7 +27,12 @@ export function createHttpInvoker(base: string, fetcher: typeof fetch = fetch) {
         }),
       })
     } catch {
-      throw new Error('无法连接 ncm-api 或请求超时，请检查 Docker 服务和 API 地址')
+      throw new Error(
+        ui(
+          '无法连接 ncm-api 或请求超时，请检查 Docker 服务和 API 地址',
+          'Could not reach ncm-api. Check the Docker service and API address.',
+        ),
+      )
     }
     let body: any
     try {
@@ -35,11 +41,25 @@ export function createHttpInvoker(base: string, fetcher: typeof fetch = fetch) {
           ? parsePreciseJson(await response.text())
           : await response.json()
     } catch {
-      throw new Error(`ncm-api 返回非 JSON 内容（HTTP ${response.status}）`)
+      throw new Error(
+        ui(
+          'ncm-api 返回非 JSON 内容（HTTP {0}）',
+          'ncm-api returned a non-JSON response (HTTP {0})',
+          response.status,
+        ),
+      )
     }
     if (!response.ok)
       throw Object.assign(
-        new Error(body.message || body.msg || `ncm-api 请求失败（HTTP ${response.status}）`),
+        new Error(
+          body.message ||
+            body.msg ||
+            ui(
+              'ncm-api 请求失败（HTTP {0}）',
+              'ncm-api request failed (HTTP {0})',
+              response.status,
+            ),
+        ),
         { body },
       )
     const cookies = response.headers.getSetCookie?.() || []

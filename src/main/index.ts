@@ -1,3 +1,4 @@
+import { ui } from '../shared/ui-language'
 import {
   app,
   BrowserWindow,
@@ -27,7 +28,7 @@ import {
 } from '../shared/media'
 import { validate } from './service'
 import { SettingsStore } from './settings'
-import { DesktopController } from './desktop'
+import { DesktopController, windowBackground } from './desktop'
 import {
   MIN_WINDOW_SIZE,
   restoreWindow,
@@ -40,6 +41,12 @@ import { UpdateController } from './updates'
 import { PROJECT_LINKS, updateSupport, type ProjectLink } from '../shared/updates'
 
 app.setName('Music Party')
+// Chromium's native overlay scrollbars retain platform scrolling and hit testing.
+const enabledFeatures = app.commandLine.getSwitchValue('enable-features')
+app.commandLine.appendSwitch(
+  'enable-features',
+  [enabledFeatures, 'OverlayScrollbar'].filter(Boolean).join(','),
+)
 if (process.env.MUSIC_PARTY_PROFILE) app.setPath('userData', process.env.MUSIC_PARTY_PROFILE)
 const primaryInstance = app.requestSingleInstanceLock()
 if (!primaryInstance) app.quit()
@@ -48,10 +55,9 @@ let normalGeometry: WindowGeometry | undefined
 let store: SettingsStore
 let desktop: DesktopController | null = null
 let quitting = false
-let quitPrepared = false
-let exitPreparation: Promise<void> | null = null
 let updates: UpdateController | null = null
 let updateTimer: ReturnType<typeof setTimeout> | undefined
+let normalFrame = { width: 0, height: 0 }
 let boundsTimer: ReturnType<typeof setTimeout> | undefined
 let microphoneUntil = 0
 const mediaPending = new Map<
@@ -75,9 +81,14 @@ function captureBounds() {
     desktop?.fullscreen?.value
   )
     return
-  const { x, y } = win.getNormalBounds()
-  const [width, height] = win.getContentSize()
-  normalGeometry = { x, y, width, height, maximized: false }
+  // Content size can still include the fullscreen surface during the restore event.
+  const bounds = win.getNormalBounds()
+  normalGeometry = {
+    ...bounds,
+    width: bounds.width - normalFrame.width,
+    height: bounds.height - normalFrame.height,
+    maximized: false,
+  }
 }
 function saveBounds() {
   if (
@@ -105,7 +116,7 @@ app.on('second-instance', () => desktop?.show())
 let child: Electron.UtilityProcess | null = null
 let nextId = 0
 let traces: Trace[] = []
-let storageReason = ''
+let sessionSaveFailed = false
 const pending = new Map<
   number,
   { resolve: (reply: Reply) => void; timer: ReturnType<typeof setTimeout> }
@@ -118,7 +129,7 @@ function canPersist() {
 }
 function assertSender(event: Electron.IpcMainInvokeEvent) {
   if (!win || event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame)
-    throw new Error('拒绝非应用窗口请求')
+    throw new Error(ui('拒绝非应用窗口请求', 'This request must come from the application window'))
 }
 function startWorker() {
   const temp = join(app.getPath('userData'), 'api-runtime')
@@ -133,6 +144,7 @@ function startWorker() {
       TMP: temp,
       TEMP: temp,
       NETEASE_COOKIE: '',
+      MUSIC_PARTY_LANGUAGE: store.preferences.language,
       MUSIC_PARTY_IM_DEBUG: process.env.MUSIC_PARTY_IM_DEBUG ?? (app.isPackaged ? '0' : '1'),
     },
   })
@@ -189,7 +201,7 @@ function startWorker() {
         else if (canPersist())
           writeFileSync(sessionFile, safeStorage.encryptString(message.cookie), { mode: 0o600 })
       } catch {
-        storageReason = '保存登录态失败，本次登录仍可继续使用'
+        sessionSaveFailed = true
       }
     }
     if (message.type === 'reply') {
@@ -210,7 +222,10 @@ function startWorker() {
       clearTimeout(task.timer)
       task.resolve({
         ok: false,
-        error: 'API 进程已退出，请刷新会话确认附件状态',
+        error: ui(
+          'API 进程已退出，请刷新会话确认附件状态',
+          'The API process stopped. Refresh the conversation to check the attachment.',
+        ),
         deliveryUnknown: task.phase === 'sending',
       })
     }
@@ -218,7 +233,10 @@ function startWorker() {
     child = null
     for (const task of pending.values()) {
       clearTimeout(task.timer)
-      task.resolve({ ok: false, error: 'API 进程已退出，请重启应用' })
+      task.resolve({
+        ok: false,
+        error: ui('API 进程已退出，请重启应用', 'The API process stopped. Restart Music Party.'),
+      })
     }
     pending.clear()
   })
@@ -228,14 +246,24 @@ function callApi(request: Request): Promise<Reply> {
   return callWorker({ type: 'call', request }, SEND_METHODS.has(request.method))
 }
 function callWorker(message: Record<string, unknown>, deliveryUnknown = false): Promise<Reply> {
-  if (!child) return Promise.resolve({ ok: false, error: 'API 进程不可用，请重启应用' })
+  if (!child)
+    return Promise.resolve({
+      ok: false,
+      error: ui(
+        'API 进程不可用，请重启应用',
+        'The API process is unavailable. Restart Music Party.',
+      ),
+    })
   return new Promise<Reply>((resolve) => {
     const id = ++nextId
     const timer = setTimeout(() => {
       pending.delete(id)
       resolve({
         ok: false,
-        error: '请求超时，结果未知。请刷新房间状态后再操作',
+        error: ui(
+          '请求超时，结果未知。请刷新房间状态后再操作',
+          'The request timed out. Check the room status before trying again.',
+        ),
         deliveryUnknown,
       })
     }, 45000)
@@ -245,38 +273,21 @@ function callWorker(message: Record<string, unknown>, deliveryUnknown = false): 
 }
 async function workerResult(message: Record<string, unknown>) {
   const reply = await callWorker(message)
-  if (!reply.ok) throw new Error(reply.error || '通知连接暂不可用')
+  if (!reply.ok)
+    throw new Error(
+      reply.error || ui('通知连接暂不可用', 'The notification service is temporarily unavailable'),
+    )
   return reply.data
 }
 
-async function prepareExit() {
-  if (exitPreparation) return exitPreparation
+function prepareExit() {
+  if (quitting) return
   quitting = true
   clearTimeout(boundsTimer)
   saveBounds()
-  const task = (async () => {
-    const roomId = desktop?.media.roomId
-    const leave = roomId ? callApi({ method: 'multiLeave', args: { roomId } }) : Promise.resolve()
-    let timeout: ReturnType<typeof setTimeout> | undefined
-    try {
-      await Promise.race([
-        leave,
-        new Promise((resolve) => {
-          timeout = setTimeout(resolve, 3000)
-        }),
-      ])
-    } finally {
-      clearTimeout(timeout)
-    }
-    quitPrepared = true
-  })()
-  exitPreparation = task
-  return task
 }
 function cancelExitPreparation() {
   quitting = false
-  quitPrepared = false
-  exitPreparation = null
   desktop?.show()
   win?.webContents.send('lifecycle', 'resume')
 }
@@ -304,7 +315,7 @@ app.whenReady().then(() => {
     unsupported,
     (state) => win?.webContents.send('update-state-changed', state),
     async () => {
-      await prepareExit()
+      prepareExit()
       app.releaseSingleInstanceLock()
     },
     () => {
@@ -324,19 +335,24 @@ app.whenReady().then(() => {
   ipcMain.handle('project-open', async (event, key: unknown) => {
     assertSender(event)
     if (typeof key !== 'string' || !Object.hasOwn(PROJECT_LINKS, key))
-      throw new Error('不支持的项目链接')
+      throw new Error(ui('不支持的项目链接', 'Unsupported project link'))
     await shell.openExternal(PROJECT_LINKS[key as ProjectLink])
   })
   ipcMain.handle('message-link-open', async (event, value: unknown) => {
     assertSender(event)
     const url = musicMessageLink(value) || neteaseAssetUrl(value)
-    if (!url) throw new Error('消息没有可用的网易云链接')
+    if (!url)
+      throw new Error(
+        ui('消息没有可用的网易云链接', "This message doesn't contain a NetEase Cloud Music link"),
+      )
     await shell.openExternal(url)
   })
   ipcMain.handle('microphone-request', async (event) => {
     assertSender(event)
     if (process.platform === 'darwin' && !(await systemPreferences.askForMediaAccess('microphone')))
-      throw new Error('请在系统设置中允许麦克风访问')
+      throw new Error(
+        ui('请在系统设置中允许麦克风访问', 'Allow microphone access in your system settings'),
+      )
     microphoneUntil = Date.now() + 10000
   })
   ipcMain.handle('media-cancel', (event, requestId: unknown) => {
@@ -352,8 +368,19 @@ app.whenReady().then(() => {
     } catch (error: any) {
       return { ok: false, error: error.message }
     }
-    if (!child) return { ok: false, error: 'API 进程不可用，请重启应用' }
-    if (mediaPending.size) return { ok: false, error: '请等待当前附件完成' }
+    if (!child)
+      return {
+        ok: false,
+        error: ui(
+          'API 进程不可用，请重启应用',
+          'The API process is unavailable. Restart Music Party.',
+        ),
+      }
+    if (mediaPending.size)
+      return {
+        ok: false,
+        error: ui('请等待当前附件完成', 'Wait for the current attachment to finish'),
+      }
     return new Promise<MediaReply>((resolve) => {
       const id = ++nextId
       const requestId = request.requestId
@@ -364,7 +391,10 @@ app.whenReady().then(() => {
           child?.postMessage({ type: 'media-cancel', requestId })
           resolve({
             ok: false,
-            error: '附件请求超时，请刷新会话确认结果',
+            error: ui(
+              '附件请求超时，请刷新会话确认结果',
+              'The attachment request timed out. Refresh the conversation to check the result.',
+            ),
             deliveryUnknown: task?.phase === 'sending',
           })
         },
@@ -395,16 +425,34 @@ app.whenReady().then(() => {
       image?.kind !== 'image' ||
       !messageStickerSource(image)
     )
-      return { ok: false, error: '图片信息无效' }
-    if (!child) return { ok: false, error: 'API 进程不可用，请重启应用' }
-    if (mediaPending.size) return { ok: false, error: '请等待当前附件完成' }
+      return { ok: false, error: ui('图片信息无效', 'Invalid image details') }
+    if (!child)
+      return {
+        ok: false,
+        error: ui(
+          'API 进程不可用，请重启应用',
+          'The API process is unavailable. Restart Music Party.',
+        ),
+      }
+    if (mediaPending.size)
+      return {
+        ok: false,
+        error: ui('请等待当前附件完成', 'Wait for the current attachment to finish'),
+      }
     return new Promise<MediaReply>((resolve) => {
       const id = ++nextId
       const requestId = value.requestId
       const timer = setTimeout(() => {
         mediaPending.delete(id)
         child?.postMessage({ type: 'media-cancel', requestId })
-        resolve({ ok: false, error: '添加图片结果未确认，请刷新表情库', deliveryUnknown: true })
+        resolve({
+          ok: false,
+          error: ui(
+            '添加图片结果未确认，请刷新表情库',
+            "Couldn't confirm that the image was added. Refresh your sticker library.",
+          ),
+          deliveryUnknown: true,
+        })
       }, 120000)
       mediaPending.set(id, {
         resolve,
@@ -431,13 +479,13 @@ app.whenReady().then(() => {
       Number(cursor) < 0 ||
       (session !== undefined && (typeof session !== 'string' || session.length > 128))
     )
-      throw new Error('通知游标无效')
+      throw new Error(ui('通知游标无效', 'Invalid notification cursor'))
     return workerResult({ type: 'notifications', cursor, session })
   })
   ipcMain.handle('join-im-chatroom', (event, chatroomId: unknown) => {
     assertSender(event)
     if (typeof chatroomId !== 'string' || !/^[1-9]\d{0,23}$/.test(chatroomId))
-      throw new Error('聊天室 ID 无效')
+      throw new Error(ui('聊天室 ID 无效', 'Invalid chat room ID'))
     child?.postMessage({ type: 'join-chatroom', chatroomId })
   })
   ipcMain.handle('leave-im-chatroom', (event) => {
@@ -451,7 +499,7 @@ app.whenReady().then(() => {
         !(type === 'match-close' && attemptId === undefined) &&
         (typeof attemptId !== 'string' || !/^[0-9a-f-]{36}$/i.test(attemptId))
       )
-        throw new Error('匹配标识无效')
+        throw new Error(ui('匹配标识无效', 'Invalid match ID'))
       return workerResult({ type, attemptId })
     })
   ipcMain.handle('update-state', (event) => {
@@ -463,7 +511,7 @@ app.whenReady().then(() => {
     if (action === 'check') return updates!.check()
     if (action === 'download') return updates!.download()
     if (action === 'install') return updates!.install()
-    throw new Error('不支持的更新操作')
+    throw new Error(ui('不支持的更新操作', 'Unsupported update action'))
   })
   powerMonitor.on('suspend', () => win?.webContents.send('lifecycle', 'suspend'))
   powerMonitor.on('resume', () => win?.webContents.send('lifecycle', 'resume'))
@@ -480,22 +528,36 @@ app.whenReady().then(() => {
     assertSender(event)
     return desktop!.info()
   })
+  ipcMain.handle('window-action', (event, action: unknown) => {
+    assertSender(event)
+    if (!win || win.isDestroyed()) return
+    if (action === 'minimize') win.minimize()
+    else if (action === 'toggle-maximize') {
+      if (win.isMaximized()) win.unmaximize()
+      else win.maximize()
+    } else if (action === 'close') win.close()
+    else throw new Error(ui('窗口操作无效', 'Invalid window action'))
+  })
   ipcMain.handle('desktop-fullscreen', async (event, value: unknown) => {
     assertSender(event)
-    if (typeof value !== 'boolean' && value !== 'toggle') throw new Error('全屏状态无效')
+    if (typeof value !== 'boolean' && value !== 'toggle')
+      throw new Error(ui('全屏状态无效', 'Invalid full-screen state'))
     saveBounds()
     await desktop!.fullscreen!.set(value)
     return desktop!.info()
   })
   ipcMain.handle('desktop-settings', (event, value: unknown) => {
     assertSender(event)
-    const preferences = validatePreferences(value),
+    const preferences = validatePreferences(value, store.preferences.playerBackground),
       background = preferences.playerBackground
     if (background?.image && background.image !== store.preferences.playerBackground.image)
       background.image = normalizeStoredPlayerBackground(background.image, (bytes) =>
         nativeImage.createFromBuffer(bytes),
       )
-    return desktop!.updatePreferences(preferences)
+    const info = desktop!.updatePreferences(preferences)
+    if (preferences.language)
+      child?.postMessage({ type: 'ui-language', language: info.preferences.language })
+    return info
   })
   ipcMain.handle('player-background-image', (event, bytes: unknown) => {
     assertSender(event)
@@ -514,10 +576,21 @@ app.whenReady().then(() => {
     assertSender(event)
     return {
       version: app.getVersion(),
-      persistent: canPersist() && !storageReason,
-      reason:
-        storageReason ||
-        (canPersist() ? '登录态由系统密钥环加密保存' : '系统密钥环不可用，登录态仅保留到关闭应用'),
+      persistent: canPersist() && !sessionSaveFailed,
+      reason: sessionSaveFailed
+        ? ui(
+            '保存登录态失败，本次登录仍可继续使用',
+            "Couldn't save sign-in details. You can stay signed in for this session.",
+          )
+        : canPersist()
+          ? ui(
+              '登录态由系统密钥环加密保存',
+              'Sign-in details are encrypted with the system keychain.',
+            )
+          : ui(
+              '系统密钥环不可用，登录态仅保留到关闭应用',
+              "The system keychain is unavailable. You'll stay signed in until you quit.",
+            ),
     }
   })
   ipcMain.handle('copy', (event, text: string) => {
@@ -538,7 +611,10 @@ app.whenReady().then(() => {
           app: 'music-party',
           stage: 'protocol-probe',
           exportedAt: new Date().toISOString(),
-          note: '凭据和链接已隐藏；房间、用户及歌曲 ID 保留用于诊断。',
+          note: ui(
+            '凭据和链接已隐藏；房间、用户及歌曲 ID 保留用于诊断。',
+            'Credentials and links are hidden. Room, user, and track IDs are included for diagnostics.',
+          ),
           traces,
         },
         null,
@@ -566,7 +642,8 @@ app.whenReady().then(() => {
       useContentSize: true,
       title: 'Music Party',
       icon: join(app.getAppPath(), 'resources/icon.png'),
-      backgroundColor: desktop!.info().resolvedTheme === 'dark' ? '#060606' : '#fbf7f7',
+      backgroundColor: windowBackground(desktop!.info().resolvedTheme === 'dark'),
+      frame: false,
       autoHideMenuBar: true,
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
@@ -574,33 +651,45 @@ app.whenReady().then(() => {
         nodeIntegration: false,
         sandbox: true,
         backgroundThrottling: false,
+        zoomMode: 'isolated',
+        zoomFactor: store.preferences.fontScale / 100,
       },
     })
     win.setMenu(null)
     const outer = win.getBounds()
     const content = win.getContentBounds()
-    const frame = {
+    normalFrame = {
       width: Math.max(0, outer.width - content.width),
       height: Math.max(0, outer.height - content.height),
     }
-    const geometry = restoreWindow(store.window, areas, frame)
+    const geometry = restoreWindow(store.window, areas, normalFrame)
     win.setBounds({
       x: geometry.x,
       y: geometry.y,
-      width: geometry.width + frame.width,
-      height: geometry.height + frame.height,
+      width: geometry.width + normalFrame.width,
+      height: geometry.height + normalFrame.height,
     })
     win.setMinimumSize(
-      Math.min(MIN_WINDOW_SIZE.width, geometry.width) + frame.width,
-      Math.min(MIN_WINDOW_SIZE.height, geometry.height) + frame.height,
+      Math.min(MIN_WINDOW_SIZE.width, geometry.width) + normalFrame.width,
+      Math.min(MIN_WINDOW_SIZE.height, geometry.height) + normalFrame.height,
     )
     normalGeometry = geometry
     if (geometry.maximized) win.maximize()
     win.show()
     win.on('resize', scheduleBounds)
     win.on('move', scheduleBounds)
-    win.on('maximize', scheduleBounds)
-    win.on('unmaximize', scheduleBounds)
+    const onMaximizeChange = () => {
+      scheduleBounds()
+      desktop?.notify()
+    }
+    win.on('maximize', onMaximizeChange)
+    win.on('unmaximize', onMaximizeChange)
+    win.on('app-command', (event, command) => {
+      if (command === 'browser-backward' || command === 'browser-forward') {
+        event.preventDefault()
+        win?.webContents.send('navigate', command === 'browser-backward' ? 'back' : 'forward')
+      }
+    })
     desktop!.fullscreen = new FullScreenController(win, () => desktop?.notify())
     win.on('leave-full-screen', () => {
       scheduleBounds()
@@ -612,9 +701,11 @@ app.whenReady().then(() => {
         win?.hide()
       } else if (!quitting) {
         event.preventDefault()
-        app.quit()
+        // Let the native close event unwind before Electron asks the window to close again.
+        setImmediate(() => app.quit())
       }
     })
+    win.webContents.on('zoom-changed', (_event, direction) => desktop?.stepDisplaySize(direction))
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     win.webContents.on('will-navigate', (event) => event.preventDefault())
     win.webContents.session.setPermissionCheckHandler(
@@ -649,12 +740,7 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (!quitting) app.quit()
 })
-app.on('before-quit', (event) => {
-  if (!primaryInstance || quitPrepared) return
-  event.preventDefault()
-  if (quitting) return
-  prepareExit().finally(() => app.quit())
-})
+app.on('before-quit', prepareExit)
 app.on('will-quit', () => {
   clearTimeout(updateTimer)
   clearTimeout(boundsTimer)

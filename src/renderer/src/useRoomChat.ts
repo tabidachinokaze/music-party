@@ -1,6 +1,8 @@
+import { ui, getUiLanguage } from '../../shared/ui-language'
 import { useEffect, useRef, useState } from 'react'
 import type { ChatEmoji, ChatMessage, Room } from '../../shared/types'
 import { CHAT_MAX_LENGTH, mergeChat, parseChatPage } from '../../shared/chat'
+import { rememberRecentStickers } from './recent-stickers'
 import type { ApiCall } from './music-data'
 import type { MediaReceipt, MediaTarget } from '../../shared/media'
 
@@ -43,6 +45,10 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
         const body = await api('multiChatHistory', { roomId, ...(cursor ? { cursor } : {}) })
         if (run !== epoch.current) return
         const page = parseChatPage(body, roomId, String(account.userId))
+        rememberRecentStickers(
+          String(account.userId),
+          page.messages.flatMap(({ emoji, time }) => (emoji ? [{ emoji, time }] : [])),
+        )
         const previous = messagesRef.current
         if (hasLoaded.current && !older && !visibleRef.current) {
           const ids = new Set(previous.map((m) => m.id))
@@ -57,7 +63,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
         if (!hasLoaded.current || older) {
           if (page.more && (!page.cursor || page.cursor === cursor)) {
             setMore(false)
-            setError('聊天分页没有继续前进，请刷新后重试')
+            setError(ui('暂时无法读取更早的聊天记录', 'Older messages are temporarily unavailable'))
           } else {
             olderCursor.current = page.cursor
             setMore(page.more)
@@ -65,9 +71,10 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
           }
         } else setError('')
         hasLoaded.current = true
-        setLastUpdate(new Date().toLocaleTimeString('zh-CN'))
+        setLastUpdate(new Date().toLocaleTimeString(getUiLanguage()))
       } catch (e: any) {
-        if (run === epoch.current) setError(e.message || '聊天记录暂不可用')
+        if (run === epoch.current)
+          setError(e.message || ui('聊天记录暂不可用', 'Chat history is temporarily unavailable'))
       } finally {
         if (run === epoch.current) setLoading(false)
       }
@@ -117,7 +124,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
     if (!room || !account || !room.chatRoomId || sendLock.current) return
     const text = emoji ? `[${emoji.emojiName}]` : draft.trim()
     if (!text || text.length > CHAT_MAX_LENGTH) {
-      setError(`请输入 1–${CHAT_MAX_LENGTH} 字的消息`)
+      setError(ui('请输入 1–{0} 字的消息', 'Enter a message of 1–{0} characters', CHAT_MAX_LENGTH))
       return
     }
     const run = epoch.current
@@ -126,7 +133,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
       id: `local:${requestId}`,
       roomId: room.roomId,
       uid: String(account.userId),
-      nickname: account.nickname || '我',
+      nickname: account.nickname || ui('我', 'Me'),
       avatar: account.avatarUrl || '',
       time: Date.now(),
       text,
@@ -134,8 +141,9 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
       ...(emoji
         ? {
             emoji,
+            previewOnlyText: true,
             attachments: [
-              { kind: 'image' as const, title: emoji.emojiName, url: emoji.emojiImgUrl },
+              { kind: 'image' as const, title: emoji.emojiName, url: emoji.emojiImgUrl, emoji },
             ],
           }
         : {}),
@@ -158,6 +166,7 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
         requestId,
         ...(emoji ? { emoji } : {}),
       })
+      if (emoji) rememberRecentStickers(local.uid, [{ emoji, time: local.time }])
       if (run !== epoch.current) return
       update(mergeChat(messagesRef.current, [{ ...local, delivery: 'submitted' }]))
       if (!emoji) setDraft((current) => (current.trim() === text ? '' : current))
@@ -167,12 +176,18 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
       const ambiguous = e.deliveryUnknown === true
       const message =
         e.code === 405
-          ? '发送过于频繁，请稍后再发'
+          ? ui('发送过于频繁，请稍后再发', 'You’re sending too quickly. Try again in a moment.')
           : e.code === 407
-            ? '消息未通过服务端检查，请修改后重试'
+            ? ui(
+                '消息未通过服务端检查，请修改后重试',
+                'The server rejected this message. Edit it and try again.',
+              )
             : ambiguous
-              ? '发送结果未确认，请刷新聊天记录后再决定是否重发'
-              : e.message || '发送失败'
+              ? ui(
+                  '发送结果未确认，请等待聊天记录更新后再决定是否重发',
+                  'Delivery unconfirmed. Wait for the chat to update before resending.',
+                )
+              : e.message || ui('发送失败', 'Send failed')
       update(
         mergeChat(messagesRef.current, [
           { ...local, delivery: ambiguous ? 'uncertain' : 'failed', error: message },
@@ -189,6 +204,8 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
   return {
     api,
     acceptMedia(receipt: MediaReceipt, target: MediaTarget) {
+      if (target.kind === 'room' && receipt.emoji)
+        rememberRecentStickers(receipt.senderUid, [{ emoji: receipt.emoji, time: receipt.time }])
       if (
         target.kind !== 'room' ||
         target.roomId !== room?.roomId ||
@@ -201,10 +218,11 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
             id: `local:${receipt.requestId}`,
             roomId: target.roomId,
             uid: receipt.senderUid,
-            nickname: account?.nickname || '我',
+            nickname: account?.nickname || ui('我', 'Me'),
             avatar: account?.avatarUrl || '',
             time: receipt.time,
             text: receipt.text,
+            previewOnlyText: receipt.attachments.length > 0,
             kind: 'image',
             emoji: receipt.emoji,
             attachments: receipt.attachments,
@@ -231,7 +249,6 @@ export function useRoomChat(api: ApiCall, room: Room | null, account: any, displ
     lastUpdate,
     visible,
     setVisible,
-    refresh: () => fetchMessages(),
     loadOlder: () => fetchMessages(true),
     send,
   }

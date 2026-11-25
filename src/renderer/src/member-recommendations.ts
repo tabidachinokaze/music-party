@@ -1,30 +1,20 @@
+import { ui } from '../../shared/ui-language'
 // SPDX-License-Identifier: AGPL-3.0-only
 // Adapted from folium-mod-music-party/src/client/member-recommendations.ts and room-data.ts
 // at b01525f. See THIRD_PARTY_NOTICES.md.
 import type { Member, RoomPlayback, RoomQueueEntry, Song } from '../../shared/types'
-import { parseRoomQueue } from '../../shared/playback-queue'
 import type { ApiCall } from './music-data'
+import { RoomQueuePages, type RoomQueueMethod } from './room-queue-pages'
 
 export async function loadMemberRecommendations(
   api: ApiCall,
   roomId: string,
   current: () => boolean,
-  method: 'multiQueue' | 'multiPlayed',
+  method: RoomQueueMethod,
 ): Promise<RoomQueueEntry[]> {
-  const rows = new Map<string, RoomQueueEntry>(),
-    seen = new Set<string>([''])
-  let cursor = ''
-  while (current()) {
-    const page = parseRoomQueue(await api(method, { roomId, ...(cursor ? { cursor } : {}) }))
-    if (!current()) return []
-    for (const entry of page.entries) rows.set(entry.songBizId, entry)
-    if (!page.more) return [...rows.values()]
-    if (!page.cursor || seen.has(page.cursor) || seen.size >= 1000)
-      throw new Error('推荐记录分页没有继续前进，请刷新重试')
-    seen.add(page.cursor)
-    cursor = page.cursor
-  }
-  return []
+  const pages = new RoomQueuePages()
+  while (current() && !pages.complete) await pages.next(api, roomId, method)
+  return current() ? [...pages.rows.values()] : []
 }
 
 /** The current occurrence may precede its appearance in the played-history endpoint. */
@@ -42,7 +32,7 @@ export function currentMemberRecommendation(
     track: known?.track ||
       song || {
         id: current.songId,
-        name: '正在读取房间歌曲…',
+        name: ui('正在读取房间歌曲…', 'Loading room song…'),
         artist: '',
         album: '',
         cover: '',
@@ -65,7 +55,10 @@ export function currentRecommendationOwner(
   return (
     members.find((member) => member.uid === current.songRcmdUid) || {
       uid: current.songRcmdUid,
-      nickname: current.songRcmdUid === '0' ? '系统推荐' : current.recommender || '听友',
+      nickname:
+        current.songRcmdUid === '0'
+          ? ui('系统推荐', 'System recommendation')
+          : current.recommender || ui('听友', 'Listener'),
       avatar: '',
     }
   )

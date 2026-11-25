@@ -1,3 +1,4 @@
+import { ui } from './ui-language'
 import type { QueueSong, RoomPlayback, RoomQueueEntry } from './types'
 export function parseRoomQueue(body: any): {
   entries: RoomQueueEntry[]
@@ -5,14 +6,16 @@ export function parseRoomQueue(body: any): {
   cursor: string | null
 } {
   const data = body?.data
-  if (!Array.isArray(data?.songLists)) throw new Error('待播列表响应异常，请重试')
+  if (!Array.isArray(data?.songLists))
+    throw new Error(ui('待播列表响应异常，请重试', 'Could not read the room queue. Try again.'))
   const entries = data.songLists.map((item: any): RoomQueueEntry => {
     const song = item?.songInfo
     const id = (value: unknown) => {
       if (typeof value === 'number' && !Number.isSafeInteger(value))
-        throw new Error('待播歌曲 ID 精度异常')
+        throw new Error(ui('待播歌曲 ID 精度异常', 'Invalid queued track ID precision'))
       const text = String(value ?? '')
-      if (!/^\d{1,24}$/.test(text)) throw new Error('待播歌曲条目异常')
+      if (!/^\d{1,24}$/.test(text))
+        throw new Error(ui('待播歌曲条目异常', 'Invalid queued track entry'))
       return text
     }
     const songId = id(song?.resourceId)
@@ -34,7 +37,7 @@ export function parseRoomQueue(body: any): {
       likeCount: Math.max(0, Number(song.zanCnt) || 0),
       track: {
         id: songId,
-        name: song.title || '未知歌曲',
+        name: song.title || ui('未知歌曲', 'Unknown track'),
         artist: Array.isArray(song.artistName) ? song.artistName.join(' / ') : '',
         cover: song.coverUrl || '',
         album: '',

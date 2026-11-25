@@ -59,7 +59,7 @@
   margin-bottom: 12px;
 }
 .member-recommendation-list {
-  max-height: min(48vh, 400px);
+  min-height: 0;
   overflow: auto;
 }
 .member-recommendation-group h3 {
@@ -85,7 +85,7 @@
   height: 38px;
   border-radius: 7px;
   object-fit: cover;
-  background: var(--hf-surface-2);
+  background: --skin-fill(var(--hf-surface-2));
 }
 .member-recommendation-art {
   display: grid;
@@ -104,8 +104,7 @@
   overflow-wrap: anywhere;
 }
 .member-recommendation-copy small,
-.member-recommendation-likes,
-.member-recommendation-loading {
+.member-recommendation-likes {
   font-size: calc(11px * var(--ui-font-scale, 1));
   color: var(--muted);
 }
@@ -127,9 +126,4 @@
 }
 .member-recommendation-likes {
   white-space: nowrap;
-}
-.member-recommendation-loading {
-  display: flex;
-  align-items: center;
-  gap: 6px;
 }

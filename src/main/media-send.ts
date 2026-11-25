@@ -1,3 +1,4 @@
+import { ui } from '../shared/ui-language'
 import { createHash } from 'node:crypto'
 import { richMessageContent } from '../shared/message-content'
 import { savedSticker, downloadStickerImage } from './stickers'
@@ -53,9 +54,15 @@ export class MediaSender {
     if (old)
       return old.signature === signature
         ? old.promise
-        : Promise.resolve({ ok: false, error: '附件请求标识已被使用' })
+        : Promise.resolve({
+            ok: false,
+            error: ui('附件请求标识已被使用', 'That attachment request ID is already in use.'),
+          })
     if ([...this.jobs.values()].some((job) => job.phase !== 'done'))
-      return Promise.resolve({ ok: false, error: '请等待当前附件完成' })
+      return Promise.resolve({
+        ok: false,
+        error: ui('请等待当前附件完成', 'Wait for the current attachment to finish.'),
+      })
     if (this.jobs.size >= 50) {
       const first = this.jobs.keys().next().value
       if (first) this.jobs.delete(first)
@@ -83,12 +90,14 @@ export class MediaSender {
       typeof request.requestId !== 'string' ||
       !/^[0-9a-f-]{36}$/i.test(request.requestId)
     )
-      return { ok: false, error: '附件请求标识无效' }
+      return { ok: false, error: ui('附件请求标识无效', 'Invalid attachment request ID.') }
     const captured = this.credentials()
     const current = () => {
       const now = this.credentials()
       if (!captured.cookie || now.epoch !== captured.epoch || now.cookie !== captured.cookie)
-        throw new Error('账号已变化，请重新添加表情')
+        throw new Error(
+          ui('账号已变化，请重新添加表情', 'The account changed. Add the sticker again.'),
+        )
     }
     try {
       current()
@@ -99,7 +108,11 @@ export class MediaSender {
         progress,
       )
     } catch (error: any) {
-      return { ok: false, error: error.message || '添加图片失败', deliveryUnknown: false }
+      return {
+        ok: false,
+        error: error.message || ui('添加图片失败', 'Could not add the image.'),
+        deliveryUnknown: false,
+      }
     }
   }
   private async run(
@@ -112,7 +125,9 @@ export class MediaSender {
     const check = () => {
       signal.throwIfAborted()
       if (!auth.cookie || this.credentials().epoch !== auth.epoch)
-        throw new Error('账号已变化，请重新发送附件')
+        throw new Error(
+          ui('账号已变化，请重新发送附件', 'The account changed. Send the attachment again.'),
+        )
     }
     const invoke = async (uri: string, data: Record<string, unknown>) => {
       check()
@@ -129,7 +144,11 @@ export class MediaSender {
         result.body?.data?.success === false
       )
         throw Object.assign(
-          new Error(result.body?.message || result.body?.msg || '网易云未接受附件请求'),
+          new Error(
+            result.body?.message ||
+              result.body?.msg ||
+              ui('网易云未接受附件请求', 'NetEase did not accept the attachment request.'),
+          ),
           { definite: true, code: result.body?.code },
         )
       return result.body
@@ -138,10 +157,12 @@ export class MediaSender {
       check()
       const account = (await this.invoke('login_status', { cookie: auth.cookie, timeout: 12000 }))
         .body?.data?.profile
-      if (!account?.userId) throw new Error('请重新登录后发送附件')
+      if (!account?.userId)
+        throw new Error(ui('请重新登录后发送附件', 'Sign in again before sending an attachment.'))
       if (request.target.kind === 'sticker') return { account, chatRoomId: '' }
       if (request.target.kind === 'private') {
-        if (String(account.userId) === request.target.uid) throw new Error('不能给自己发送私信')
+        if (String(account.userId) === request.target.uid)
+          throw new Error(ui('不能给自己发送私信', 'You cannot send a direct message to yourself.'))
         return { account, chatRoomId: '' }
       }
       const status = (await this.invoke('multiStatus', { cookie: auth.cookie, timeout: 12000 }))
@@ -151,7 +172,12 @@ export class MediaSender {
         (snapshot?.multiRoomInfoDTO ?? snapshot?.roomInfo)?.chatRoomId || '',
       )
       if (snapshot?.roomId !== request.target.roomId || !/^[1-9]\d{0,23}$/.test(chatRoomId))
-        throw new Error('账号已离开这个房间，附件未发送')
+        throw new Error(
+          ui(
+            '账号已离开这个房间，附件未发送',
+            'Your account left this room before the attachment could be sent.',
+          ),
+        )
       return { account, chatRoomId }
     }
     try {
@@ -195,7 +221,12 @@ export class MediaSender {
         const rawId =
           typeof token?.docId === 'string' ? token.docId : (token?.resourceId ?? token?.docId)
         if (typeof rawId === 'number' && !Number.isSafeInteger(rawId))
-          throw new Error('上传资源 ID 精度异常，附件未发送')
+          throw new Error(
+            ui(
+              '上传资源 ID 精度异常，附件未发送',
+              'The upload ID lost precision. The attachment was not sent.',
+            ),
+          )
         const docId = String(rawId || '')
         if (
           !/^[a-z0-9-]{1,100}$/.test(bucket) ||
@@ -205,9 +236,14 @@ export class MediaSender {
           typeof token?.token !== 'string' ||
           !/^\d+$/.test(docId)
         )
-          throw new Error('未取得有效上传凭据')
+          throw new Error(ui('未取得有效上传凭据', 'Could not obtain valid upload credentials.'))
         if (token.channel && token.channel !== 1)
-          throw new Error('当前账号使用的上传通道暂不可用，请稍后重试')
+          throw new Error(
+            ui(
+              '当前账号使用的上传通道暂不可用，请稍后重试',
+              'Uploads are temporarily unavailable for this account. Try again later.',
+            ),
+          )
         let context = '',
           offset = 0
         const chunkSize = 2 * 1024 * 1024
@@ -227,14 +263,24 @@ export class MediaSender {
             signal: AbortSignal.any([signal, AbortSignal.timeout(60000)]),
           })
           if (!result.ok)
-            throw Object.assign(new Error(`附件上传失败（${result.status}）`), {
-              code: result.status,
-            })
+            throw Object.assign(
+              new Error(ui('附件上传失败（{0}）', 'Attachment upload failed ({0})', result.status)),
+              {
+                code: result.status,
+              },
+            )
           const body = (await result.json()) as any
           if (body.errCode || (body.code && body.code !== 200))
-            throw new Error('网易云存储未接受上传分片')
+            throw new Error(
+              ui('网易云存储未接受上传分片', 'NetEase storage did not accept this upload part.'),
+            )
           if (body.offset !== undefined && Number(body.offset) !== end)
-            throw new Error('上传进度确认不一致，请重试')
+            throw new Error(
+              ui(
+                '上传进度确认不一致，请重试',
+                'The confirmed upload progress did not match. Try again.',
+              ),
+            )
           context = typeof body.context === 'string' ? body.context : context
           offset = end
           part(offset / file.data.byteLength)
@@ -280,20 +326,37 @@ export class MediaSender {
           ]),
         })
         if (!Array.isArray(result.data?.emojiMap))
-          throw new Error('表情保存结果未确认，请刷新自定义表情')
+          throw new Error(
+            ui(
+              '表情保存结果未确认，请刷新自定义表情',
+              'Could not confirm the save. Refresh your custom stickers.',
+            ),
+          )
         if (!result.data.emojiMap.length)
-          throw Object.assign(new Error(result.data.toast || '表情未保存，请稍后重试'), {
-            definite: true,
-          })
+          throw Object.assign(
+            new Error(
+              result.data.toast ||
+                ui('表情未保存，请稍后重试', 'The sticker was not saved. Try again later.'),
+            ),
+            {
+              definite: true,
+            },
+          )
         const emoji = savedSticker(result.data.emojiMap[0])
-        if (!emoji) throw new Error('已提交表情，请刷新列表确认保存结果')
+        if (!emoji)
+          throw new Error(
+            ui(
+              '已提交表情，请刷新列表确认保存结果',
+              'Sticker submitted. Refresh the list to check whether it was saved.',
+            ),
+          )
         return {
           ok: true,
           receipt: {
             requestId: request.requestId,
             senderUid: String(destination.account.userId),
             time: Date.now(),
-            text: '已添加到网易云自定义表情',
+            text: ui('已添加到网易云自定义表情', 'Added to your NetEase custom stickers.'),
             attachments: [],
             emoji,
           },
@@ -307,7 +370,10 @@ export class MediaSender {
             : file.kind === 'video'
               ? '[视频]'
               : `[${file.name}]`
-      if (text.length > 500) throw new Error('文件下载链接过长，未发送给收件人')
+      if (text.length > 500)
+        throw new Error(
+          ui('文件下载链接过长，未发送给收件人', 'The download link is too long to send.'),
+        )
       const receipt: MediaReceipt = {
         requestId: request.requestId,
         senderUid: String(destination.account.userId),
@@ -370,9 +436,14 @@ export class MediaSender {
           sent.body?.data === false ||
           sent.body?.data?.success === false
         )
-          throw Object.assign(new Error(sent.body?.message || '文件链接发送失败'), {
-            definite: true,
-          })
+          throw Object.assign(
+            new Error(
+              sent.body?.message || ui('文件链接发送失败', 'Could not send the file link.'),
+            ),
+            {
+              definite: true,
+            },
+          )
       } else {
         const body =
           file.kind === 'image'
@@ -412,7 +483,13 @@ export class MediaSender {
                     : undefined,
                 }
         const token = (await this.invoke('register_checktoken_v3', { timeout: 12000 })).body?.token
-        if (!token) throw new Error('未取得消息校验令牌，请重试')
+        if (!token)
+          throw new Error(
+            ui(
+              '未取得消息校验令牌，请重试',
+              'Could not obtain a message verification token. Try again.',
+            ),
+          )
         check()
         progress('sending', 100)
         attempted = true
@@ -437,8 +514,19 @@ export class MediaSender {
           }),
         })
         if ([-2, -1].includes(result.data?.msgBody?.status))
-          throw Object.assign(new Error('网易云未接受这条附件消息'), { definite: true })
-        if (!result.data?.msgBody?.msgId) throw new Error('附件发送结果尚未确认，请刷新会话')
+          throw Object.assign(
+            new Error(
+              ui('网易云未接受这条附件消息', 'NetEase did not accept this attachment message.'),
+            ),
+            { definite: true },
+          )
+        if (!result.data?.msgBody?.msgId)
+          throw new Error(
+            ui(
+              '附件发送结果尚未确认，请刷新会话',
+              'Attachment delivery could not be confirmed. Refresh the conversation.',
+            ),
+          )
         receipt.messageId = String(result.data.msgBody.msgId || '') || undefined
         const confirmed = richMessageContent(result.data.msgBody).attachments?.filter(
           (item) => item.url && item.kind === receipt.attachments[0].kind,
@@ -449,7 +537,10 @@ export class MediaSender {
     } catch (error: any) {
       return {
         ok: false,
-        error: signal.aborted && !attempted ? '上传已取消' : error?.message || '附件发送失败',
+        error:
+          signal.aborted && !attempted
+            ? ui('上传已取消', 'Upload canceled.')
+            : error?.message || ui('附件发送失败', 'Could not send the attachment.'),
         deliveryUnknown: attempted && !error.definite,
         code: typeof error.code === 'number' ? error.code : undefined,
       }
