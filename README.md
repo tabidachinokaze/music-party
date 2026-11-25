@@ -1,5 +1,7 @@
 # Music Party
 
+[English](README.en.md)
+
 兼容网易云音乐「多人一起听」的桌面播放器。你可以在电脑上和使用网易云音乐手机 App 的好友一起听歌、推歌、聊天或收发私信。
 
 [下载正式版 0.13.1（Windows x64 / Linux x64）](https://github.com/tabidachinokaze/music-party/releases/tag/v0.13.1) · [本版更新](docs/RELEASE-NOTES.md) · [反馈问题](https://github.com/tabidachinokaze/music-party/issues)
@@ -22,4 +24,8 @@ pnpm exec install-electron
 pnpm dev
 ```
 
-运行 `pnpm run check` 检查类型、单元测试、格式和构建。[界面规范](docs/UI-GUIDELINES.md) · [接口与数据](docs/ui-data/README.md) · [验证记录](docs/VALIDATION.md) · [打包与发布](docs/RELEASING.md) · [第三方许可](THIRD_PARTY_NOTICES.md)
+运行 `pnpm run check` 检查类型、单元测试、格式和构建。[界面规范](docs/UI-GUIDELINES.md) · [接口与数据](docs/ui-data/README.md) · [验证记录](docs/VALIDATION.md) · [打包与发布](docs/RELEASING.md)
+
+## 许可证
+
+Music Party 的项目代码采用 GNU Affero 通用公共许可证第 3 版（`AGPL-3.0-only`）。第三方组件各自适用的许可见第三方声明。[许可证全文](LICENSE) · [第三方声明](THIRD_PARTY_NOTICES.md)

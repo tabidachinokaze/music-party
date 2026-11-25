@@ -23,7 +23,9 @@
 
 房间动态展示的两个模块保留插件对活动类型、完整用户名和歌曲名的解析方式，由本项目的 React 组件渲染为纯文字动态行。
 
-其他新增功能依据协议说明和本项目已有实现编写；上述声明保留移植模块的来源，不为本项目其余文件另行指定许可证。各 npm 依赖保留其自身许可证。
+Music Party 的项目代码采用 `AGPL-3.0-only`。第三方依赖各自的许可和版权声明继续适用。[项目许可证](LICENSE)
+
+网易云信 Web SDK（`@yxim/nim-web-sdk`）用于接收房间实时更新。其 9.21.19 版本的 npm 包未声明 SDK 的许可证，随客户端再分发该 SDK 的授权尚待确认。[SDK 发布包](https://www.npmjs.com/package/@yxim/nim-web-sdk/v/9.21.19)
 
 播放器随应用提供 Inter 拉丁字形，其 SIL Open Font License 1.1 文本见 [Inter](licenses/inter-OFL.txt)。封面过渡使用 Anime.js，其许可见 [Anime.js MIT](licenses/animejs-MIT.txt)。
 

@@ -1,6 +1,7 @@
 {
   "name": "music-party",
   "version": "0.13.1",
+  "license": "AGPL-3.0-only",
   "private": true,
   "description": "网易云官方多人一起听桌面客户端",
   "main": "out/main/index.js",
@@ -55,6 +56,7 @@
       "out/**/*",
       "resources/*.png",
       "package.json",
+      "LICENSE",
       "THIRD_PARTY_NOTICES.md",
       "licenses/*.txt"
     ],
